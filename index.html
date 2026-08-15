@@ -138,6 +138,17 @@ button:disabled, input[type="submit"]:disabled {
     </div>
 </div>
 
+<!-- ================= MODAL: DETAIL CARD DASHBOARD USER ================= -->
+<div id="modal-dashboard-detail" class="fixed inset-0 z-[10000] hide modal-overlay flex items-center justify-center p-4">
+    <div class="bg-white w-full max-w-lg rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[85vh]">
+        <div class="p-5 border-b flex justify-between items-center bg-indigo-50 shrink-0">
+            <h3 id="dashboard-detail-title" class="text-sm font-black text-indigo-600"><i class="fas fa-list-check mr-1"></i> Detail</h3>
+            <button onclick="window.closeModal('modal-dashboard-detail')" class="text-slate-400 hover:text-slate-700"><i class="fas fa-times"></i></button>
+        </div>
+        <div id="dashboard-detail-body" class="p-5 overflow-y-auto space-y-2"></div>
+    </div>
+</div>
+
 <!-- ================= APP SHELL ================= -->
 <div id="app-shell" class="hide min-h-screen lg:flex">
 
@@ -509,6 +520,19 @@ window.sel = {
         const set = new Set();
         (window.STATE.users || []).forEach(u => { const d = (u.dept || "").trim(); if (d) set.add(d); });
         return [...set].sort((a, b) => a.localeCompare(b));
+    },
+    // Daftar semua nama posisi/level jabatan unik dari data karyawan (buat target peserta Training TNA).
+    allPosisiNames() {
+        const set = new Set();
+        (window.STATE.employees || []).forEach(e => { const p = (e.posisi || "").trim(); if (p) set.add(p); });
+        return [...set].sort((a, b) => a.localeCompare(b));
+    },
+    // Cari data karyawan (dept/posisi lengkap) milik akun user yang sedang login, dicocokkan
+    // lewat username (dipakai buat cek target peserta Training TNA).
+    employeeOfUser(user) {
+        if (!user) return null;
+        const uname = normalizeUsername(user.username);
+        return (window.STATE.employees || []).find(e => normalizeUsername(e.username) === uname) || null;
     }
 };
 
@@ -522,6 +546,58 @@ window.deptAllowed = function (item) {
     const myDept = window.sel.myDept().toLowerCase();
     if (!myDept) return false;
     return targets.some(d => String(d).trim().toLowerCase() === myDept);
+};
+
+// ================= TARGET PESERTA TRAINING BY TNA =================
+// t.participants = { mode: 'all' | 'department' | 'position' | 'manual',
+//                     departments: [...], positions: [...], employeeUsernames: [...] }
+// mode 'all' (atau field participants belum ada sama sekali, data lama) => training terbuka
+// untuk SEMUA karyawan, perilaku lama tidak berubah.
+window.trainingParticipantMatch = function (t, employee, user) {
+    const p = t && t.participants;
+    if (!p || !p.mode || p.mode === "all") return true;
+    if (p.mode === "department") {
+        const dept = String((employee && employee.dept) || (user && user.dept) || "").trim().toLowerCase();
+        if (!dept) return false;
+        return (p.departments || []).some(d => String(d).trim().toLowerCase() === dept);
+    }
+    if (p.mode === "position") {
+        const posisi = String((employee && employee.posisi) || "").trim().toLowerCase();
+        if (!posisi) return false;
+        return (p.positions || []).some(x => String(x).trim().toLowerCase() === posisi);
+    }
+    if (p.mode === "manual") {
+        const uname = normalizeUsername((employee && employee.username) || (user && user.username) || "");
+        if (!uname) return false;
+        return (p.employeeUsernames || []).some(u => normalizeUsername(u) === uname);
+    }
+    return true;
+};
+// Cek apakah training ini boleh dilihat/diikuti oleh USER YANG SEDANG LOGIN. Admin selalu
+// boleh (buat keperluan kelola/preview/laporan).
+window.trainingAllowedForUser = function (t) {
+    if (window.sel.isAdmin()) return true;
+    const user = window.STATE.user;
+    if (!user) return false;
+    const emp = window.sel.employeeOfUser(user);
+    return window.trainingParticipantMatch(t, emp, user);
+};
+// Daftar karyawan target sebuah training sesuai scope pesertanya — dipakai buat Laporan
+// Keterlaksanaan (menghitung "jumlah target peserta" sebagai penyebut persentase).
+window.trainingTargetEmployees = function (t) {
+    const p = t && t.participants;
+    const employees = window.STATE.employees || [];
+    if (!p || !p.mode || p.mode === "all") return employees;
+    return employees.filter(e => window.trainingParticipantMatch(t, e, null));
+};
+// Label ringkas scope peserta sebuah training, buat ditampilkan di UI admin.
+window.trainingScopeLabel = function (t) {
+    const p = t && t.participants;
+    if (!p || !p.mode || p.mode === "all") return "Semua Karyawan";
+    if (p.mode === "department") return (p.departments || []).length ? "Departemen: " + p.departments.join(", ") : "Departemen (belum dipilih)";
+    if (p.mode === "position") return (p.positions || []).length ? "Posisi: " + p.positions.join(", ") : "Posisi (belum dipilih)";
+    if (p.mode === "manual") return (p.employeeUsernames || []).length + " karyawan terpilih";
+    return "Semua Karyawan";
 };
 
 
@@ -793,10 +869,10 @@ function renderUserDashboard() {
             <p class="text-sm text-slate-500">Ini ringkasan progres belajar kamu.</p>
         </div>
         <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-            ${statCard("fa-book-open", "indigo", myEnr.length, "Training Diikuti")}
-            ${statCard("fa-circle-check", "emerald", completedCourses, "Training Selesai")}
-            ${statCard("fa-chalkboard-user", "amber", myRegs.length, "Training Terdaftar")}
-            ${statCard("fa-award", "rose", myCerts.length, "Sertifikat")}
+            ${clickableStatCard("fa-book-open", "indigo", myEnr.length, "Training Diikuti", "window.openDashboardDetail('enrolled')")}
+            ${clickableStatCard("fa-circle-check", "emerald", completedCourses, "Training Selesai", "window.openDashboardDetail('completed')")}
+            ${clickableStatCard("fa-chalkboard-user", "amber", myRegs.length, "Training Terdaftar", "window.openDashboardDetail('registered')")}
+            ${clickableStatCard("fa-award", "rose", myCerts.length, "Sertifikat", "window.openDashboardDetail('certificates')")}
         </div>
         <div class="grid grid-cols-1 lg:grid-cols-2 gap-5">
             <div class="bg-white rounded-3xl border border-slate-100 shadow-sm p-5">
@@ -992,6 +1068,122 @@ function courseCoverStyleSafe(c) {
     if (c.coverImage) return `background-image:url('${c.coverImage}')`;
     return `background:linear-gradient(135deg,${c.accent1 || "#4f46e5"},${c.accent2 || "#818cf8"})`;
 }
+
+// ================= CARD DASHBOARD USER (CLICKABLE) =================
+// Sama seperti statCard biasa, tapi dibungkus <button> supaya bisa diklik dan
+// membuka modal "modal-dashboard-detail" berisi rincian sesuai kategori kartunya
+// (Training Diikuti / Selesai / Terdaftar / Sertifikat), lengkap dengan tombol
+// aksi "Lanjutkan" atau "Lihat Kembali" per item.
+function clickableStatCard(icon, color, value, label, onclick) {
+    const map = { indigo: "bg-indigo-50 text-indigo-600", emerald: "bg-emerald-50 text-emerald-600", amber: "bg-amber-50 text-amber-600", rose: "bg-rose-50 text-rose-600", violet: "bg-violet-50 text-violet-600" };
+    return `
+    <button type="button" onclick="${onclick}" class="text-left w-full bg-white rounded-3xl border border-slate-100 shadow-sm p-4 flex items-center gap-3 hover:shadow-md hover:border-indigo-200 hover:-translate-y-0.5 active:translate-y-0 transition-all cursor-pointer">
+        <div class="w-11 h-11 rounded-2xl ${map[color]} flex items-center justify-center shrink-0"><i class="fas ${icon}"></i></div>
+        <div class="flex-1 min-w-0"><p class="text-xl font-black text-slate-800 leading-none">${value}</p><p class="text-[11px] text-slate-400 font-semibold mt-1">${label}</p></div>
+        <i class="fas fa-chevron-right text-slate-300 text-xs shrink-0"></i>
+    </button>`;
+}
+
+// Item kosong (dipakai di dalam modal detail dashboard kalau datanya belum ada).
+function dashboardEmptyState(icon, text, link, linkText) {
+    return `
+    <div class="text-center py-10 text-slate-400">
+        <i class="fas ${icon} text-3xl mb-2"></i>
+        <p class="font-bold text-sm mb-3">${text}</p>
+        <a href="#${link}" onclick="window.closeModal('modal-dashboard-detail')" class="text-indigo-500 font-bold text-sm">${linkText} →</a>
+    </div>`;
+}
+
+// Mengisi & membuka modal "modal-dashboard-detail" sesuai kartu yang diklik di
+// dashboard user. Setiap baris item dilengkapi tombol aksi yang langsung
+// menutup modal lalu mengarahkan ke halaman training/onboarding terkait
+// (untuk lanjut belajar atau lihat kembali), atau mencetak sertifikat.
+window.openDashboardDetail = function (type) {
+    const u = window.STATE.user;
+    const titleEl = document.getElementById("dashboard-detail-title");
+    const bodyEl = document.getElementById("dashboard-detail-body");
+    if (!u || !titleEl || !bodyEl) return;
+
+    if (type === "enrolled") {
+        const myEnr = window.STATE.enrollments.filter(e => e.userId === u.id);
+        titleEl.innerHTML = `<i class="fas fa-book-open mr-1"></i> Training Diikuti`;
+        bodyEl.innerHTML = myEnr.length ? myEnr.map(e => {
+            const c = window.STATE.courses.find(x => x.id === e.courseId);
+            if (!c) return "";
+            const progress = window.sel.courseProgress(c.id);
+            const done = e.status === "completed";
+            return `
+            <div class="flex items-center gap-3 p-3 rounded-2xl border border-slate-100 hover:bg-indigo-50/40 transition">
+                <div class="w-12 h-12 rounded-xl bg-cover bg-center shrink-0" style="${courseCoverStyleSafe(c)}"></div>
+                <div class="flex-1 min-w-0">
+                    <p class="text-sm font-bold text-slate-700 truncate">${window.escapeHtml(c.title)}</p>
+                    <div class="h-1.5 bg-slate-100 rounded-full overflow-hidden mt-1.5"><div class="h-full ${done ? 'bg-emerald-500' : 'bg-indigo-500'}" style="width:${progress}%"></div></div>
+                    <p class="text-[11px] text-slate-400 font-semibold mt-1">${done ? 'Selesai' : progress + '% selesai'}</p>
+                </div>
+                <button onclick="window.closeModal('modal-dashboard-detail'); window.navigate('/courses/${c.id}')" class="shrink-0 text-[11px] font-black px-3 py-2 rounded-xl ${done ? 'bg-emerald-50 text-emerald-600 hover:bg-emerald-100' : 'bg-indigo-600 text-white hover:bg-indigo-700'} transition">${done ? 'Lihat Kembali' : 'Lanjutkan'}</button>
+            </div>`;
+        }).join("") : dashboardEmptyState("fa-book-open", "Kamu belum mengikuti training apa pun.", "/courses", "Jelajahi Training");
+    }
+
+    else if (type === "completed") {
+        const myEnrCompleted = window.STATE.enrollments.filter(e => e.userId === u.id && e.status === "completed");
+        titleEl.innerHTML = `<i class="fas fa-circle-check mr-1"></i> Training Selesai`;
+        bodyEl.innerHTML = myEnrCompleted.length ? myEnrCompleted.map(e => {
+            const c = window.STATE.courses.find(x => x.id === e.courseId);
+            if (!c) return "";
+            return `
+            <div class="flex items-center gap-3 p-3 rounded-2xl border border-slate-100 hover:bg-emerald-50/40 transition">
+                <div class="w-12 h-12 rounded-xl bg-cover bg-center shrink-0" style="${courseCoverStyleSafe(c)}"></div>
+                <div class="flex-1 min-w-0">
+                    <p class="text-sm font-bold text-slate-700 truncate">${window.escapeHtml(c.title)}</p>
+                    <p class="text-[11px] text-emerald-500 font-bold mt-1"><i class="fas fa-check-circle mr-1"></i>Selesai</p>
+                </div>
+                <button onclick="window.closeModal('modal-dashboard-detail'); window.navigate('/courses/${c.id}')" class="shrink-0 text-[11px] font-black px-3 py-2 rounded-xl bg-emerald-50 text-emerald-600 hover:bg-emerald-100 transition">Lihat Kembali</button>
+            </div>`;
+        }).join("") : dashboardEmptyState("fa-circle-check", "Belum ada training yang selesai.", "/courses", "Jelajahi Training");
+    }
+
+    else if (type === "registered") {
+        const myRegs = window.STATE.trainingRegs.filter(r => r.userId === u.id);
+        titleEl.innerHTML = `<i class="fas fa-chalkboard-user mr-1"></i> Training Terdaftar`;
+        bodyEl.innerHTML = myRegs.length ? myRegs.map(r => {
+            const t = window.STATE.trainings.find(x => x.id === r.trainingId);
+            if (!t) return "";
+            const isPast = new Date(t.date).getTime() < Date.now() - 86400000;
+            return `
+            <div class="flex items-center gap-3 p-3 rounded-2xl border border-slate-100 hover:bg-amber-50/40 transition">
+                <div class="w-12 h-12 rounded-xl bg-amber-50 text-amber-600 flex flex-col items-center justify-center shrink-0">
+                    <span class="text-sm font-black leading-none">${new Date(t.date).getDate()}</span>
+                    <span class="text-[9px] font-bold uppercase">${new Date(t.date).toLocaleDateString('id-ID',{month:'short'})}</span>
+                </div>
+                <div class="flex-1 min-w-0">
+                    <p class="text-sm font-bold text-slate-700 truncate">${window.escapeHtml(t.title)}</p>
+                    <p class="text-[11px] text-slate-400 font-semibold truncate">${window.escapeHtml(t.location||'-')}</p>
+                </div>
+                <button onclick="window.closeModal('modal-dashboard-detail'); window.navigate('/trainings/${t.id}')" class="shrink-0 text-[11px] font-black px-3 py-2 rounded-xl bg-amber-500 text-white hover:bg-amber-600 transition">${isPast ? 'Lihat Detail' : 'Lihat Jadwal'}</button>
+            </div>`;
+        }).join("") : dashboardEmptyState("fa-chalkboard-user", "Kamu belum terdaftar di training mana pun.", "/trainings", "Lihat Jadwal Training");
+    }
+
+    else if (type === "certificates") {
+        const myCerts = window.STATE.certificates.filter(c => c.userId === u.id)
+            .sort((a, b) => (b.issuedAt?.seconds || 0) - (a.issuedAt?.seconds || 0));
+        titleEl.innerHTML = `<i class="fas fa-award mr-1"></i> Sertifikat Saya`;
+        bodyEl.innerHTML = myCerts.length ? myCerts.map(c => `
+            <div class="flex items-center gap-3 p-3 rounded-2xl border border-slate-100 hover:bg-rose-50/40 transition">
+                <div class="w-12 h-12 rounded-xl flex items-center justify-center shrink-0" style="background:radial-gradient(circle at 35% 30%,#f3e2ab,#bf9b4a 55%,#7a5c1f);">
+                    <i class="fas fa-award text-[#4a3403]"></i>
+                </div>
+                <div class="flex-1 min-w-0">
+                    <p class="text-sm font-bold text-slate-700 truncate">${window.escapeHtml(c.title)}</p>
+                    <p class="text-[11px] text-slate-400 font-semibold">${c.type === 'training' ? 'Training TNA' : 'Onboarding'} • ${window.fmtDate(c.issuedAt)}</p>
+                </div>
+                <button onclick="window.printCertificate('${c.id}')" class="shrink-0 text-[11px] font-black px-3 py-2 rounded-xl text-white hover:opacity-90 transition" style="background:linear-gradient(120deg,#8a6b26,#bf9b4a);"><i class="fas fa-print mr-1"></i> Cetak</button>
+            </div>`).join("") : dashboardEmptyState("fa-award", "Belum ada sertifikat. Selesaikan training dulu ya!", "/courses", "Jelajahi Training");
+    }
+
+    window.openModal("modal-dashboard-detail");
+};
 
 // ================= SERTIFIKAT SAYA =================
 window.ROUTES["certificates"] = function () {
@@ -1244,7 +1436,9 @@ function renderCourseCatalog() {
                 ? (quizPassed
                     ? `<span class="text-[9px] font-black px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-600"><i class="fas fa-check mr-0.5"></i>Lulus</span>`
                     : `<span class="text-[9px] font-black px-2 py-0.5 rounded-full bg-rose-50 text-rose-500"><i class="fas fa-xmark mr-0.5"></i>Belum Lulus</span>`)
-                : `<span class="text-[9px] font-black px-2 py-0.5 rounded-full bg-slate-100 text-slate-400">Belum Mulai</span>`
+                : (enr
+                    ? `<span class="text-[9px] font-black px-2 py-0.5 rounded-full bg-amber-50 text-amber-600"><i class="fas fa-spinner mr-0.5"></i>On Progress</span>`
+                    : `<span class="text-[9px] font-black px-2 py-0.5 rounded-full bg-slate-100 text-slate-400">Belum Mulai</span>`)
         );
 
         const cardInner = `
@@ -1438,6 +1632,41 @@ function getProgressDoc(kind, refId) {
 function progressCollectionName(kind) { return kind === "training" ? "trainingRegistrations" : "enrollments"; }
 function refIdField(kind) { return kind === "training" ? "trainingId" : "courseId"; }
 function totalLessonsOf(item) { return (item?.modules || []).reduce((s, m) => s + (m.lessons || []).length, 0); }
+
+// ================= DEADLINE OTOMATIS PENUGASAN (ONBOARDING) =================
+// Untuk Onboarding Training (kind === "course"): deadline penugasan TIDAK diset manual oleh
+// admin, tapi otomatis = 7 hari setelah peserta LULUS post-test course tsb (dihitung dari
+// tanggal percobaan post-test pertama yang lulus, punya milik masing-masing peserta).
+// Kalau course tidak punya kuis, atau peserta belum lulus post-test, penugasan belum punya
+// deadline sama sekali (dianggap belum "mulai berjalan").
+// Untuk Training By TNA (kind === "training"): deadline TETAP manual, diset admin di form
+// (item.assignment.deadline), perilaku lama tidak berubah.
+const ASSIGNMENT_DEADLINE_DAYS = 7;
+window.getAssignmentDeadlineFor = function (kind, refId, userId) {
+    const item = getContentItem(kind, refId);
+    if (!item) return null;
+    const a = item.assignment || {};
+    if (kind === "course") {
+        const hasQuiz = item.quiz && (item.quiz.questions || []).length > 0;
+        if (!hasQuiz || !userId) return null;
+        const field = refIdField(kind);
+        const passedAttempts = (window.STATE.quizAttempts || [])
+            .filter(x => x[field] === refId && x.userId === userId && x.attemptType !== "pretest" && x.passed)
+            .sort((x, y) => (x.attemptAt?.seconds || 0) - (y.attemptAt?.seconds || 0));
+        const first = passedAttempts[0];
+        if (!first || !first.attemptAt) return null;
+        const baseMs = first.attemptAt.seconds ? first.attemptAt.seconds * 1000 : new Date(first.attemptAt).getTime();
+        return new Date(baseMs + ASSIGNMENT_DEADLINE_DAYS * 24 * 60 * 60 * 1000);
+    }
+    // Training By TNA: pakai deadline manual dari admin
+    return a.deadline ? new Date(a.deadline) : null;
+};
+// Shortcut: deadline penugasan untuk USER YANG SEDANG LOGIN.
+window.getAssignmentDeadline = function (kind, refId) {
+    const u = window.STATE.user;
+    if (!u) return null;
+    return window.getAssignmentDeadlineFor(kind, refId, u.id);
+};
 
 // Menghitung status "terkunci/terbuka" tiap lesson secara berurutan lintas semua modul,
 // supaya modul 2 gak bisa dibuka sebelum semua lesson di modul 1 selesai, dst — "gak ada
@@ -1823,7 +2052,7 @@ function regCount(trainingId) {
 
 function renderTrainingCatalog() {
     const now = Date.now();
-    const list = [...window.STATE.trainings].sort((a, b) => new Date(a.date) - new Date(b.date));
+    const list = [...window.STATE.trainings].filter(t => window.trainingAllowedForUser(t)).sort((a, b) => new Date(a.date) - new Date(b.date));
     const cards = list.map(t => {
         const reg = window.sel.myRegForTraining(t.id);
         const isPast = new Date(t.date).getTime() < now - 86400000;
@@ -1863,6 +2092,17 @@ function renderTrainingCatalog() {
 function renderTrainingDetail(id) {
     const t = window.STATE.trainings.find(x => x.id === id);
     if (!t) { window.setPage(`<p class="text-center text-slate-400 py-20">Training tidak ditemukan.</p>`); return; }
+    if (!window.trainingAllowedForUser(t)) {
+        window.setPage(`
+            <a href="#/trainings" class="text-xs font-bold text-slate-400 hover:text-amber-600"><i class="fas fa-arrow-left mr-1"></i> Kembali ke Jadwal</a>
+            <div class="mt-10 text-center py-16 bg-white border border-slate-100 rounded-3xl">
+                <i class="fas fa-lock text-3xl text-slate-300 mb-3"></i>
+                <p class="font-black text-slate-700">Training ini tidak ditargetkan untuk kamu</p>
+                <p class="text-sm text-slate-400 mt-1">Hubungi admin training kalau menurut kamu ini keliru.</p>
+            </div>
+        `);
+        return;
+    }
     const reg = window.sel.myRegForTraining(id);
     const att = window.sel.myAttendance(id);
     const evalDone = window.STATE.evaluations.find(e => e.trainingId === id && e.userId === window.STATE.user.id);
@@ -1985,6 +2225,11 @@ function renderTrainingDetail(id) {
 }
 
 window.registerTraining = async function (trainingId) {
+    const t = window.STATE.trainings.find(x => x.id === trainingId);
+    if (t && !window.trainingAllowedForUser(t)) {
+        window.toast("Training ini tidak ditargetkan untuk kamu", "error");
+        return;
+    }
     const { col, addDoc, serverTimestamp } = window.LMS_DB;
     await addDoc(col("trainingRegistrations"), {
         trainingId, userId: window.STATE.user.id, status: "registered", completedLessonIds: [], registeredAt: serverTimestamp()
@@ -2041,13 +2286,13 @@ window.openAssignment = function (kind, refId) {
     const item = getContentItem(kind, refId);
     const a = item.assignment || {};
     const sub = window.sel.myAssignmentSubmission(kind, refId);
-    const deadlineDate = a.deadline ? new Date(a.deadline) : null;
+    const deadlineDate = window.getAssignmentDeadline(kind, refId);
     const isLate = deadlineDate && Date.now() > deadlineDate.getTime();
 
     document.getElementById("assignment-modal-title").innerHTML = `<i class="fas fa-file-signature mr-1"></i> ${window.escapeHtml(a.title || item.title)}`;
     document.getElementById("assignment-modal-deadline").textContent = deadlineDate
-        ? `Batas waktu pengumpulan: ${deadlineDate.toLocaleString('id-ID', { day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' })}`
-        : "Tidak ada batas waktu";
+        ? `Batas waktu pengumpulan: ${deadlineDate.toLocaleString('id-ID', { day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' })}${kind === "course" ? " (otomatis, 7 hari sejak kamu lulus Post-test)" : ""}`
+        : (kind === "course" ? "Batas waktu akan muncul otomatis (7 hari) setelah kamu lulus Post-test" : "Tidak ada batas waktu");
 
     let body = `<p class="text-sm text-slate-600 whitespace-pre-wrap">${window.escapeHtml(a.description || "")}</p>`;
 
@@ -2073,9 +2318,7 @@ window.openAssignment = function (kind, refId) {
 };
 
 window.openAssignmentForm = function (kind, refId) {
-    const item = getContentItem(kind, refId);
-    const a = item.assignment || {};
-    const deadlineDate = a.deadline ? new Date(a.deadline) : null;
+    const deadlineDate = window.getAssignmentDeadline(kind, refId);
     const isLate = deadlineDate && Date.now() > deadlineDate.getTime();
     window.renderAssignmentForm(kind, refId, isLate);
 };
@@ -2100,8 +2343,7 @@ window.renderAssignmentForm = function (kind, refId, isLate) {
 
 window.submitAssignment = async function (kind, refId) {
     const item = getContentItem(kind, refId);
-    const a = item.assignment || {};
-    const deadlineDate = a.deadline ? new Date(a.deadline) : null;
+    const deadlineDate = window.getAssignmentDeadline(kind, refId);
     if (deadlineDate && Date.now() > deadlineDate.getTime()) {
         window.toast("Batas waktu pengumpulan sudah lewat", "error");
         return;
@@ -2536,9 +2778,9 @@ function renderCourseBuilder(id) {
                     <div class="space-y-2 pt-1">
                         <input value="${window.escapeHtml(d.assignment.title)}" oninput="courseDraft.assignment.title=this.value" placeholder="Judul tugas" class="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm">
                         <textarea oninput="courseDraft.assignment.description=this.value" placeholder="Instruksi / deskripsi tugas untuk peserta..." rows="3" class="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm">${window.escapeHtml(d.assignment.description)}</textarea>
-                        <div>
-                            <label class="text-[10px] font-bold uppercase text-slate-400">Batas Waktu Pengumpulan</label>
-                            <input type="datetime-local" value="${window.escapeHtml(d.assignment.deadline)}" oninput="courseDraft.assignment.deadline=this.value" class="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm mt-1">
+                        <div class="bg-amber-50 text-amber-700 text-xs font-semibold rounded-xl px-3 py-2.5 flex items-start gap-2">
+                            <i class="fas fa-clock mt-0.5"></i>
+                            <span>Batas waktu pengumpulan <b>otomatis</b>: ${ASSIGNMENT_DEADLINE_DAYS} hari sejak masing-masing peserta lulus Post-test training ini. Tiap peserta punya deadline sendiri (bukan tanggal tetap yang sama untuk semua orang).</span>
                         </div>
                     </div>` : ""}
                 </div>
@@ -2605,11 +2847,12 @@ window.ROUTES["admin/trainings"] = requireAdmin(function (id) {
 function renderTrainingAdminList() {
     const rows = [...window.STATE.trainings].sort((a,b)=>new Date(b.date)-new Date(a.date)).map(t => `
         <tr class="border-b border-slate-50 hover:bg-slate-50/60">
-            <td class="px-3 py-3"><p class="font-bold text-slate-700 text-sm">${window.escapeHtml(t.title)}</p><p class="text-[11px] text-slate-400">${window.fmtDate(t.date)} • ${window.escapeHtml(t.location||'-')} • <i class="fas fa-user-tie"></i> ${window.escapeHtml(t.trainer||'-')} • ${(t.modules||[]).length} modul</p></td>
+            <td class="px-3 py-3"><p class="font-bold text-slate-700 text-sm">${window.escapeHtml(t.title)}</p><p class="text-[11px] text-slate-400">${window.fmtDate(t.date)} • ${window.escapeHtml(t.location||'-')} • <i class="fas fa-user-tie"></i> ${window.escapeHtml(t.trainer||'-')} • ${(t.modules||[]).length} modul</p><p class="text-[10px] font-bold text-amber-600 mt-0.5"><i class="fas fa-users mr-1"></i>${window.escapeHtml(window.trainingScopeLabel(t))}</p></td>
             <td class="px-3 py-3 text-center text-sm text-slate-500">${regCountSafe(t.id)}${t.quota?'/'+t.quota:''}</td>
             <td class="px-3 py-3 text-center text-sm text-slate-500">${window.STATE.attendance.filter(a=>a.trainingId===t.id).length}</td>
             <td class="px-3 py-3 text-center"><span class="font-mono text-xs bg-amber-50 text-amber-600 px-2 py-1 rounded-lg font-bold">${window.escapeHtml(t.attendanceCode||'-')}</span></td>
             <td class="px-3 py-3 text-right space-x-2">
+                <a href="#/admin/training-report/${t.id}" title="Laporan Keterlaksanaan" class="text-emerald-500 hover:text-emerald-700"><i class="fas fa-chart-simple"></i></a>
                 <a href="#/admin/trainings/${t.id}" class="text-indigo-500 hover:text-indigo-700"><i class="fas fa-pen"></i></a>
                 <button onclick="window.guardedClick(this, () => window.deleteTraining('${t.id}'))" class="text-rose-400 hover:text-rose-600"><i class="fas fa-trash"></i></button>
             </td>
@@ -2642,6 +2885,7 @@ window.deleteTraining = async function (id) {
 
 // ---- Training Builder (mirror Onboarding Builder): info + modul/lesson + kuis ----
 let trainingDraft = null;
+let trainingParticipantSearch = "";
 function renderTrainingBuilder(id) {
     if (!trainingDraft || trainingDraft._loadedId !== (id || "new")) {
         const existing = id ? window.STATE.trainings.find(t => t.id === id) : null;
@@ -2649,9 +2893,15 @@ function renderTrainingBuilder(id) {
             title: "", description: "", category: "", trainer: "", location: "",
             date: "", startTime: "", endTime: "", quota: "", attendanceCode: genCode(),
             modules: [], quiz: { passingScore: 70, questions: [] },
-            assignment: { enabled: false, title: "", description: "", deadline: "" }
+            assignment: { enabled: false, title: "", description: "", deadline: "" },
+            participants: { mode: "all", departments: [], positions: [], employeeUsernames: [] }
         };
         if (!trainingDraft.assignment) trainingDraft.assignment = { enabled: false, title: "", description: "", deadline: "" };
+        if (!trainingDraft.participants) trainingDraft.participants = { mode: "all", departments: [], positions: [], employeeUsernames: [] };
+        if (!trainingDraft.participants.mode) trainingDraft.participants.mode = "all";
+        if (!Array.isArray(trainingDraft.participants.departments)) trainingDraft.participants.departments = [];
+        if (!Array.isArray(trainingDraft.participants.positions)) trainingDraft.participants.positions = [];
+        if (!Array.isArray(trainingDraft.participants.employeeUsernames)) trainingDraft.participants.employeeUsernames = [];
         if (!Array.isArray(trainingDraft.modules)) trainingDraft.modules = [];
         trainingDraft.modules.forEach(m => { if (!Array.isArray(m.lessons)) m.lessons = []; });
         if (!trainingDraft.quiz) trainingDraft.quiz = { passingScore: 70, questions: [] };
@@ -2742,6 +2992,56 @@ function renderTrainingBuilder(id) {
                 </div>
 
                 <div class="bg-white rounded-3xl border border-slate-100 shadow-sm p-5 space-y-3">
+                    <h3 class="font-black text-sm text-slate-700"><i class="fas fa-users text-amber-500 mr-1"></i> Target Peserta</h3>
+                    <p class="text-xs text-slate-400">Tentukan siapa saja yang berhak melihat &amp; mendaftar training ini, sesuai data karyawan tiap departemen.</p>
+                    <div class="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                        ${[
+                            ["all", "Semua Karyawan", "fa-globe"],
+                            ["department", "Per Departemen", "fa-building"],
+                            ["position", "Per Posisi/Level", "fa-id-badge"],
+                            ["manual", "Pilih Manual", "fa-user-check"]
+                        ].map(([mode, label, icon]) => `
+                            <button type="button" onclick="trainingDraft.participants.mode='${mode}'; rerenderTrainingBuilder()" class="text-[11px] font-bold px-2 py-2.5 rounded-xl border transition flex flex-col items-center gap-1 text-center ${d.participants.mode === mode ? 'bg-amber-500 border-amber-500 text-white' : 'bg-white border-slate-200 text-slate-500 hover:border-amber-300'}">
+                                <i class="fas ${icon}"></i>${label}
+                            </button>
+                        `).join("")}
+                    </div>
+
+                    ${d.participants.mode === "all" ? `<p class="text-xs text-emerald-600 font-semibold bg-emerald-50 rounded-xl px-3 py-2"><i class="fas fa-globe mr-1"></i> Training ini terbuka untuk SEMUA karyawan / semua departemen.</p>` : ""}
+
+                    ${d.participants.mode === "department" ? `
+                    <div>
+                        <div class="flex flex-wrap gap-1.5">
+                            ${window.sel.allDeptNames().map(dep => {
+                                const active = d.participants.departments.some(x => x.toLowerCase() === dep.toLowerCase());
+                                return `<button type="button" onclick="window.toggleTrainingParticipantValue('departments','${window.escapeHtml(dep).replace(/'/g, "\\'")}')" class="text-[11px] font-bold px-2.5 py-1.5 rounded-full border transition ${active ? 'bg-amber-500 border-amber-500 text-white' : 'bg-white border-slate-200 text-slate-500 hover:border-amber-300'}">${active ? '<i class="fas fa-check mr-1"></i>' : ''}${window.escapeHtml(dep)}</button>`;
+                            }).join("") || '<p class="text-[11px] text-slate-400">Belum ada departemen terdaftar dari akun pengguna.</p>'}
+                        </div>
+                        ${!d.participants.departments.length ? `<p class="text-[11px] text-amber-600 font-semibold mt-2"><i class="fas fa-triangle-exclamation mr-1"></i> Pilih minimal 1 departemen — kalau belum dipilih, training ini belum tampil ke siapa pun.</p>` : ""}
+                    </div>` : ""}
+
+                    ${d.participants.mode === "position" ? `
+                    <div>
+                        <div class="flex flex-wrap gap-1.5">
+                            ${window.sel.allPosisiNames().map(pos => {
+                                const active = d.participants.positions.some(x => x.toLowerCase() === pos.toLowerCase());
+                                return `<button type="button" onclick="window.toggleTrainingParticipantValue('positions','${window.escapeHtml(pos).replace(/'/g, "\\'")}')" class="text-[11px] font-bold px-2.5 py-1.5 rounded-full border transition ${active ? 'bg-amber-500 border-amber-500 text-white' : 'bg-white border-slate-200 text-slate-500 hover:border-amber-300'}">${active ? '<i class="fas fa-check mr-1"></i>' : ''}${window.escapeHtml(pos)}</button>`;
+                            }).join("") || '<p class="text-[11px] text-slate-400">Belum ada data posisi/jabatan dari karyawan. Import dulu lewat menu Kelola Karyawan.</p>'}
+                        </div>
+                        ${!d.participants.positions.length ? `<p class="text-[11px] text-amber-600 font-semibold mt-2"><i class="fas fa-triangle-exclamation mr-1"></i> Pilih minimal 1 posisi/level jabatan.</p>` : ""}
+                    </div>` : ""}
+
+                    ${d.participants.mode === "manual" ? `
+                    <div class="space-y-2">
+                        <input id="training-participant-search" value="${window.escapeHtml(trainingParticipantSearch)}" oninput="trainingParticipantSearch=this.value; window.reRenderTrainingParticipantPicker()" placeholder="Cari nama / username / departemen karyawan..." class="w-full border border-slate-200 rounded-xl px-3 py-2 text-xs">
+                        <p class="text-[11px] text-slate-400">${d.participants.employeeUsernames.length} karyawan dipilih dari total ${window.STATE.employees.length} karyawan (bisa ambil beberapa dari tiap departemen).</p>
+                        <div id="training-participant-picker-list" class="max-h-64 overflow-y-auto border border-slate-100 rounded-2xl divide-y divide-slate-50">
+                            ${renderTrainingParticipantPickerRows()}
+                        </div>
+                    </div>` : ""}
+                </div>
+
+                <div class="bg-white rounded-3xl border border-slate-100 shadow-sm p-5 space-y-3">
                     <div class="flex items-center justify-between">
                         <h3 class="font-black text-sm text-slate-700">Modul & Lesson (opsional)</h3>
                         <button onclick="trainingDraft.modules.push({id:'m'+Date.now(),title:'',lessons:[]}); rerenderTrainingBuilder()" class="text-[11px] font-bold text-amber-500 hover:text-amber-700"><i class="fas fa-plus mr-1"></i> Tambah Modul</button>
@@ -2794,6 +3094,50 @@ function renderTrainingBuilder(id) {
 }
 window.rerenderTrainingBuilder = function () { renderTrainingBuilder(trainingDraft._id); };
 
+// Toggle satu nilai (nama departemen / posisi) di dalam trainingDraft.participants[field].
+window.toggleTrainingParticipantValue = function (field, val) {
+    const arr = trainingDraft.participants[field];
+    const idx = arr.findIndex(x => x.toLowerCase() === val.toLowerCase());
+    if (idx >= 0) arr.splice(idx, 1); else arr.push(val);
+    rerenderTrainingBuilder();
+};
+// Toggle satu karyawan (by username) di daftar peserta manual trainingDraft.participants.employeeUsernames.
+window.toggleTrainingParticipantEmployee = function (username) {
+    const arr = trainingDraft.participants.employeeUsernames;
+    const norm = normalizeUsername(username);
+    const idx = arr.findIndex(u => normalizeUsername(u) === norm);
+    if (idx >= 0) arr.splice(idx, 1); else arr.push(username);
+    window.reRenderTrainingParticipantPicker();
+};
+// Render daftar checkbox karyawan (dipakai mode "manual"), difilter oleh pencarian &
+// dikelompokkan urut departemen, supaya admin gampang milih "beberapa dari tiap departemen".
+function renderTrainingParticipantPickerRows() {
+    const q = trainingParticipantSearch.trim().toLowerCase();
+    const employees = [...window.STATE.employees].filter(e => {
+        if (!q) return true;
+        return (e.nama || "").toLowerCase().includes(q) || (e.username || "").toLowerCase().includes(q) || (e.dept || "").toLowerCase().includes(q) || (e.posisi || "").toLowerCase().includes(q);
+    }).sort((a, b) => (a.dept || "").localeCompare(b.dept || "") || (a.nama || "").localeCompare(b.nama || ""));
+    if (!employees.length) return `<p class="text-xs text-slate-400 text-center py-6">Tidak ada karyawan yang cocok.</p>`;
+    const selected = trainingDraft.participants.employeeUsernames;
+    return employees.map(e => {
+        const checked = selected.some(u => normalizeUsername(u) === normalizeUsername(e.username));
+        return `<label class="flex items-center gap-2 px-3 py-2 text-xs hover:bg-slate-50 cursor-pointer">
+            <input type="checkbox" ${checked ? 'checked' : ''} onchange="window.toggleTrainingParticipantEmployee('${window.escapeHtml(e.username).replace(/'/g, "\\'")}')" class="accent-amber-500 shrink-0">
+            <span class="flex-1 min-w-0"><span class="font-bold text-slate-700">${window.escapeHtml(e.nama || e.username)}</span> <span class="text-slate-400">• ${window.escapeHtml(e.dept || '-')} • ${window.escapeHtml(e.posisi || '-')}</span></span>
+        </label>`;
+    }).join("");
+}
+// Re-render list picker aja (tanpa render ulang seluruh builder) supaya fokus input
+// pencarian gak ke-reset tiap ketik.
+window.reRenderTrainingParticipantPicker = function () {
+    const el = document.getElementById("training-participant-picker-list");
+    if (el) el.innerHTML = renderTrainingParticipantPickerRows();
+    const countEl = el && el.previousElementSibling;
+    if (countEl && countEl.tagName === "P") {
+        countEl.textContent = `${trainingDraft.participants.employeeUsernames.length} karyawan dipilih dari total ${window.STATE.employees.length} karyawan (bisa ambil beberapa dari tiap departemen).`;
+    }
+};
+
 window.saveTrainingDraft = async function () {
     const d = trainingDraft;
     if (!d.title.trim() || !d.date) { window.toast("Judul & tanggal wajib diisi", "warn"); return; }
@@ -2802,7 +3146,14 @@ window.saveTrainingDraft = async function () {
         title: d.title, description: d.description, category: d.category, trainer: d.trainer,
         location: d.location, date: d.date, startTime: d.startTime, endTime: d.endTime,
         quota: parseInt(d.quota) || null, attendanceCode: (d.attendanceCode || genCode()).toUpperCase(),
-        modules: d.modules, quiz: d.quiz, assignment: d.assignment, updatedAt: serverTimestamp()
+        modules: d.modules, quiz: d.quiz, assignment: d.assignment,
+        participants: {
+            mode: d.participants.mode || "all",
+            departments: Array.isArray(d.participants.departments) ? d.participants.departments : [],
+            positions: Array.isArray(d.participants.positions) ? d.participants.positions : [],
+            employeeUsernames: Array.isArray(d.participants.employeeUsernames) ? d.participants.employeeUsernames : []
+        },
+        updatedAt: serverTimestamp()
     };
     if (d._id) {
         await setDoc(ref("trainings", d._id), payload, { merge: true });
@@ -2812,9 +3163,130 @@ window.saveTrainingDraft = async function () {
         await addDoc(col("trainings"), payload);
     }
     trainingDraft = null;
+    trainingParticipantSearch = "";
     window.toast("Training tersimpan", "success");
     window.navigate("/admin/trainings");
 };
+
+// ================= ADMIN: LAPORAN KETERLAKSANAAN TRAINING BY TNA =================
+// Menampilkan (per satu jadwal training): jumlah & persen kehadiran, jumlah & persen
+// kelulusan, rata-rata nilai pre-test/post-test, rata-rata rating feedback evaluasi, dan
+// rincian per peserta terdaftar.
+window.ROUTES["admin/training-report"] = requireAdmin(function (id) {
+    renderTrainingReport(id);
+});
+
+function renderTrainingReport(id) {
+    const t = window.STATE.trainings.find(x => x.id === id);
+    if (!t) { window.setPage(`<p class="text-center text-slate-400 py-20">Training tidak ditemukan.</p><a href="#/admin/trainings" class="block text-center text-xs font-bold text-amber-600 hover:underline">Kembali ke Kelola Training TNA</a>`); return; }
+
+    const regs = window.STATE.trainingRegs.filter(r => r.trainingId === id && r.status !== "cancelled");
+    const registeredCount = regs.length;
+
+    const hasScope = !!(t.participants && t.participants.mode && t.participants.mode !== "all");
+    const targetEmployees = window.trainingTargetEmployees(t);
+    // Penyebut (denominator) persentase: kalau training punya target peserta spesifik, pakai
+    // jumlah target itu. Kalau terbuka untuk semua (mode "all"/lama), pakai jumlah yang
+    // terdaftar (karena tidak ada "target" pasti buat training terbuka).
+    const targetCount = hasScope ? targetEmployees.length : registeredCount;
+
+    // ---- Kehadiran ----
+    const attendanceRecords = window.STATE.attendance.filter(a => a.trainingId === id);
+    const attendedCount = attendanceRecords.length;
+    const attendancePct = targetCount ? Math.round((attendedCount / targetCount) * 100) : 0;
+
+    // ---- Kelulusan (berdasarkan sertifikat terbit = lulus seluruh rangkaian training) ----
+    const certs = window.STATE.certificates.filter(c => c.trainingId === id);
+    const passCount = certs.length;
+    const passPct = targetCount ? Math.round((passCount / targetCount) * 100) : 0;
+
+    // ---- Rata-rata nilai Pre-test & Post-test ----
+    const preAttempts = window.STATE.quizAttempts.filter(a => a.trainingId === id && a.attemptType === "pretest");
+    const postAttemptsAll = window.STATE.quizAttempts.filter(a => a.trainingId === id && a.attemptType !== "pretest");
+    const latestPostByUser = {};
+    postAttemptsAll.forEach(a => {
+        const cur = latestPostByUser[a.userId];
+        if (!cur || (a.attemptAt?.seconds || 0) > (cur.attemptAt?.seconds || 0)) latestPostByUser[a.userId] = a;
+    });
+    const latestPostList = Object.values(latestPostByUser);
+    const avgPre = preAttempts.length ? Math.round(preAttempts.reduce((s, a) => s + (a.score || 0), 0) / preAttempts.length) : null;
+    const avgPost = latestPostList.length ? Math.round(latestPostList.reduce((s, a) => s + (a.score || 0), 0) / latestPostList.length) : null;
+
+    // ---- Rata-rata rating feedback evaluasi (materi, trainer, fasilitas dirata-rata jadi 1 angka) ----
+    const evals = window.STATE.evaluations.filter(e => e.trainingId === id);
+    let avgRating = null;
+    if (evals.length) {
+        const sumAll = evals.reduce((s, e) => {
+            const r = e.ratings || {};
+            const vals = [r.materi, r.trainer, r.fasilitas].filter(v => typeof v === "number");
+            const avgOne = vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : 0;
+            return s + avgOne;
+        }, 0);
+        avgRating = Math.round((sumAll / evals.length) * 10) / 10;
+    }
+
+    // ---- Rincian per peserta terdaftar ----
+    const detailRows = regs.map(r => {
+        const att = attendanceOfUserForTraining(id, r.userId);
+        const pre = pretestAttemptOfUserTraining(id, r.userId);
+        const postList = postTestAttemptsOfUserTraining(id, r.userId);
+        const post = postList[0] || null;
+        const asub = window.STATE.assignmentSubmissions.find(s => s.trainingId === id && s.userId === r.userId) || null;
+        const ev = evalOfUserForTraining(id, r.userId);
+        const cert = certOfUserForTraining(id, r.userId);
+        return `<tr class="border-b border-slate-50 hover:bg-slate-50/60">
+            <td class="px-3 py-2.5 text-sm font-bold text-slate-700">${window.escapeHtml(r.userName || userName(r.userId))}</td>
+            <td class="px-3 py-2.5 text-center">${att ? '<i class="fas fa-circle-check text-emerald-500"></i>' : '<i class="fas fa-circle-xmark text-slate-300"></i>'}</td>
+            <td class="px-3 py-2.5 text-center text-xs text-slate-600">${pre ? pre.score : '-'}</td>
+            <td class="px-3 py-2.5 text-center text-xs text-slate-600">${post ? `${post.score} ${post.passed ? '<span class="text-emerald-600 font-bold">(Lulus)</span>' : '<span class="text-rose-500 font-bold">(Belum)</span>'}` : '-'}</td>
+            <td class="px-3 py-2.5 text-center text-xs text-slate-600">${asub ? (asub.status === 'graded' ? asub.score : 'Menunggu nilai') : '-'}</td>
+            <td class="px-3 py-2.5 text-center">${ev ? '<i class="fas fa-circle-check text-emerald-500"></i>' : '<i class="fas fa-circle-xmark text-slate-300"></i>'}</td>
+            <td class="px-3 py-2.5 text-center"><span class="text-[10px] font-black px-2 py-1 rounded-full ${cert ? 'bg-emerald-50 text-emerald-600' : 'bg-amber-50 text-amber-600'}">${cert ? 'Lulus' : 'Proses'}</span></td>
+        </tr>`;
+    }).join("") || `<tr><td colspan="7" class="text-center py-8 text-slate-400 text-sm">Belum ada peserta terdaftar</td></tr>`;
+
+    window.setPage(`
+        <a href="#/admin/trainings" class="text-xs font-bold text-slate-400 hover:text-amber-600"><i class="fas fa-arrow-left mr-1"></i> Kembali</a>
+        <div class="flex items-start justify-between flex-wrap gap-2 mt-2 mb-5">
+            <div>
+                <h1 class="text-xl font-black text-slate-800">Laporan Keterlaksanaan Training</h1>
+                <p class="text-sm text-slate-500">${window.escapeHtml(t.title)} • ${window.fmtDate(t.date)}</p>
+            </div>
+            <span class="text-[11px] font-bold px-3 py-1.5 rounded-full ${hasScope ? 'bg-amber-50 text-amber-600' : 'bg-slate-100 text-slate-500'}"><i class="fas fa-users mr-1"></i>${window.escapeHtml(window.trainingScopeLabel(t))}</span>
+        </div>
+
+        <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
+            ${statCard("fa-users", "indigo", targetCount, hasScope ? "Jumlah Target Peserta" : "Jumlah Peserta Terdaftar")}
+            ${statCard("fa-user-check", "emerald", `${attendedCount} (${attendancePct}%)`, "Kehadiran (Jumlah & %)")}
+            ${statCard("fa-graduation-cap", "amber", `${passCount} (${passPct}%)`, "Kelulusan (Jumlah & %)")}
+            ${statCard("fa-star", "rose", avgRating !== null ? avgRating + "/5" : "-", "Rata-rata Rating Feedback")}
+        </div>
+        <div class="grid grid-cols-2 gap-4 mb-6">
+            ${statCard("fa-list-check", "violet", avgPre !== null ? avgPre : "-", "Rata-rata Nilai Pre-test")}
+            ${statCard("fa-clipboard-question", "violet", avgPost !== null ? avgPost : "-", "Rata-rata Nilai Post-test")}
+        </div>
+
+        <div class="bg-white rounded-3xl border border-slate-100 shadow-sm p-5">
+            <h3 class="font-black text-sm text-slate-700 mb-3">Rincian per Peserta Terdaftar</h3>
+            <div class="overflow-x-auto">
+                <table class="w-full text-left">
+                    <thead class="bg-slate-50 text-[10px] font-black uppercase text-slate-400">
+                        <tr>
+                            <th class="px-3 py-2.5">Nama</th>
+                            <th class="px-3 py-2.5 text-center">Hadir</th>
+                            <th class="px-3 py-2.5 text-center">Pre-test</th>
+                            <th class="px-3 py-2.5 text-center">Post-test</th>
+                            <th class="px-3 py-2.5 text-center">Tugas</th>
+                            <th class="px-3 py-2.5 text-center">Evaluasi</th>
+                            <th class="px-3 py-2.5 text-center">Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>${detailRows}</tbody>
+                </table>
+            </div>
+        </div>
+    `);
+}
 
 // ================= ADMIN: PENILAIAN TUGAS (PENUGASAN) =================
 window.ROUTES["admin/assignments"] = requireAdmin(function () {
@@ -2833,9 +3305,10 @@ function renderAdminAssignments() {
 
     const rows = filtered.map(s => {
         const kind = s.trainingId ? "training" : "course";
-        const item = getContentItem(kind, s.trainingId || s.courseId);
-        const deadline = item && item.assignment ? item.assignment.deadline : null;
-        const late = deadline && s.submittedAt && s.submittedAt.seconds && (s.submittedAt.seconds * 1000) > new Date(deadline).getTime();
+        const refId = s.trainingId || s.courseId;
+        const item = getContentItem(kind, refId);
+        const deadlineDate = item ? window.getAssignmentDeadlineFor(kind, refId, s.userId) : null;
+        const late = deadlineDate && s.submittedAt && s.submittedAt.seconds && (s.submittedAt.seconds * 1000) > deadlineDate.getTime();
         return `
         <tr class="border-b border-slate-50 hover:bg-slate-50/60 align-top">
             <td class="px-3 py-3">
