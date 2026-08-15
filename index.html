@@ -1202,7 +1202,11 @@ function courseCompleted(courseId) {
 }
 
 // Cek status kunci training onboarding ke-`courseId` berdasarkan urutan resmi di atas.
-// Admin selalu dianggap terbuka (supaya bisa preview/kelola kapan saja).
+// PENTING: training ke-N dianggap terkunci kalau ADA SAJA salah satu training sebelumnya
+// (bukan cuma yang tepat di atasnya) yang belum selesai — jadi kalau training pertama belum
+// kelar, training ke-2, ke-3, dst semuanya ikut terkunci, gak cuma training ke-2 doang.
+// Pesan "blocking" yang ditampilkan selalu training PALING AWAL yang belum selesai, biar
+// peserta tahu persis harus mulai dari mana. Admin selalu dianggap terbuka (buat preview/kelola).
 function courseLockInfo(courseId) {
     if (window.sel.isAdmin()) return { locked: false };
     const course = window.STATE.courses.find(c => c.id === courseId);
@@ -1212,10 +1216,12 @@ function courseLockInfo(courseId) {
     const ordered = orderedPublishedCourses();
     const idx = ordered.findIndex(c => c.id === courseId);
     if (idx < 0) return { locked: true, notForDept: true };
-    if (idx === 0) return { locked: false };
-    const prev = ordered[idx - 1];
-    if (courseCompleted(prev.id)) return { locked: false };
-    return { locked: true, blockingTitle: prev.title, blockingId: prev.id };
+    for (let i = 0; i < idx; i++) {
+        if (!courseCompleted(ordered[i].id)) {
+            return { locked: true, blockingTitle: ordered[i].title, blockingId: ordered[i].id };
+        }
+    }
+    return { locked: false };
 }
 
 function renderCourseCatalog() {
