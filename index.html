@@ -459,6 +459,26 @@ window.sel = {
         if (!u) return null;
         return window.STATE.attendance.find(a => a.trainingId === trainingId && a.userId === u.id) || null;
     },
+    // Percobaan pre-test milik user saat ini (kind: 'course'|'training'). Pre-test cuma butuh
+    // "sudah dikerjakan sekali", jadi cukup ambil percobaan terbaru (kalau ada berarti sudah dikerjakan).
+    myPretestAttempt(kind, refId) {
+        const u = window.STATE.user;
+        if (!u) return null;
+        const field = refIdField(kind);
+        const attempts = window.STATE.quizAttempts.filter(a => a[field] === refId && a.userId === u.id && a.attemptType === "pretest");
+        if (!attempts.length) return null;
+        return attempts.sort((a, b) => (b.attemptAt?.seconds || 0) - (a.attemptAt?.seconds || 0))[0];
+    },
+    // Semua percobaan Post-test (Kuis) milik user saat ini, terbaru duluan. Data lama (sebelum
+    // fitur ini ada) tidak punya field attemptType — dianggap posttest juga demi backward-compat.
+    myPostTestAttempts(kind, refId) {
+        const u = window.STATE.user;
+        if (!u) return [];
+        const field = refIdField(kind);
+        return window.STATE.quizAttempts
+            .filter(a => a[field] === refId && a.userId === u.id && a.attemptType !== "pretest")
+            .sort((a, b) => (b.attemptAt?.seconds || 0) - (a.attemptAt?.seconds || 0));
+    },
     isAdmin() {
         const u = window.STATE.user;
         return !!u && (u.role === "admin" || u.role === "superadmin");
@@ -562,6 +582,22 @@ window.fmtDateTime = function (ts) {
     return d.toLocaleString("id-ID", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
 };
 
+// Acak urutan array tanpa mengubah array asli (Fisher-Yates) — dipakai untuk
+// mengacak urutan soal pre-test & post-test setiap kali dikerjakan.
+function shuffleArray(arr) {
+    const a = arr.slice();
+    for (let i = a.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [a[i], a[j]] = [a[j], a[i]];
+    }
+    return a;
+}
+window.shuffleArray = shuffleArray;
+
+// Batas maksimal peserta mengulang Post-test (Kuis). Setelah tercapai, tombol
+// terkunci sampai admin menghapus salah satu percobaan lewat panel admin.
+const MAX_POSTTEST_ATTEMPTS = 3;
+
 
 // ================= AUTH (pola sederhana: koleksi lmsUsers di Firestore, sama seperti app lama) =================
 
@@ -649,6 +685,7 @@ window.renderSidebar = function () {
         { key: "admin/courses", icon: "fa-layer-group", label: "Kelola Onboarding" },
         { key: "admin/trainings", icon: "fa-calendar-days", label: "Kelola Training TNA" },
         { key: "admin/assignments", icon: "fa-file-signature", label: "Penilaian Tugas" },
+        { key: "admin/quiz-attempts", icon: "fa-rotate-left", label: "Percobaan Kuis" },
         { key: "admin/users", icon: "fa-users-gear", label: "Kelola Akun" },
         { key: "admin/reports", icon: "fa-chart-simple", label: "Laporan" },
     ];
@@ -1102,40 +1139,75 @@ function courseCoverStyle(c) {
     return `background:linear-gradient(135deg,${c.accent1 || "#4f46e5"},${c.accent2 || "#818cf8"})`;
 }
 
+// Urutan resmi Onboarding Training (dipakai buat aturan "harus training sebelumnya selesai
+// dulu"), diurut dari yang paling lama dibuat -> paling baru. Kalau createdAt belum ke-set
+// (data lama), fallback ke urutan id.
+function orderedPublishedCourses() {
+    const list = window.STATE.courses.filter(c => c.published || window.sel.isAdmin());
+    return list.sort((a, b) => {
+        const ta = a.createdAt?.seconds || 0, tb = b.createdAt?.seconds || 0;
+        if (ta !== tb) return ta - tb;
+        return String(a.id).localeCompare(String(b.id));
+    });
+}
+
+// Training onboarding dianggap "selesai" kalau sertifikatnya sudah terbit (lewat tombol
+// "Selesaikan & Ambil Sertifikat" — itu artinya materi + kuis + tugas semua sudah kelar).
+function courseCompleted(courseId) {
+    return !!window.sel.myCertForCourse(courseId);
+}
+
+// Cek status kunci training onboarding ke-`courseId` berdasarkan urutan resmi di atas.
+// Admin selalu dianggap terbuka (supaya bisa preview/kelola kapan saja).
+function courseLockInfo(courseId) {
+    if (window.sel.isAdmin()) return { locked: false };
+    const ordered = orderedPublishedCourses();
+    const idx = ordered.findIndex(c => c.id === courseId);
+    if (idx <= 0) return { locked: false };
+    const prev = ordered[idx - 1];
+    if (courseCompleted(prev.id)) return { locked: false };
+    return { locked: true, blockingTitle: prev.title, blockingId: prev.id };
+}
+
 function renderCourseCatalog() {
-    const courses = window.STATE.courses.filter(c => c.published || window.sel.isAdmin());
+    const courses = orderedPublishedCourses();
     const cards = courses.map(c => {
         const progress = window.sel.courseProgress(c.id);
         const enr = window.sel.myEnrollment(c.id);
-        return `
-        <a href="#/courses/${c.id}" class="group bg-white rounded-3xl overflow-hidden shadow-sm border border-slate-100 hover:shadow-xl transition flex flex-col">
+        const lock = courseLockInfo(c.id);
+        const cardInner = `
             <div class="h-36 bg-cover bg-center relative" style="${courseCoverStyle(c)}">
-                <div class="absolute inset-0 bg-black/10"></div>
+                <div class="absolute inset-0 ${lock.locked ? "bg-black/50" : "bg-black/10"}"></div>
                 ${!c.published ? '<span class="absolute top-3 left-3 bg-slate-900/80 text-white text-[10px] font-bold px-2 py-1 rounded-full">Draft</span>' : ""}
                 <span class="absolute top-3 right-3 bg-white/90 text-indigo-600 text-[10px] font-black px-2 py-1 rounded-full uppercase">${window.escapeHtml(c.level || "Umum")}</span>
+                ${lock.locked ? `<div class="absolute inset-0 flex items-center justify-center"><span class="bg-white/95 text-slate-600 text-xs font-black px-3 py-1.5 rounded-full"><i class="fas fa-lock mr-1.5"></i> Terkunci</span></div>` : ""}
             </div>
             <div class="p-5 flex flex-col gap-2 flex-1">
                 <p class="text-[11px] font-bold text-indigo-500 uppercase tracking-wide">${window.escapeHtml(c.category || "Training")}</p>
-                <h3 class="font-black text-slate-800 leading-snug group-hover:text-indigo-600 transition">${window.escapeHtml(c.title)}</h3>
+                <h3 class="font-black text-slate-800 leading-snug ${lock.locked ? "" : "group-hover:text-indigo-600"} transition">${window.escapeHtml(c.title)}</h3>
                 <p class="text-xs text-slate-500 line-clamp-2 flex-1">${window.escapeHtml(c.description || "")}</p>
                 <div class="flex items-center justify-between text-[11px] text-slate-400 pt-2 border-t border-slate-50 mt-1">
                     <span><i class="fas fa-layer-group mr-1"></i>${(c.modules||[]).length} modul</span>
                     <span><i class="fas fa-user-tie mr-1"></i>${window.escapeHtml(c.instructor || "-")}</span>
                 </div>
-                ${enr ? `
+                ${lock.locked
+                    ? `<p class="text-[11px] text-rose-400 font-semibold mt-1"><i class="fas fa-triangle-exclamation mr-1"></i> Selesaikan "${window.escapeHtml(lock.blockingTitle)}" dulu untuk buka training ini.</p>`
+                    : (enr ? `
                 <div class="mt-1">
                     <div class="h-1.5 bg-slate-100 rounded-full overflow-hidden"><div class="h-full bg-indigo-500" style="width:${progress}%"></div></div>
                     <p class="text-[10px] text-slate-400 mt-1 font-semibold">${progress}% selesai</p>
-                </div>` : ""}
-            </div>
-        </a>`;
+                </div>` : "")}
+            </div>`;
+        return lock.locked
+            ? `<button onclick="window.toast('Selesaikan training \\'${window.escapeHtml(lock.blockingTitle).replace(/'/g, "\\'")}\\' terlebih dahulu sebelum bisa memulai training ini.','warn')" class="group bg-white rounded-3xl overflow-hidden shadow-sm border border-slate-100 flex flex-col text-left opacity-70 cursor-not-allowed">${cardInner}</button>`
+            : `<a href="#/courses/${c.id}" class="group bg-white rounded-3xl overflow-hidden shadow-sm border border-slate-100 hover:shadow-xl transition flex flex-col">${cardInner}</a>`;
     }).join("");
 
     window.setPage(`
         <div class="flex items-center justify-between mb-5">
             <div>
                 <h1 class="text-xl font-black text-slate-800">Onboarding Training</h1>
-                <p class="text-sm text-slate-500">Belajar mandiri lewat modul, video, dan kuis.</p>
+                <p class="text-sm text-slate-500">Belajar mandiri lewat modul, video, dan kuis. Training harus diselesaikan berurutan sesuai urutan di bawah.</p>
             </div>
         </div>
         <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
@@ -1147,59 +1219,69 @@ function renderCourseCatalog() {
 function renderCourseDetail(id) {
     const c = window.STATE.courses.find(x => x.id === id);
     if (!c) { window.setPage(`<p class="text-center text-slate-400 py-20">Training tidak ditemukan.</p>`); return; }
+    const lockInfo = courseLockInfo(id);
+    if (lockInfo.locked) {
+        window.setPage(`
+            <a href="#/courses" class="text-xs font-bold text-slate-400 hover:text-indigo-600"><i class="fas fa-arrow-left mr-1"></i> Kembali ke Katalog</a>
+            <div class="mt-10 text-center py-16 bg-white border border-slate-100 rounded-3xl">
+                <i class="fas fa-lock text-3xl text-slate-300 mb-3"></i>
+                <p class="font-black text-slate-700">Training ini masih terkunci</p>
+                <p class="text-sm text-slate-400 mt-1">Selesaikan "${window.escapeHtml(lockInfo.blockingTitle)}" terlebih dahulu untuk membuka "${window.escapeHtml(c.title)}".</p>
+                <a href="#/courses/${lockInfo.blockingId}" class="inline-block mt-4 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-sm px-5 py-2.5 rounded-2xl transition">Lanjutkan "${window.escapeHtml(lockInfo.blockingTitle)}"</a>
+            </div>
+        `);
+        return;
+    }
     const enr = window.sel.myEnrollment(id);
     const progress = window.sel.courseProgress(id);
     const totalLessons = (c.modules || []).reduce((s, m) => s + (m.lessons || []).length, 0);
-    const attempt = window.sel.myQuizAttempt(id);
-    const cert = window.sel.myCertForCourse(id);
     const hasQuiz = c.quiz && (c.quiz.questions || []).length > 0;
+    const pretestAttempt = hasQuiz ? window.sel.myPretestAttempt("course", c.id) : null;
+    const pretestDone = !hasQuiz || !!pretestAttempt;
+    const postTestAttempts = window.sel.myPostTestAttempts("course", c.id);
+    const attempt = postTestAttempts[0] || null;
+    const attemptsCount = postTestAttempts.length;
+    const quizLocked = hasQuiz && attemptsCount >= MAX_POSTTEST_ATTEMPTS;
+    const cert = window.sel.myCertForCourse(id);
     const allLessonsDone = enr && (enr.completedLessonIds || []).length >= totalLessons && totalLessons > 0;
     const hasAssignment = !!(c.assignment && c.assignment.enabled);
     const assignmentSub = window.sel.myAssignmentSubmission("course", c.id);
     const quizPassed = !hasQuiz || !!(attempt && attempt.passed);
+    const assignmentUnlocked = !hasAssignment || quizPassed; // penugasan baru bisa dibuka setelah post-test lulus
     const assignmentDone = !hasAssignment || !!assignmentSub;
     const evalReady = allLessonsDone; // materi kelar, siap ke kuis/tugas
     const allDone = allLessonsDone && quizPassed && assignmentDone;
+    const overallLocked = !enr || !pretestDone; // materi terbuka setelah daftar & (kalau ada) pre-test dikerjakan
 
-    const modulesHtml = (c.modules || []).map((m, mi) => `
-        <div class="border border-slate-100 rounded-2xl overflow-hidden">
-            <div class="bg-slate-50 px-4 py-3 font-bold text-sm text-slate-700 flex items-center gap-2">
-                <span class="w-6 h-6 rounded-full bg-indigo-100 text-indigo-600 text-[11px] flex items-center justify-center font-black">${mi + 1}</span>
-                ${window.escapeHtml(m.title)}
-            </div>
-            <div class="divide-y divide-slate-50">
-                ${(m.lessons || []).map(l => {
-                    const done = enr && (enr.completedLessonIds || []).includes(l.id);
-                    return `
-                    <button ${enr ? `onclick="openLesson('course','${c.id}','${l.id}')"` : `onclick="window.toast('Mulai training dulu ya','warn')"`}
-                        class="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-indigo-50/40 transition">
-                        <span class="flex items-center gap-3 text-sm text-slate-700">
-                            <i class="fas ${l.type === 'video' ? 'fa-circle-play' : (l.type === 'ppt' ? 'fa-file-powerpoint' : 'fa-file-lines')} text-indigo-400"></i>
-                            ${window.escapeHtml(l.title)}
-                        </span>
-                        <i class="fas ${done ? 'fa-circle-check text-emerald-500' : 'fa-chevron-right text-slate-300'} text-sm"></i>
-                    </button>`;
-                }).join("")}
-            </div>
-        </div>
-    `).join("");
+    const modulesHtml = renderModuleLessonList("course", c.id, c, enr ? enr.completedLessonIds : [], "indigo", overallLocked);
 
     let ctaBlock = "";
     if (!enr) {
         ctaBlock = `<button onclick="window.guardedClick(this, () => window.enrollCourse('${c.id}'))" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-2xl transition"><i class="fas fa-play mr-1"></i> Mulai Training</button>`;
     } else if (cert) {
         ctaBlock = `<button onclick="window.navigate('/certificates')" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 rounded-2xl transition"><i class="fas fa-award mr-1"></i> Lihat Sertifikat</button>`;
+    } else if (!pretestDone) {
+        ctaBlock = `<button onclick="openQuiz('course','${c.id}','pretest')" class="w-full bg-sky-500 hover:bg-sky-600 text-white font-bold py-3 rounded-2xl transition"><i class="fas fa-list-check mr-1"></i> Kerjakan Pre-test</button>
+        <p class="text-center text-xs text-slate-400">Pre-test wajib dikerjakan dulu sebelum materi bisa dibuka.</p>`;
     } else if (!evalReady) {
-        ctaBlock = `<div class="text-center text-sm text-slate-500 bg-slate-50 rounded-2xl py-3">Selesaikan semua materi untuk lanjut${(hasQuiz||hasAssignment) ? ' ke evaluasi' : ''}.</div>`;
+        ctaBlock = `<div class="text-center text-sm text-slate-500 bg-slate-50 rounded-2xl py-3">Selesaikan semua materi secara berurutan untuk lanjut${(hasQuiz||hasAssignment) ? ' ke evaluasi' : ''}.</div>`;
     } else {
         const parts = [];
         if (hasQuiz) {
-            parts.push(`<button onclick="openQuiz('course','${c.id}')" class="w-full ${quizPassed ? 'bg-slate-100 text-slate-500' : 'bg-amber-500 hover:bg-amber-600 text-white'} font-bold py-3 rounded-2xl transition"><i class="fas fa-clipboard-question mr-1"></i> ${attempt ? (quizPassed ? 'Lihat Ulang / Ulangi Kuis' : 'Ulangi Kuis') : 'Kerjakan Kuis'}</button>`);
-            if (attempt) parts.push(`<p class="text-center text-xs text-slate-400">Percobaan terakhir: skor ${attempt.score} (${attempt.passed ? 'Lulus' : 'Belum lulus'})</p>`);
+            if (quizLocked) {
+                parts.push(`<div class="w-full bg-rose-50 text-rose-500 font-bold text-xs text-center py-3 rounded-2xl"><i class="fas fa-lock mr-1"></i> Sudah ${MAX_POSTTEST_ATTEMPTS}x percobaan Post-test. Hubungi admin untuk membuka kesempatan lagi.</div>`);
+            } else {
+                parts.push(`<button onclick="openQuiz('course','${c.id}','posttest')" class="w-full ${quizPassed ? 'bg-slate-100 text-slate-500' : 'bg-amber-500 hover:bg-amber-600 text-white'} font-bold py-3 rounded-2xl transition"><i class="fas fa-clipboard-question mr-1"></i> ${attempt ? (quizPassed ? 'Lihat Ulang / Ulangi Post-test' : 'Ulangi Post-test') : 'Kerjakan Post-test'}</button>`);
+            }
+            if (attempt) parts.push(`<p class="text-center text-xs text-slate-400">Percobaan ke-${attemptsCount}/${MAX_POSTTEST_ATTEMPTS}: skor ${attempt.score} (${attempt.passed ? 'Lulus' : 'Belum lulus'})</p>`);
         }
         if (hasAssignment) {
-            parts.push(`<button onclick="openAssignment('course','${c.id}')" class="w-full ${assignmentDone ? 'bg-slate-100 text-slate-500' : 'bg-violet-500 hover:bg-violet-600 text-white'} font-bold py-3 rounded-2xl transition"><i class="fas fa-file-signature mr-1"></i> ${assignmentSub ? 'Lihat Status Tugas' : 'Kerjakan Tugas'}</button>`);
-            if (assignmentSub) parts.push(`<p class="text-center text-xs text-slate-400">${assignmentSub.status === 'graded' ? `Dinilai: skor ${assignmentSub.score}` : 'Menunggu penilaian admin'}</p>`);
+            if (!assignmentUnlocked) {
+                parts.push(`<button disabled class="w-full bg-slate-100 text-slate-400 font-bold py-3 rounded-2xl cursor-not-allowed"><i class="fas fa-lock mr-1"></i> Lulus Post-test dulu untuk buka tugas</button>`);
+            } else {
+                parts.push(`<button onclick="openAssignment('course','${c.id}')" class="w-full ${assignmentDone ? 'bg-slate-100 text-slate-500' : 'bg-violet-500 hover:bg-violet-600 text-white'} font-bold py-3 rounded-2xl transition"><i class="fas fa-file-signature mr-1"></i> ${assignmentSub ? 'Lihat Status Tugas' : 'Kerjakan Tugas'}</button>`);
+                if (assignmentSub) parts.push(`<p class="text-center text-xs text-slate-400">${assignmentSub.status === 'graded' ? `Dinilai: skor ${assignmentSub.score}` : 'Menunggu penilaian admin'}</p>`);
+            }
         }
         if (allDone) {
             parts.push(`<button onclick="window.guardedClick(this, () => window.finishCourseFlow('${c.id}'))" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 rounded-2xl transition"><i class="fas fa-flag-checkered mr-1"></i> Selesaikan & Ambil Sertifikat</button>`);
@@ -1230,6 +1312,7 @@ function renderCourseDetail(id) {
             <div class="order-2 lg:order-1 lg:col-span-2 space-y-4">
                 <p class="text-sm text-slate-600 leading-relaxed">${window.escapeHtml(c.description || "")}</p>
                 ${!enr ? `<div class="bg-slate-50 border border-dashed border-slate-200 rounded-2xl p-4 flex items-center gap-3"><i class="fas fa-lock text-slate-300"></i><p class="text-xs text-slate-400 font-semibold">Klik "Mulai Training" di atas untuk membuka akses ke semua materi di bawah ini.</p></div>` : ""}
+                ${enr && !pretestDone ? `<div class="bg-sky-50 border border-dashed border-sky-200 rounded-2xl p-4 flex items-center gap-3"><i class="fas fa-list-check text-sky-400"></i><p class="text-xs text-sky-600 font-semibold">Kerjakan Pre-test dulu (tombol di samping) untuk membuka materi di bawah ini.</p></div>` : ""}
                 <div class="space-y-3">${modulesHtml || '<p class="text-sm text-slate-400">Belum ada modul.</p>'}</div>
             </div>
         </div>
@@ -1237,6 +1320,11 @@ function renderCourseDetail(id) {
 }
 
 window.enrollCourse = async function (courseId) {
+    const lockInfo = courseLockInfo(courseId);
+    if (lockInfo.locked) {
+        window.toast(`Selesaikan "${lockInfo.blockingTitle}" terlebih dahulu sebelum bisa memulai training ini.`, "warn");
+        return;
+    }
     const { col, addDoc, serverTimestamp } = window.LMS_DB;
     await addDoc(col("enrollments"), {
         courseId, userId: window.STATE.user.id, completedLessonIds: [],
@@ -1259,6 +1347,69 @@ function getProgressDoc(kind, refId) {
 function progressCollectionName(kind) { return kind === "training" ? "trainingRegistrations" : "enrollments"; }
 function refIdField(kind) { return kind === "training" ? "trainingId" : "courseId"; }
 function totalLessonsOf(item) { return (item?.modules || []).reduce((s, m) => s + (m.lessons || []).length, 0); }
+
+// Menghitung status "terkunci/terbuka" tiap lesson secara berurutan lintas semua modul,
+// supaya modul 2 gak bisa dibuka sebelum semua lesson di modul 1 selesai, dst — "gak ada
+// tahapan yang bisa diloncat". Return: Map<lessonId, {locked, done, isNext}>.
+// isNext = lesson pertama yang belum selesai (target belajar berikutnya).
+function computeLessonLocks(item, completedLessonIds) {
+    const doneSet = new Set(completedLessonIds || []);
+    const map = new Map();
+    let priorAllDone = true; // semua lesson SEBELUM lesson ini sudah selesai?
+    let foundNext = false;
+    (item.modules || []).forEach(m => {
+        (m.lessons || []).forEach(l => {
+            const done = doneSet.has(l.id);
+            const locked = !priorAllDone;
+            const isNext = !locked && !done && !foundNext;
+            if (isNext) foundNext = true;
+            map.set(l.id, { locked, done, isNext });
+            if (!done) priorAllDone = false;
+        });
+    });
+    return map;
+}
+
+// Render daftar modul & lesson dengan status terkunci/terbuka berurutan (gak bisa diloncat).
+// accent: 'indigo' (Onboarding) atau 'amber' (Training TNA). overallLocked: true kalau
+// belum boleh akses materi sama sekali (belum daftar / belum presensi / belum pre-test).
+function renderModuleLessonList(kind, refId, item, completedLessonIds, accent, overallLocked) {
+    const locks = computeLessonLocks(item, completedLessonIds);
+    const accentBg = accent === "amber" ? "bg-amber-100 text-amber-600" : "bg-indigo-100 text-indigo-600";
+    const accentIcon = accent === "amber" ? "text-amber-400" : "text-indigo-400";
+    const accentBtn = accent === "amber" ? "bg-amber-500 hover:bg-amber-600" : "bg-indigo-500 hover:bg-indigo-600";
+    return (item.modules || []).map((m, mi) => `
+        <div class="border border-slate-100 rounded-2xl overflow-hidden">
+            <div class="bg-slate-50 px-4 py-3 font-bold text-sm text-slate-700 flex items-center gap-2">
+                <span class="w-6 h-6 rounded-full ${accentBg} text-[11px] flex items-center justify-center font-black">${mi + 1}</span>
+                ${window.escapeHtml(m.title)}
+            </div>
+            <div class="divide-y divide-slate-50">
+                ${(m.lessons || []).map(l => {
+                    const st = locks.get(l.id) || { locked: true, done: false, isNext: false };
+                    const isLocked = overallLocked || st.locked;
+                    const iconClass = l.type === "video" ? "fa-circle-play" : (l.type === "ppt" ? "fa-file-powerpoint" : "fa-file-lines");
+                    let rightSide;
+                    if (isLocked) {
+                        rightSide = `<button onclick="window.toast('Selesaikan materi sebelumnya dulu ya','warn')" class="text-[11px] font-bold text-slate-300 shrink-0"><i class="fas fa-lock mr-1"></i> Terkunci</button>`;
+                    } else if (st.done) {
+                        rightSide = `<button onclick="openLesson('${kind}','${refId}','${l.id}')" class="text-[11px] font-bold text-slate-500 hover:text-slate-700 bg-slate-100 px-3 py-1.5 rounded-lg transition shrink-0"><i class="fas fa-circle-check text-emerald-500 mr-1"></i> Lihat Lagi</button>`;
+                    } else {
+                        rightSide = `<button onclick="openLesson('${kind}','${refId}','${l.id}')" class="${accentBtn} text-white text-[11px] font-bold px-3 py-1.5 rounded-lg transition shrink-0"><i class="fas fa-play mr-1"></i> Mulai Pelajari Materi</button>`;
+                    }
+                    return `
+                    <div class="w-full flex items-center justify-between gap-2 px-4 py-3 flex-wrap ${isLocked ? "opacity-60" : ""}">
+                        <span class="flex items-center gap-3 text-sm text-slate-700 min-w-0">
+                            <i class="fas ${iconClass} ${accentIcon}"></i>
+                            <span class="truncate">${window.escapeHtml(l.title)}</span>
+                        </span>
+                        ${rightSide}
+                    </div>`;
+                }).join("")}
+            </div>
+        </div>
+    `).join("");
+}
 
 window.sel.myQuizAttempt2 = function (kind, refId) {
     const u = window.STATE.user;
@@ -1328,7 +1479,7 @@ window.openLesson = function (kind, refId, lessonId) {
             ${requireFullWatch ? `
             <div class="mt-2 bg-slate-50 rounded-xl px-3 py-2">
                 <div class="h-1.5 bg-slate-200 rounded-full overflow-hidden"><div id="ppt-timer-bar" class="h-full bg-amber-400 transition-all" style="width:0%"></div></div>
-                <p id="lesson-ppt-hint" class="text-xs text-amber-600 font-semibold mt-2"><i class="fas fa-hourglass-half mr-1"></i> Pelajari materi ini dengan baik dan selama <span id="ppt-timer-secs">${pptRequiredSeconds(totalSlides)}</span> detik tombol untuk "Tandai Selesai" baru bisa di klik. Namun jika diperlukan anda dapat melanjutkan dulu proses pembelajaran slide per slide materi ini sesuai waktu yang diberikan oleh tim training</p>
+                <p id="lesson-ppt-hint" class="text-xs text-amber-600 font-semibold mt-2"><i class="fas fa-hourglass-half mr-1"></i> Pelajari materi ini selama <span id="ppt-timer-secs">${pptRequiredSeconds(totalSlides)}</span> detik untuk mengaktifkan tombol "Tandai Selesai".</p>
             </div>` : ""}
         </div>`;
     } else if (lesson.type === "ppt" && !lesson.pptUrl) {
@@ -1468,11 +1619,27 @@ async function markLessonComplete(kind, refId, lessonId) {
 }
 
 // ================= KUIS =================
-window.openQuiz = function (kind, refId) {
+// mode: 'pretest' (sebelum materi, soal sama dengan bank soal kuis tapi diacak, gak ngunci apapun
+// selain sebagai syarat buka materi) atau 'posttest' (kuis asli, dibatasi maks. percobaan, diacak juga).
+window.openQuiz = function (kind, refId, mode = "posttest") {
     const item = getContentItem(kind, refId);
-    const qs = item.quiz.questions || [];
-    document.getElementById("quiz-modal-title").textContent = "Kuis: " + item.title;
-    document.getElementById("quiz-modal-body").innerHTML = qs.map((q, qi) => `
+    const bank = item.quiz.questions || [];
+    if (!bank.length) { window.toast("Belum ada soal untuk kuis ini", "warn"); return; }
+
+    if (mode === "posttest") {
+        const attempts = window.sel.myPostTestAttempts(kind, refId);
+        if (attempts.length >= MAX_POSTTEST_ATTEMPTS) {
+            window.toast(`Sudah mencapai batas ${MAX_POSTTEST_ATTEMPTS}x percobaan Post-test. Hubungi admin untuk membuka kesempatan lagi.`, "error");
+            return;
+        }
+    }
+
+    // Acak urutan soal tiap kali dikerjakan (pretest maupun posttest)
+    const shuffled = shuffleArray(bank);
+    window._activeQuiz = { kind, refId, mode, questions: shuffled };
+
+    document.getElementById("quiz-modal-title").textContent = (mode === "pretest" ? "Pre-test: " : "Post-test: ") + item.title;
+    document.getElementById("quiz-modal-body").innerHTML = shuffled.map((q, qi) => `
         <div class="border border-slate-100 rounded-2xl p-4">
             <p class="text-sm font-bold text-slate-700 mb-2">${qi + 1}. ${window.escapeHtml(q.question)}</p>
             <div class="space-y-2">
@@ -1485,19 +1652,22 @@ window.openQuiz = function (kind, refId) {
         </div>
     `).join("");
     const btn = document.getElementById("quiz-submit-btn");
-    btn.onclick = () => window.guardedClick(btn, () => submitQuiz(kind, refId));
+    btn.innerHTML = mode === "pretest" ? '<i class="fas fa-paper-plane mr-1"></i> Kumpulkan Pre-test' : '<i class="fas fa-paper-plane mr-1"></i> Kumpulkan Post-test';
+    btn.onclick = () => window.guardedClick(btn, () => submitQuiz());
     window.openModal("modal-quiz");
 };
 
-async function submitQuiz(kind, refId) {
+async function submitQuiz() {
+    const active = window._activeQuiz;
+    if (!active) return;
+    const { kind, refId, mode, questions: qs } = active;
     const item = getContentItem(kind, refId);
-    const qs = item.quiz.questions || [];
     let correct = 0;
     const answers = [];
     qs.forEach((q, qi) => {
         const checked = document.querySelector(`input[name="quiz-q-${qi}"]:checked`);
         const val = checked ? parseInt(checked.value) : -1;
-        answers.push(val);
+        answers.push({ questionId: q.id, selected: val });
         if (val === q.correctIndex) correct++;
     });
     const score = Math.round((correct / qs.length) * 100);
@@ -1505,16 +1675,22 @@ async function submitQuiz(kind, refId) {
     const passed = score >= passingScore;
 
     const { col, addDoc, serverTimestamp } = window.LMS_DB;
-    const payload = { userId: window.STATE.user.id, score, passed, answers, attemptAt: serverTimestamp() };
+    const payload = { userId: window.STATE.user.id, score, passed, answers, attemptType: mode, attemptAt: serverTimestamp() };
     payload[refIdField(kind)] = refId;
     await addDoc(col("quizAttempts"), payload);
     // Sertifikat baru diterbitkan lewat tombol "Selesaikan & Ambil Sertifikat" setelah SEMUA
     // syarat (materi + kuis lulus + penugasan terkumpul, jika ada) terpenuhi. Lihat finishCourseFlow / submitEvaluation.
 
+    window._activeQuiz = null;
     window.closeModal("modal-quiz");
-    window.toast(passed ? `Lulus! Skor kamu ${score}` : `Belum lulus, skor ${score}. Coba lagi ya.`, passed ? "success" : "warn");
+    if (mode === "pretest") {
+        window.toast(`Pre-test selesai, skor ${score}. Materi sudah terbuka!`, "success");
+    } else {
+        window.toast(passed ? `Lulus! Skor kamu ${score}` : `Belum lulus, skor ${score}. Coba lagi ya.`, passed ? "success" : "warn");
+    }
     if (kind === "training") renderTrainingDetail(refId); else renderCourseDetail(refId);
 }
+
 
 // Menyelesaikan Onboarding Training & menerbitkan sertifikat setelah semua syarat evaluasi terpenuhi
 // (materi selesai, kuis lulus jika ada, penugasan terkumpul jika ada).
@@ -1607,64 +1783,58 @@ function renderTrainingDetail(id) {
     const hasQuiz = t.quiz && (t.quiz.questions || []).length > 0;
     const completedLessonIds = (reg && reg.completedLessonIds) || [];
     const allLessonsDone = hasMateri ? completedLessonIds.length >= totalLessons : true;
-    const quizAttempt = window.sel.myQuizAttempt2("training", t.id);
+    const pretestAttempt = hasQuiz ? window.sel.myPretestAttempt("training", t.id) : null;
+    const pretestDone = !hasQuiz || !!pretestAttempt;
+    const postTestAttempts = window.sel.myPostTestAttempts("training", t.id);
+    const quizAttempt = postTestAttempts[0] || null;
+    const attemptsCount = postTestAttempts.length;
+    const quizLocked = hasQuiz && attemptsCount >= MAX_POSTTEST_ATTEMPTS;
     const quizPassed = hasQuiz ? !!(quizAttempt && quizAttempt.passed) : true;
     const hasAssignment = !!(t.assignment && t.assignment.enabled);
     const assignmentSub = window.sel.myAssignmentSubmission("training", t.id);
+    const assignmentUnlocked = !hasAssignment || quizPassed; // penugasan baru terbuka setelah post-test lulus
     const assignmentDone = !hasAssignment || !!assignmentSub;
     const materiComplete = allLessonsDone && quizPassed && assignmentDone;
+    const materiUnlocked = !!(reg && att) && pretestDone;
 
-    const modulesHtml = (t.modules || []).map((m, mi) => `
-        <div class="border border-slate-100 rounded-2xl overflow-hidden">
-            <div class="bg-slate-50 px-4 py-3 font-bold text-sm text-slate-700 flex items-center gap-2">
-                <span class="w-6 h-6 rounded-full bg-amber-100 text-amber-600 text-[11px] flex items-center justify-center font-black">${mi + 1}</span>
-                ${window.escapeHtml(m.title)}
-            </div>
-            <div class="divide-y divide-slate-50">
-                ${(m.lessons || []).map(l => {
-                    const done = completedLessonIds.includes(l.id);
-                    return `
-                    <button onclick="openLesson('training','${t.id}','${l.id}')"
-                        class="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-amber-50/40 transition">
-                        <span class="flex items-center gap-3 text-sm text-slate-700">
-                            <i class="fas ${l.type === 'video' ? 'fa-circle-play' : (l.type === 'ppt' ? 'fa-file-powerpoint' : 'fa-file-lines')} text-amber-400"></i>
-                            ${window.escapeHtml(l.title)}
-                        </span>
-                        <i class="fas ${done ? 'fa-circle-check text-emerald-500' : 'fa-chevron-right text-slate-300'} text-sm"></i>
-                    </button>`;
-                }).join("")}
-            </div>
-        </div>
-    `).join("");
+    const modulesHtml = renderModuleLessonList("training", t.id, t, completedLessonIds, "amber", !materiUnlocked);
 
     const materiSection = (hasMateri || hasQuiz || hasAssignment) ? `
         <div class="mt-5 space-y-3">
             <h3 class="font-black text-sm text-slate-700"><i class="fas fa-book-open text-amber-400 mr-1"></i> Materi Training</h3>
             ${modulesHtml || '<p class="text-xs text-slate-400">Belum ada modul materi untuk sesi ini.</p>'}
             ${hasQuiz ? `
-            <div class="bg-white border border-slate-100 rounded-2xl p-4 flex items-center justify-between">
+            <div class="bg-white border border-slate-100 rounded-2xl p-4 flex items-center justify-between flex-wrap gap-2">
                 <div>
-                    <p class="text-sm font-bold text-slate-700">Kuis Training</p>
-                    <p class="text-[11px] text-slate-400">${quizAttempt ? `Skor terakhir: ${quizAttempt.score} (${quizAttempt.passed ? 'Lulus' : 'Belum lulus'})` : 'Belum dikerjakan'}</p>
+                    <p class="text-sm font-bold text-slate-700">Post-test Training</p>
+                    <p class="text-[11px] text-slate-400">${quizAttempt ? `Percobaan ke-${attemptsCount}/${MAX_POSTTEST_ATTEMPTS}: skor ${quizAttempt.score} (${quizAttempt.passed ? 'Lulus' : 'Belum lulus'})` : `Belum dikerjakan (maks. ${MAX_POSTTEST_ATTEMPTS}x percobaan)`}</p>
                 </div>
-                <button ${!allLessonsDone ? 'disabled' : ''} onclick="openQuiz('training','${t.id}')" class="bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold px-4 py-2.5 rounded-xl transition"><i class="fas fa-clipboard-question mr-1"></i> ${quizAttempt ? 'Ulangi Kuis' : 'Kerjakan Kuis'}</button>
+                ${quizLocked
+                    ? `<span class="bg-rose-50 text-rose-500 text-xs font-bold px-4 py-2.5 rounded-xl"><i class="fas fa-lock mr-1"></i> Terkunci, hubungi admin</span>`
+                    : `<button ${!allLessonsDone ? 'disabled' : ''} onclick="openQuiz('training','${t.id}','posttest')" class="bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold px-4 py-2.5 rounded-xl transition disabled:opacity-40 disabled:cursor-not-allowed"><i class="fas fa-clipboard-question mr-1"></i> ${quizAttempt ? 'Ulangi Post-test' : 'Kerjakan Post-test'}</button>`}
             </div>` : ""}
             ${hasAssignment ? `
-            <div class="bg-white border border-slate-100 rounded-2xl p-4 flex items-center justify-between">
+            <div class="bg-white border border-slate-100 rounded-2xl p-4 flex items-center justify-between flex-wrap gap-2">
                 <div>
                     <p class="text-sm font-bold text-slate-700"><i class="fas fa-file-signature text-violet-500 mr-1"></i> Penugasan</p>
-                    <p class="text-[11px] text-slate-400">${assignmentSub ? (assignmentSub.status === 'graded' ? `Dinilai: skor ${assignmentSub.score}` : 'Sudah dikumpulkan, menunggu penilaian') : 'Belum dikumpulkan'}</p>
+                    <p class="text-[11px] text-slate-400">${!assignmentUnlocked ? 'Lulus post-test dulu untuk membuka tugas ini' : (assignmentSub ? (assignmentSub.status === 'graded' ? `Dinilai: skor ${assignmentSub.score}` : 'Sudah dikumpulkan, menunggu penilaian') : 'Belum dikumpulkan')}</p>
                 </div>
-                <button ${!allLessonsDone ? 'disabled' : ''} onclick="openAssignment('training','${t.id}')" class="bg-violet-500 hover:bg-violet-600 text-white text-xs font-bold px-4 py-2.5 rounded-xl transition"><i class="fas fa-upload mr-1"></i> ${assignmentSub ? 'Lihat Status' : 'Kumpulkan Tugas'}</button>
+                <button ${(!allLessonsDone || !assignmentUnlocked) ? 'disabled' : ''} onclick="openAssignment('training','${t.id}')" class="bg-violet-500 hover:bg-violet-600 text-white text-xs font-bold px-4 py-2.5 rounded-xl transition disabled:opacity-40 disabled:cursor-not-allowed"><i class="fas ${!assignmentUnlocked ? 'fa-lock' : 'fa-upload'} mr-1"></i> ${assignmentSub ? 'Lihat Status' : 'Kumpulkan Tugas'}</button>
             </div>` : ""}
         </div>` : "";
 
-    // Materi (video/PPT/kuis/tugas) baru terbuka setelah peserta DAFTAR lalu PRESENSI (input kode),
-    // supaya urutan alurnya jelas: Daftar -> Presensi -> Materi -> Kuis/Tugas -> Evaluasi -> Sertifikat.
+    // Materi (video/PPT/pre-test/modul/post-test/tugas) baru terbuka setelah peserta DAFTAR lalu
+    // PRESENSI (input kode) lalu (kalau ada bank soal) PRE-TEST, supaya urutan alurnya jelas:
+    // Daftar -> Presensi -> Pre-test -> Materi (berurutan) -> Post-test -> Tugas -> Evaluasi -> Sertifikat.
     let materiArea = "";
     if (hasMateri || hasQuiz || hasAssignment) {
-        if (reg && att) {
+        if (reg && att && pretestDone) {
             materiArea = materiSection;
+        } else if (reg && att && !pretestDone) {
+            materiArea = `<div class="mt-5 bg-sky-50 border border-dashed border-sky-200 rounded-2xl p-4 flex items-center justify-between flex-wrap gap-3">
+                <div class="flex items-center gap-3"><i class="fas fa-list-check text-sky-400"></i><p class="text-xs text-sky-600 font-semibold">Kerjakan Pre-test dulu untuk membuka materi, post-test, dan penugasan.</p></div>
+                <button onclick="openQuiz('training','${t.id}','pretest')" class="bg-sky-500 hover:bg-sky-600 text-white text-xs font-bold px-4 py-2.5 rounded-xl transition shrink-0"><i class="fas fa-play mr-1"></i> Kerjakan Pre-test</button>
+            </div>`;
         } else {
             const lockMsg = !reg
                 ? 'Daftar training di atas untuk membuka materi, kuis, dan penugasan.'
@@ -1687,8 +1857,10 @@ function renderTrainingDetail(id) {
                     <button onclick="window.guardedClick(this, () => window.checkInTraining('${t.id}'))" class="bg-amber-500 hover:bg-amber-600 text-white font-bold px-4 rounded-xl text-sm">Hadir</button>
                 </div>
             </div>`;
+    } else if (!pretestDone) {
+        ctaBlock = `<div class="text-center text-sm text-sky-600 bg-sky-50 rounded-2xl py-3 font-semibold">Kerjakan Pre-test di bawah untuk membuka materi.</div>`;
     } else if ((hasMateri || hasQuiz || hasAssignment) && !materiComplete) {
-        ctaBlock = `<div class="text-center text-sm text-slate-500 bg-slate-50 rounded-2xl py-3">Selesaikan materi${hasQuiz ? ', lulus kuis' : ''}${hasAssignment ? ', & kumpulkan tugas' : ''} di bawah untuk lanjut ke evaluasi.</div>`;
+        ctaBlock = `<div class="text-center text-sm text-slate-500 bg-slate-50 rounded-2xl py-3">Selesaikan materi${hasQuiz ? ', lulus post-test' : ''}${hasAssignment ? ', & kumpulkan tugas' : ''} di bawah untuk lanjut ke evaluasi.</div>`;
     } else if (!evalDone) {
         ctaBlock = `<button onclick="openEvaluation('${t.id}')" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-2xl transition"><i class="fas fa-star mr-1"></i> Isi Evaluasi</button>`;
     } else {
@@ -2554,6 +2726,105 @@ window.gradeAssignment = async function (subId) {
     });
     window.toast("Nilai tugas tersimpan", "success");
     renderAdminAssignments();
+};
+
+// ================= ADMIN: KELOLA PERCOBAAN KUIS (PRE-TEST & POST-TEST) =================
+// Post-test dibatasi maksimal MAX_POSTTEST_ATTEMPTS kali. Kalau peserta sudah kena limit,
+// admin bisa hapus salah satu percobaannya di sini supaya kesempatan mengulang terbuka lagi.
+window.ROUTES["admin/quiz-attempts"] = requireAdmin(function () {
+    renderAdminQuizAttempts();
+});
+
+let adminAttemptFilter = "locked"; // locked | all  (khusus tab posttest)
+let adminAttemptTypeFilter = "posttest"; // posttest | pretest
+
+function renderAdminQuizAttempts() {
+    const type = adminAttemptTypeFilter;
+    const relevant = window.STATE.quizAttempts.filter(a => type === "pretest" ? a.attemptType === "pretest" : a.attemptType !== "pretest");
+
+    const groups = {};
+    relevant.forEach(a => {
+        const kind = a.trainingId ? "training" : "course";
+        const refId = a.trainingId || a.courseId;
+        const key = `${kind}|${refId}|${a.userId}`;
+        if (!groups[key]) groups[key] = { kind, refId, userId: a.userId, attempts: [] };
+        groups[key].attempts.push(a);
+    });
+    let groupList = Object.values(groups).map(g => {
+        g.attempts.sort((a, b) => (b.attemptAt?.seconds || 0) - (a.attemptAt?.seconds || 0));
+        return g;
+    });
+    if (type === "posttest" && adminAttemptFilter === "locked") {
+        groupList = groupList.filter(g => g.attempts.length >= MAX_POSTTEST_ATTEMPTS);
+    }
+    groupList.sort((a, b) => (b.attempts[0].attemptAt?.seconds || 0) - (a.attempts[0].attemptAt?.seconds || 0));
+
+    const rows = groupList.map(g => {
+        const u = window.STATE.users.find(x => x.id === g.userId);
+        const item = getContentItem(g.kind, g.refId);
+        const latest = g.attempts[0];
+        const locked = type === "posttest" && g.attempts.length >= MAX_POSTTEST_ATTEMPTS;
+        return `
+        <tr class="border-b border-slate-50 hover:bg-slate-50/60 align-top">
+            <td class="px-3 py-3">
+                <p class="font-bold text-slate-700 text-sm">${window.escapeHtml(u ? u.username : g.userId)}</p>
+                <p class="text-[11px] text-slate-400">${window.escapeHtml(item ? item.title : "Training terhapus")} <span class="uppercase font-bold">(${g.kind === "training" ? "Training TNA" : "Onboarding"})</span></p>
+            </td>
+            <td class="px-3 py-3 text-center">
+                <span class="text-xs font-black ${locked ? "text-rose-500" : "text-slate-600"}">${g.attempts.length}${type === "posttest" ? "/" + MAX_POSTTEST_ATTEMPTS : ""}</span>
+                ${locked ? '<span class="block text-[10px] font-bold text-rose-500 mt-0.5"><i class="fas fa-lock mr-1"></i>Terkunci</span>' : ""}
+            </td>
+            <td class="px-3 py-3 text-xs text-slate-500">Terakhir: skor ${latest.score} (${latest.passed ? 'Lulus' : 'Belum lulus'})<br>${window.fmtDateTime(latest.attemptAt)}</td>
+            <td class="px-3 py-3">
+                <div class="space-y-1">
+                ${g.attempts.map((a, ai) => `
+                    <div class="flex items-center justify-between gap-2 text-[11px] bg-slate-50 rounded-lg px-2 py-1.5">
+                        <span>Percobaan ke-${g.attempts.length - ai}: skor ${a.score} (${a.passed ? 'Lulus' : 'Belum lulus'}) • ${window.fmtDateTime(a.attemptAt)}</span>
+                        <button onclick="window.guardedClick(this, () => window.adminDeleteQuizAttempt('${a.id}'))" class="text-rose-400 hover:text-rose-600 shrink-0" title="Hapus percobaan ini"><i class="fas fa-trash"></i></button>
+                    </div>
+                `).join("")}
+                </div>
+            </td>
+        </tr>`;
+    }).join("");
+
+    window.setPage(`
+        <div class="flex items-center justify-between flex-wrap gap-2 mb-5">
+            <h1 class="text-xl font-black text-slate-800">Kelola Percobaan Kuis</h1>
+            <div class="flex gap-2 flex-wrap">
+                <div class="flex gap-1 bg-slate-100 rounded-xl p-1">
+                    <button onclick="adminAttemptTypeFilter='posttest'; renderAdminQuizAttempts()" class="text-xs font-bold px-3 py-1.5 rounded-lg transition ${adminAttemptTypeFilter === 'posttest' ? 'bg-white shadow text-amber-600' : 'text-slate-500'}">Post-test</button>
+                    <button onclick="adminAttemptTypeFilter='pretest'; renderAdminQuizAttempts()" class="text-xs font-bold px-3 py-1.5 rounded-lg transition ${adminAttemptTypeFilter === 'pretest' ? 'bg-white shadow text-sky-600' : 'text-slate-500'}">Pre-test</button>
+                </div>
+                ${type === "posttest" ? `
+                <div class="flex gap-1 bg-slate-100 rounded-xl p-1">
+                    <button onclick="adminAttemptFilter='locked'; renderAdminQuizAttempts()" class="text-xs font-bold px-3 py-1.5 rounded-lg transition ${adminAttemptFilter === 'locked' ? 'bg-white shadow text-rose-600' : 'text-slate-500'}">Terkunci saja</button>
+                    <button onclick="adminAttemptFilter='all'; renderAdminQuizAttempts()" class="text-xs font-bold px-3 py-1.5 rounded-lg transition ${adminAttemptFilter === 'all' ? 'bg-white shadow text-slate-700' : 'text-slate-500'}">Semua</button>
+                </div>` : ""}
+            </div>
+        </div>
+        <p class="text-xs text-slate-400 mb-3">${type === "posttest" ? `Peserta dibatasi maksimal ${MAX_POSTTEST_ATTEMPTS}x percobaan Post-test. Kalau sudah terkunci, hapus salah satu percobaan di bawah supaya kesempatan mengulang terbuka lagi.` : "Pre-test gak dibatasi jumlah percobaan — daftar di bawah cuma buat pemantauan."}</p>
+        <div class="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-x-auto">
+            <table class="w-full text-left">
+                <thead class="bg-slate-50 text-[10px] font-black uppercase text-slate-400">
+                    <tr>
+                        <th class="px-3 py-3">Peserta / Training</th>
+                        <th class="px-3 py-3 text-center">Jumlah Percobaan</th>
+                        <th class="px-3 py-3">Ringkasan</th>
+                        <th class="px-3 py-3">Riwayat Percobaan</th>
+                    </tr>
+                </thead>
+                <tbody>${rows || `<tr><td colspan="4" class="text-center py-10 text-slate-400">Tidak ada data</td></tr>`}</tbody>
+            </table>
+        </div>
+    `);
+}
+
+window.adminDeleteQuizAttempt = async function (attemptId) {
+    if (!confirm("Hapus percobaan kuis ini? Kalau ini bikin jumlah percobaan turun di bawah batas maksimal, peserta akan otomatis dapat kesempatan mengulang lagi.")) return;
+    await window.LMS_DB.deleteDoc(window.LMS_DB.ref("quizAttempts", attemptId));
+    window.toast("Percobaan kuis dihapus", "success");
+    renderAdminQuizAttempts();
 };
 
 // ================= ADMIN: KELOLA AKUN =================
