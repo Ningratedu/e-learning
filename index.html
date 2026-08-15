@@ -277,7 +277,7 @@ import {
     deleteDoc, onSnapshot, query, where, orderBy, serverTimestamp, writeBatch
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 import {
-    getStorage, ref as storageRef, uploadBytes, getDownloadURL
+    getStorage, ref as storageRef, uploadBytes, uploadBytesResumable, getDownloadURL
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-storage.js";
 
 const firebaseConfig = {
@@ -312,10 +312,31 @@ async function uploadFile(file, folder) {
     return getDownloadURL(sRef);
 }
 
+// Sama seperti uploadFile, tapi pakai uploadBytesResumable supaya progress upload (0-100%)
+// bisa dipantau lewat callback onProgress — dipakai untuk nampilkan progress bar di UI
+// (mis. upload materi PPT/PPTX di course/training builder).
+function uploadFileWithProgress(file, folder, onProgress) {
+    const safeName = file.name.replace(/[^a-zA-Z0-9.\-_]/g, "_");
+    const path = `artifacts/${appId}/${NS}/uploads/${folder}/${Date.now()}_${safeName}`;
+    const sRef = storageRef(storage, path);
+    const task = uploadBytesResumable(sRef, file);
+    return new Promise((resolve, reject) => {
+        task.on("state_changed", (snap) => {
+            const pct = snap.totalBytes ? Math.round((snap.bytesTransferred / snap.totalBytes) * 100) : 0;
+            if (onProgress) onProgress(pct);
+        }, (err) => reject(err), async () => {
+            try {
+                const url = await getDownloadURL(task.snapshot.ref);
+                resolve(url);
+            } catch (e) { reject(e); }
+        });
+    });
+}
+
 window.LMS_DB = {
     db, col, ref, addDoc, getDoc, getDocs, setDoc, updateDoc, deleteDoc,
     onSnapshot, query, where, orderBy, serverTimestamp, writeBatch,
-    storage, storageRef, uploadBytes, getDownloadURL, uploadFile
+    storage, storageRef, uploadBytes, uploadBytesResumable, getDownloadURL, uploadFile, uploadFileWithProgress
 };
 
 // Beritahu main.js bahwa firebase siap
@@ -1153,11 +1174,7 @@ function renderCourseDetail(id) {
             </div>
         </div>
         <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mt-6">
-            <div class="lg:col-span-2 space-y-4">
-                <p class="text-sm text-slate-600 leading-relaxed">${window.escapeHtml(c.description || "")}</p>
-                <div class="space-y-3">${modulesHtml || '<p class="text-sm text-slate-400">Belum ada modul.</p>'}</div>
-            </div>
-            <div class="space-y-4">
+            <div class="order-1 lg:order-2 space-y-4">
                 <div class="bg-white border border-slate-100 rounded-3xl p-5 shadow-sm space-y-3">
                     <div class="flex justify-between text-xs text-slate-500"><span>Instruktur</span><span class="font-bold text-slate-700">${window.escapeHtml(c.instructor || "-")}</span></div>
                     <div class="flex justify-between text-xs text-slate-500"><span>Level</span><span class="font-bold text-slate-700">${window.escapeHtml(c.level || "Umum")}</span></div>
@@ -1165,6 +1182,11 @@ function renderCourseDetail(id) {
                     ${enr ? `<div><div class="h-2 bg-slate-100 rounded-full overflow-hidden"><div class="h-full bg-indigo-500" style="width:${progress}%"></div></div><p class="text-[11px] text-slate-400 mt-1 font-semibold">${progress}% selesai</p></div>` : ""}
                     ${ctaBlock}
                 </div>
+            </div>
+            <div class="order-2 lg:order-1 lg:col-span-2 space-y-4">
+                <p class="text-sm text-slate-600 leading-relaxed">${window.escapeHtml(c.description || "")}</p>
+                ${!enr ? `<div class="bg-slate-50 border border-dashed border-slate-200 rounded-2xl p-4 flex items-center gap-3"><i class="fas fa-lock text-slate-300"></i><p class="text-xs text-slate-400 font-semibold">Klik "Mulai Training" di atas untuk membuka akses ke semua materi di bawah ini.</p></div>` : ""}
+                <div class="space-y-3">${modulesHtml || '<p class="text-sm text-slate-400">Belum ada modul.</p>'}</div>
             </div>
         </div>
     `);
@@ -1232,21 +1254,36 @@ window.openLesson = function (kind, refId, lessonId) {
         requireFullWatch = !done;
         body = `<div class="aspect-video rounded-2xl overflow-hidden bg-black"><iframe id="lesson-video-frame" class="w-full h-full" src="${embed}?enablejsapi=1" allowfullscreen></iframe></div>
         ${requireFullWatch ? `<p id="lesson-video-hint" class="text-xs text-amber-600 font-semibold mt-2"><i class="fas fa-circle-info mr-1"></i> Tonton video sampai selesai untuk mengaktifkan tombol "Tandai Selesai".</p>` : ""}`;
+    } else if (lesson.type === "video" && !lesson.videoUrl) {
+        body = `<div class="aspect-video rounded-2xl bg-slate-50 border border-dashed border-slate-200 flex flex-col items-center justify-center text-center px-4"><i class="fas fa-circle-play text-2xl text-slate-300 mb-2"></i><p class="text-sm text-slate-400 font-semibold">Video belum tersedia. Hubungi admin untuk melengkapi materi ini.</p></div>`;
     } else if (lesson.type === "ppt" && lesson.pptUrl) {
         requireFullWatch = !done;
         const totalSlides = lesson.slideCount || 1;
+        const officeEmbedSrc = `https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(lesson.pptUrl)}`;
+        const officeViewSrc = `https://view.officeapps.live.com/op/view.aspx?src=${encodeURIComponent(lesson.pptUrl)}`;
         body = `
         <div id="ppt-viewer" data-total="${totalSlides}" data-current="1">
             <div class="aspect-video rounded-2xl overflow-hidden bg-slate-900 relative">
-                <iframe class="w-full h-full" src="https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(lesson.pptUrl)}" allowfullscreen></iframe>
+                <div id="ppt-loading" class="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-slate-900 text-slate-300 z-10">
+                    <i class="fas fa-spinner fa-spin text-xl"></i>
+                    <span class="text-xs font-semibold">Memuat materi PPT...</span>
+                </div>
+                <iframe class="w-full h-full relative z-0" src="${officeEmbedSrc}" allowfullscreen onload="const el=document.getElementById('ppt-loading'); if(el) el.style.display='none';"></iframe>
             </div>
             <div class="flex items-center justify-between mt-3 bg-slate-50 rounded-xl px-3 py-2">
                 <button onclick="pptNav(-1)" class="text-xs font-bold text-slate-500 hover:text-indigo-600"><i class="fas fa-chevron-left mr-1"></i> Sebelumnya</button>
                 <span class="text-xs font-bold text-slate-600">Slide <span id="ppt-current">1</span> / ${totalSlides}</span>
                 <button onclick="pptNav(1)" class="text-xs font-bold text-indigo-600 hover:text-indigo-800">Selanjutnya <i class="fas fa-chevron-right ml-1"></i></button>
             </div>
+            <div class="flex flex-wrap items-center gap-2 mt-2">
+                <a href="${officeViewSrc}" target="_blank" rel="noopener" class="text-[11px] font-bold text-indigo-500 hover:text-indigo-700 bg-indigo-50 px-3 py-1.5 rounded-lg"><i class="fas fa-up-right-from-square mr-1"></i> Buka di Tab Baru</a>
+                <a href="${lesson.pptUrl}" target="_blank" rel="noopener" class="text-[11px] font-bold text-slate-500 hover:text-slate-700 bg-slate-100 px-3 py-1.5 rounded-lg"><i class="fas fa-download mr-1"></i> Unduh File PPT</a>
+            </div>
+            <p class="text-[11px] text-slate-400 mt-1">Kalau tampilan slide di atas tidak muncul (kadang tergantung koneksi/jaringan kantor), pakai tombol "Buka di Tab Baru" ya.</p>
             <p id="lesson-ppt-hint" class="text-xs text-amber-600 font-semibold mt-2"><i class="fas fa-circle-info mr-1"></i> Buka sampai slide terakhir untuk mengaktifkan tombol "Tandai Selesai".</p>
         </div>`;
+    } else if (lesson.type === "ppt" && !lesson.pptUrl) {
+        body = `<div class="aspect-video rounded-2xl bg-slate-50 border border-dashed border-slate-200 flex flex-col items-center justify-center text-center px-4"><i class="fas fa-file-powerpoint text-2xl text-slate-300 mb-2"></i><p class="text-sm text-slate-400 font-semibold">File PPT belum diupload admin. Hubungi admin untuk melengkapi materi ini.</p></div>`;
     }
     body += `<div class="prose prose-sm max-w-none mt-4 text-slate-600 whitespace-pre-wrap">${window.escapeHtml(lesson.content || "")}</div>`;
 
@@ -1520,6 +1557,20 @@ function renderTrainingDetail(id) {
             </div>` : ""}
         </div>` : "";
 
+    // Materi (video/PPT/kuis/tugas) baru terbuka setelah peserta DAFTAR lalu PRESENSI (input kode),
+    // supaya urutan alurnya jelas: Daftar -> Presensi -> Materi -> Kuis/Tugas -> Evaluasi -> Sertifikat.
+    let materiArea = "";
+    if (hasMateri || hasQuiz || hasAssignment) {
+        if (reg && att) {
+            materiArea = materiSection;
+        } else {
+            const lockMsg = !reg
+                ? 'Daftar training di atas untuk membuka materi, kuis, dan penugasan.'
+                : 'Lakukan presensi dengan kode dari trainer (lihat kotak di atas) untuk membuka materi, kuis, dan penugasan.';
+            materiArea = `<div class="mt-5 bg-slate-50 border border-dashed border-slate-200 rounded-2xl p-4 flex items-center gap-3"><i class="fas fa-lock text-slate-300"></i><p class="text-xs text-slate-400 font-semibold">${lockMsg}</p></div>`;
+        }
+    }
+
     let ctaBlock = "";
     if (!reg) {
         ctaBlock = full
@@ -1545,7 +1596,14 @@ function renderTrainingDetail(id) {
     window.setPage(`
         <a href="#/trainings" class="text-xs font-bold text-slate-400 hover:text-indigo-600"><i class="fas fa-arrow-left mr-1"></i> Kembali ke Jadwal</a>
         <div class="bg-white rounded-3xl border border-slate-100 shadow-sm p-6 mt-3 grid grid-cols-1 lg:grid-cols-3 gap-6">
-            <div class="lg:col-span-2 space-y-3">
+            <div class="order-1 lg:order-2 space-y-3">
+                <div class="bg-slate-50 rounded-2xl p-4 text-center">
+                    <p class="text-2xl font-black text-slate-800">${count}${t.quota ? '/'+t.quota : ''}</p>
+                    <p class="text-[10px] font-bold text-slate-400 uppercase">Peserta Terdaftar</p>
+                </div>
+                ${ctaBlock}
+            </div>
+            <div class="order-2 lg:order-1 lg:col-span-2 space-y-3">
                 <p class="text-[11px] font-bold text-amber-500 uppercase">${window.escapeHtml(t.category || "Training")}</p>
                 <h1 class="text-2xl font-black text-slate-800">${window.escapeHtml(t.title)}</h1>
                 <p class="text-sm text-slate-600 leading-relaxed">${window.escapeHtml(t.description || "")}</p>
@@ -1555,14 +1613,7 @@ function renderTrainingDetail(id) {
                     <div class="bg-slate-50 rounded-2xl p-3"><p class="text-[10px] text-slate-400 font-bold uppercase">Lokasi</p><p class="text-sm font-bold text-slate-700">${window.escapeHtml(t.location||'-')}</p></div>
                     <div class="bg-slate-50 rounded-2xl p-3"><p class="text-[10px] text-slate-400 font-bold uppercase">Trainer</p><p class="text-sm font-bold text-slate-700"><i class="fas fa-user-tie text-amber-400 mr-1"></i>${window.escapeHtml(t.trainer||'-')}</p></div>
                 </div>
-                ${reg ? materiSection : ""}
-            </div>
-            <div class="space-y-3">
-                <div class="bg-slate-50 rounded-2xl p-4 text-center">
-                    <p class="text-2xl font-black text-slate-800">${count}${t.quota ? '/'+t.quota : ''}</p>
-                    <p class="text-[10px] font-bold text-slate-400 uppercase">Peserta Terdaftar</p>
-                </div>
-                ${ctaBlock}
+                ${materiArea}
             </div>
         </div>
     `);
@@ -1793,10 +1844,23 @@ window.uploadPptFile = async function (inputEl, draftName, mi, li) {
     const file = inputEl.files[0];
     if (!file) return;
     if (!/\.(ppt|pptx)$/i.test(file.name)) { window.toast("File harus format .ppt atau .pptx", "warn"); return; }
+    if (file.size > 25 * 1024 * 1024) { window.toast("Ukuran file maksimal 25MB", "warn"); return; }
+
+    const prefix = draftName === "trainingDraft" ? "t" : "c";
+    const progressBox = document.getElementById(`ppt-progress-${prefix}-${mi}-${li}`);
+    const progressBar = document.getElementById(`ppt-progress-${prefix}-${mi}-${li}-bar`);
+    const progressPct = document.getElementById(`ppt-progress-${prefix}-${mi}-${li}-pct`);
+
     inputEl.disabled = true;
-    window.toast("Mengupload file PPT...", "info");
+    if (progressBox) progressBox.classList.remove("hide");
+    if (progressBar) progressBar.style.width = "0%";
+    if (progressPct) progressPct.textContent = "0%";
+
     try {
-        const url = await window.LMS_DB.uploadFile(file, "ppt");
+        const url = await window.LMS_DB.uploadFileWithProgress(file, "ppt", (pct) => {
+            if (progressBar) progressBar.style.width = pct + "%";
+            if (progressPct) progressPct.textContent = pct + "%";
+        });
         const draft = draftName === "trainingDraft" ? trainingDraft : courseDraft;
         draft.modules[mi].lessons[li].pptUrl = url;
         draft.modules[mi].lessons[li].pptFileName = file.name;
@@ -1805,6 +1869,7 @@ window.uploadPptFile = async function (inputEl, draftName, mi, li) {
     } catch (e) {
         console.error(e);
         window.toast("Gagal upload file PPT: " + (e.message || e), "error");
+        if (progressBox) progressBox.classList.add("hide");
         inputEl.disabled = false;
     }
 };
@@ -1814,16 +1879,29 @@ window.uploadCoverImage = async function (inputEl) {
     const file = inputEl.files[0];
     if (!file) return;
     if (!file.type.startsWith("image/")) { window.toast("File harus berupa gambar", "warn"); return; }
+    if (file.size > 8 * 1024 * 1024) { window.toast("Ukuran gambar maksimal 8MB", "warn"); return; }
+
+    const progressBox = document.getElementById("cover-progress");
+    const progressBar = document.getElementById("cover-progress-bar");
+    const progressPct = document.getElementById("cover-progress-pct");
+
     inputEl.disabled = true;
-    window.toast("Mengupload gambar cover...", "info");
+    if (progressBox) progressBox.classList.remove("hide");
+    if (progressBar) progressBar.style.width = "0%";
+    if (progressPct) progressPct.textContent = "0%";
+
     try {
-        const url = await window.LMS_DB.uploadFile(file, "cover");
+        const url = await window.LMS_DB.uploadFileWithProgress(file, "cover", (pct) => {
+            if (progressBar) progressBar.style.width = pct + "%";
+            if (progressPct) progressPct.textContent = pct + "%";
+        });
         courseDraft.coverImage = url;
         window.toast(`Gambar "${file.name}" berhasil diupload`, "success");
         window.rerenderBuilder();
     } catch (e) {
         console.error(e);
         window.toast("Gagal upload gambar: " + (e.message || e), "error");
+        if (progressBox) progressBox.classList.add("hide");
         inputEl.disabled = false;
     }
 };
@@ -1927,6 +2005,10 @@ function renderCourseBuilder(id) {
                                 </label>
                             </div>
                             <input type="number" min="1" value="${l.slideCount||1}" oninput="courseDraft.modules[${mi}].lessons[${li}].slideCount=parseInt(this.value)||1" placeholder="Jml slide" class="w-24 border border-slate-200 rounded-lg px-2 py-1.5 text-xs">
+                            <div id="ppt-progress-c-${mi}-${li}" class="w-full hide">
+                                <div class="flex items-center justify-between text-[10px] font-bold text-indigo-500 mb-1"><span><i class="fas fa-spinner fa-spin mr-1"></i>Mengupload file PPT...</span><span id="ppt-progress-c-${mi}-${li}-pct">0%</span></div>
+                                <div class="h-1.5 bg-slate-200 rounded-full overflow-hidden"><div id="ppt-progress-c-${mi}-${li}-bar" class="h-full bg-indigo-500 transition-all" style="width:0%"></div></div>
+                            </div>
                             ${l.pptUrl ? `<div class="w-full flex items-center gap-2 text-[11px] font-bold text-emerald-600 bg-emerald-50 rounded-lg px-2 py-1.5"><i class="fas fa-circle-check"></i> ${l.pptFileName ? `File "${window.escapeHtml(l.pptFileName)}" berhasil diupload` : 'File PPT terpasang'} <a href="${l.pptUrl}" target="_blank" class="ml-auto underline text-emerald-700 hover:text-emerald-900">Lihat</a></div>` : ""}
                         ` : ""}
                         <button onclick="courseDraft.modules[${mi}].lessons.splice(${li},1); rerenderBuilder()" class="text-rose-400 hover:text-rose-600 text-xs px-1"><i class="fas fa-xmark"></i></button>
@@ -1975,6 +2057,10 @@ function renderCourseBuilder(id) {
                                 <input type="file" accept="image/*" class="hidden" onchange="window.uploadCoverImage(this)">
                             </label>
                         </div>
+                    </div>
+                    <div id="cover-progress" class="hide">
+                        <div class="flex items-center justify-between text-[10px] font-bold text-indigo-500 mb-1"><span><i class="fas fa-spinner fa-spin mr-1"></i>Mengupload gambar...</span><span id="cover-progress-pct">0%</span></div>
+                        <div class="h-1.5 bg-slate-200 rounded-full overflow-hidden"><div id="cover-progress-bar" class="h-full bg-indigo-500 transition-all" style="width:0%"></div></div>
                     </div>
                     ${d.coverImage ? `
                     <div class="flex items-center gap-2 text-[11px] font-bold text-emerald-600 bg-emerald-50 rounded-xl px-3 py-2">
@@ -2143,13 +2229,17 @@ function renderTrainingBuilder(id) {
                         ${l.type==='video' ? `<input value="${window.escapeHtml(l.videoUrl||'')}" oninput="trainingDraft.modules[${mi}].lessons[${li}].videoUrl=this.value" placeholder="URL video (YouTube)" class="flex-1 min-w-[140px] border border-slate-200 rounded-lg px-2 py-1.5 text-xs">` : ""}
                         ${l.type==='ppt' ? `
                             <div class="flex items-center gap-2 flex-1 min-w-[220px]">
-                                <input value="${window.escapeHtml(l.pptUrl||'')}" oninput="trainingDraft.modules[${mi}].lessons[${li}].pptUrl=this.value" placeholder="URL file .pptx (link publik) atau upload di samping" class="flex-1 min-w-[140px] border border-slate-200 rounded-lg px-2 py-1.5 text-xs">
+                                <input id="ppt-url-t-${mi}-${li}" value="${window.escapeHtml(l.pptUrl||'')}" oninput="trainingDraft.modules[${mi}].lessons[${li}].pptUrl=this.value" placeholder="URL file .pptx (link publik) atau upload di samping" class="flex-1 min-w-[140px] border border-slate-200 rounded-lg px-2 py-1.5 text-xs">
                                 <label class="shrink-0 text-[11px] font-bold text-amber-600 hover:text-amber-800 bg-amber-50 px-2 py-1.5 rounded-lg cursor-pointer whitespace-nowrap">
                                     <i class="fas fa-upload mr-1"></i> Upload
                                     <input type="file" accept=".ppt,.pptx" class="hidden" onchange="window.uploadPptFile(this, 'trainingDraft', ${mi}, ${li})">
                                 </label>
                             </div>
                             <input type="number" min="1" value="${l.slideCount||1}" oninput="trainingDraft.modules[${mi}].lessons[${li}].slideCount=parseInt(this.value)||1" placeholder="Jml slide" class="w-24 border border-slate-200 rounded-lg px-2 py-1.5 text-xs">
+                            <div id="ppt-progress-t-${mi}-${li}" class="w-full hide">
+                                <div class="flex items-center justify-between text-[10px] font-bold text-amber-600 mb-1"><span><i class="fas fa-spinner fa-spin mr-1"></i>Mengupload file PPT...</span><span id="ppt-progress-t-${mi}-${li}-pct">0%</span></div>
+                                <div class="h-1.5 bg-slate-200 rounded-full overflow-hidden"><div id="ppt-progress-t-${mi}-${li}-bar" class="h-full bg-amber-500 transition-all" style="width:0%"></div></div>
+                            </div>
                             ${l.pptUrl ? `<div class="w-full flex items-center gap-2 text-[11px] font-bold text-emerald-600 bg-emerald-50 rounded-lg px-2 py-1.5"><i class="fas fa-circle-check"></i> ${l.pptFileName ? `File "${window.escapeHtml(l.pptFileName)}" berhasil diupload` : 'File PPT terpasang'} <a href="${l.pptUrl}" target="_blank" class="ml-auto underline text-emerald-700 hover:text-emerald-900">Lihat</a></div>` : ""}
                         ` : ""}
                         <button onclick="trainingDraft.modules[${mi}].lessons.splice(${li},1); rerenderTrainingBuilder()" class="text-rose-400 hover:text-rose-600 text-xs px-1"><i class="fas fa-xmark"></i></button>
