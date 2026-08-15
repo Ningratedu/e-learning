@@ -127,6 +127,17 @@ button:disabled, input[type="submit"]:disabled {
     </div>
 </div>
 
+<!-- ================= MODAL: DETAIL KARYAWAN ================= -->
+<div id="modal-employee-detail" class="fixed inset-0 z-[10000] hide modal-overlay flex items-center justify-center p-4">
+    <div class="bg-white w-full max-w-sm rounded-3xl shadow-2xl overflow-hidden">
+        <div class="p-5 border-b flex justify-between items-center bg-indigo-50">
+            <h3 class="text-sm font-black text-indigo-600"><i class="fas fa-id-card-clip mr-1"></i> Detail Karyawan</h3>
+            <button onclick="window.closeModal('modal-employee-detail')" class="text-slate-400 hover:text-slate-700"><i class="fas fa-times"></i></button>
+        </div>
+        <div id="employee-detail-body" class="p-5 max-h-[70vh] overflow-y-auto"></div>
+    </div>
+</div>
+
 <!-- ================= APP SHELL ================= -->
 <div id="app-shell" class="hide min-h-screen lg:flex">
 
@@ -388,6 +399,7 @@ window.dispatchEvent(new Event("lms-firebase-ready"));
 window.STATE = {
     user: null,          // user login saat ini {id, username, role, ...}
     users: [],
+    employees: [],
     courses: [],
     trainings: [],
     enrollments: [],
@@ -409,6 +421,7 @@ function startLiveListeners() {
         }, (err) => console.error("Listener error " + name, err));
     };
     bind("users", "users");
+    bind("employees", "employees");
     bind("courses", "courses");
     bind("trainings", "trainings");
     bind("enrollments", "enrollments");
@@ -640,7 +653,7 @@ window.doLogin = async function () {
 
     localStorage.setItem(SESSION_KEY, userDoc.id);
     window.STATE.user = { id: userDoc.id, ...data };
-    window.toast(`Selamat datang, ${data.username}!`, "success");
+    window.toast(`Selamat datang, ${data.name || data.username}!`, "success");
     window.enterApp();
 };
 
@@ -709,6 +722,7 @@ window.renderSidebar = function () {
         { key: "admin/trainings", icon: "fa-calendar-days", label: "Kelola Training TNA" },
         { key: "admin/assignments", icon: "fa-file-signature", label: "Penilaian Tugas" },
         { key: "admin/quiz-attempts", icon: "fa-rotate-left", label: "Percobaan Kuis" },
+        { key: "admin/employees", icon: "fa-id-card-clip", label: "Data Karyawan" },
         { key: "admin/users", icon: "fa-users-gear", label: "Kelola Akun" },
         { key: "admin/reports", icon: "fa-chart-simple", label: "Laporan" },
     ];
@@ -723,9 +737,9 @@ window.renderSidebar = function () {
 
 window.renderTopbar = function () {
     const u = window.STATE.user;
-    document.getElementById("topbar-username").textContent = u.username;
+    document.getElementById("topbar-username").textContent = u.name || u.username;
     document.getElementById("topbar-role").textContent = u.role === "superadmin" ? "Super Admin" : (u.role === "admin" ? "Admin" : "Peserta");
-    document.getElementById("topbar-avatar").textContent = (u.username || "?").slice(0, 1).toUpperCase();
+    document.getElementById("topbar-avatar").textContent = (u.name || u.username || "?").slice(0, 1).toUpperCase();
 };
 
 
@@ -775,7 +789,7 @@ function renderUserDashboard() {
 
     window.setPage(`
         <div class="mb-5">
-            <h1 class="text-xl font-black text-slate-800">Halo, ${window.escapeHtml(u.username)} 👋</h1>
+            <h1 class="text-xl font-black text-slate-800">Halo, ${window.escapeHtml(u.name || u.username)} 👋</h1>
             <p class="text-sm text-slate-500">Ini ringkasan progres belajar kamu.</p>
         </div>
         <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
@@ -2951,11 +2965,320 @@ window.adminDeleteQuizAttempt = async function (attemptId) {
     renderAdminQuizAttempts();
 };
 
+// ================= ADMIN: DATA KARYAWAN =================
+// Master data karyawan diimpor dari Excel (kolom: No, Nama Karyawan, Nama Pengguna, Departemen,
+// Designation, RM, BM, Mentor/SPV, Posisi, Masa Kerja, Keterangan, Tgl Bergabung, No Kontak,
+// Tanggal Lahir). Setiap import juga otomatis bikin/update akun login di koleksi "users":
+// - username   = kolom "Nama Pengguna"
+// - nama tampilan (header/dashboard) = kolom "Nama Karyawan"
+// - email akun = kolom "No Kontak"
+// - departemen akun = kolom "Departemen" (dipakai juga buat target departemen Onboarding)
+// - password default akun baru = "pembelajar", role "user", status "active"
+// Akun yang usernya sudah ada TIDAK di-reset passwordnya (biar gak ganggu yang udah pernah login/
+// ganti password sendiri) — cuma nama/departemen/emailnya yang disinkron ulang.
+let employeeSearch = "";
+let employeeDeptFilter = "";
+
+function normalizeUsername(u) {
+    return String(u || "").trim().toLowerCase().replace(/\s+/g, "");
+}
+function excelCellToString(v) {
+    if (v === undefined || v === null) return "";
+    if (v instanceof Date) return v.toISOString();
+    if (typeof v === "number") return String(Math.round(v));
+    return String(v).trim();
+}
+function excelCellToDate(v) {
+    if (!v) return null;
+    if (v instanceof Date && !isNaN(v)) return v;
+    const d = new Date(v);
+    return isNaN(d) ? null : d;
+}
+
+// Parse file Excel data karyawan. Robust terhadap baris kosong/judul di atas header asli
+// (auto-detect baris header dengan mencari baris yang punya kolom "Nama Karyawan" & "Nama Pengguna").
+function parseEmployeeWorkbook(file, callback) {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+        try {
+            const data = new Uint8Array(e.target.result);
+            const wb = XLSX.read(data, { type: "array", cellDates: true });
+            const sheet = wb.Sheets[wb.SheetNames[0]];
+            const grid = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "", raw: true });
+
+            const norm = (s) => String(s || "").trim().toLowerCase();
+            let headerRowIdx = -1, colIdx = {};
+            for (let r = 0; r < Math.min(grid.length, 20); r++) {
+                const row = grid[r].map(norm);
+                if (row.some(c => c.includes("nama karyawan")) && row.some(c => c.includes("nama pengguna"))) {
+                    headerRowIdx = r;
+                    row.forEach((c, i) => {
+                        if (c.includes("no") && c.length <= 3 && colIdx.no === undefined) colIdx.no = i;
+                        if (c.includes("nama karyawan")) colIdx.nama = i;
+                        if (c.includes("nama pengguna")) colIdx.username = i;
+                        if (c.includes("departemen")) colIdx.dept = i;
+                        if (c.includes("designation")) colIdx.designation = i;
+                        if (c === "rm") colIdx.rm = i;
+                        if (c === "bm") colIdx.bm = i;
+                        if (c.includes("mentor")) colIdx.mentor = i;
+                        if (c.includes("posisi")) colIdx.posisi = i;
+                        if (c.includes("masa kerja")) colIdx.masaKerja = i;
+                        if (c.includes("keterangan")) colIdx.keterangan = i;
+                        if (c.includes("tgl bergabung") || c.includes("tanggal bergabung")) colIdx.tglBergabung = i;
+                        if (c.includes("no kontak") || c.includes("kontak")) colIdx.kontak = i;
+                        if (c.includes("tanggal lahir")) colIdx.tglLahir = i;
+                    });
+                    break;
+                }
+            }
+            if (headerRowIdx === -1) {
+                window.toast('Format file tidak dikenali. Pastikan ada kolom "Nama Karyawan" dan "Nama Pengguna".', "error");
+                return;
+            }
+
+            const employees = [];
+            let skipped = 0;
+            for (let r = headerRowIdx + 1; r < grid.length; r++) {
+                const row = grid[r];
+                if (!row || !row.length) continue;
+                const nama = excelCellToString(row[colIdx.nama]);
+                const username = normalizeUsername(row[colIdx.username]);
+                if (!nama && !username) continue;
+                if (!nama || !username) { skipped++; continue; }
+                employees.push({
+                    no: row[colIdx.no] ?? null,
+                    nama,
+                    username,
+                    dept: excelCellToString(row[colIdx.dept]),
+                    designation: excelCellToString(row[colIdx.designation]),
+                    rm: excelCellToString(row[colIdx.rm]),
+                    bm: excelCellToString(row[colIdx.bm]),
+                    mentor: excelCellToString(row[colIdx.mentor]),
+                    posisi: excelCellToString(row[colIdx.posisi]),
+                    masaKerja: typeof row[colIdx.masaKerja] === "number" ? row[colIdx.masaKerja] : null,
+                    keterangan: excelCellToString(row[colIdx.keterangan]),
+                    tglBergabung: excelCellToDate(row[colIdx.tglBergabung]),
+                    kontak: excelCellToString(row[colIdx.kontak]),
+                    tglLahir: excelCellToDate(row[colIdx.tglLahir]),
+                });
+            }
+            callback(employees, skipped);
+        } catch (err) {
+            console.error(err);
+            window.toast("Gagal membaca file Excel. Pastikan formatnya sesuai template.", "error");
+        }
+    };
+    reader.readAsArrayBuffer(file);
+}
+
+window.uploadEmployeeExcel = function () {
+    if (typeof XLSX === "undefined") { window.toast("Modul Excel belum siap, coba lagi sesaat.", "warn"); return; }
+    let input = document.getElementById("employee-excel-file-input");
+    if (!input) {
+        input = document.createElement("input");
+        input.type = "file";
+        input.accept = ".xlsx,.xls";
+        input.id = "employee-excel-file-input";
+        input.className = "hide";
+        document.body.appendChild(input);
+    }
+    input.value = "";
+    input.onchange = () => {
+        const file = input.files[0];
+        if (!file) return;
+        parseEmployeeWorkbook(file, async (employees, skipped) => {
+            if (!employees.length) { window.toast("Tidak ada data karyawan valid yang terbaca dari file ini.", "warn"); return; }
+            const existingByUsername = {};
+            window.STATE.users.forEach(u => { existingByUsername[normalizeUsername(u.username)] = u; });
+
+            const willCreate = employees.filter(emp => !existingByUsername[emp.username]).length;
+            const willUpdate = employees.length - willCreate;
+            const msg = `${employees.length} data karyawan terbaca` + (skipped ? ` (${skipped} baris dilewati karena data tidak lengkap)` : "") +
+                `.\n\n${willCreate} akun BARU akan dibuat (aktif, password default "pembelajar").\n${willUpdate} akun yang sudah ada akan disinkron nama/departemen/emailnya (password tidak diubah).\n\nLanjutkan impor?`;
+            if (!confirm(msg)) return;
+
+            window.toast("Mengimpor data karyawan...", "info");
+            try {
+                await window.commitEmployeeImport(employees, existingByUsername);
+                window.toast(`Impor selesai: ${willCreate} akun baru, ${willUpdate} akun disinkron.`, "success");
+                window.navigate("/admin/employees");
+            } catch (err) {
+                console.error(err);
+                window.toast("Impor gagal di tengah jalan: " + (err.message || err), "error");
+            }
+        });
+    };
+    input.click();
+};
+
+// Commit import ke Firestore pakai writeBatch, dipecah per 200 baris (maks ~400 operasi/batch,
+// aman di bawah limit 500 operasi per batch Firestore).
+window.commitEmployeeImport = async function (employees, existingByUsername) {
+    const { ref, writeBatch, db, serverTimestamp } = window.LMS_DB;
+    const CHUNK = 200;
+    const processedUsernames = new Set();
+    for (let i = 0; i < employees.length; i += CHUNK) {
+        const chunk = employees.slice(i, i + CHUNK);
+        const batch = writeBatch(db);
+        chunk.forEach(emp => {
+            const empDocId = "emp_" + emp.username;
+            batch.set(ref("employees", empDocId), {
+                no: emp.no, nama: emp.nama, username: emp.username, dept: emp.dept,
+                designation: emp.designation, rm: emp.rm, bm: emp.bm, mentor: emp.mentor,
+                posisi: emp.posisi, masaKerja: emp.masaKerja, keterangan: emp.keterangan,
+                tglBergabung: emp.tglBergabung, kontak: emp.kontak, tglLahir: emp.tglLahir,
+                updatedAt: serverTimestamp()
+            }, { merge: true });
+
+            const existing = existingByUsername[emp.username];
+            if (existing && !processedUsernames.has(emp.username)) {
+                batch.update(ref("users", existing.id), {
+                    name: emp.nama, dept: emp.dept, email: emp.kontak, employeeId: empDocId, status: "active"
+                });
+            } else if (!existing && !processedUsernames.has(emp.username)) {
+                batch.set(ref("users", empDocId), {
+                    username: emp.username, name: emp.nama, email: emp.kontak, dept: emp.dept,
+                    password: "pembelajar", role: "user", status: "active",
+                    employeeId: empDocId, createdAt: serverTimestamp()
+                }, { merge: true });
+            }
+            processedUsernames.add(emp.username);
+        });
+        await batch.commit();
+    }
+};
+
+window.downloadEmployeeTemplate = function () {
+    if (typeof XLSX === "undefined") { window.toast("Modul Excel belum siap, coba lagi sesaat.", "warn"); return; }
+    const wsData = [
+        ["No", "Nama Karyawan", "Nama Pengguna", "Departemen", "Designation", "RM", "BM", "Mentor/SPV", "Posisi", "Masa Kerja", "Keterangan", "Tgl Bergabung", "No Kontak", "Tanggal Lahir"],
+        [1, "Ahmad Hanafi", "hanafi", "After Sales", "Pelaksana After Sales", "", "", "", "Officer", 7.0, "Non Sales", new Date(2019, 8, 4), "6289660719900", new Date(1993, 11, 22)],
+    ];
+    const ws = XLSX.utils.aoa_to_sheet(wsData);
+    ws["!cols"] = wsData[0].map(() => ({ wch: 18 }));
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Data Karyawan");
+    XLSX.writeFile(wb, "Template_Data_Karyawan_NingratEdu.xlsx");
+};
+
+function fmtMasaKerja(v) {
+    if (v === null || v === undefined || isNaN(v)) return "-";
+    const years = Math.floor(v);
+    const months = Math.round((v - years) * 12);
+    return `${years} thn${months ? ' ' + months + ' bln' : ''}`;
+}
+
+window.ROUTES["admin/employees"] = requireAdmin(function () { renderEmployeeAdminList(); });
+
+// Re-render list tapi tetap jaga fokus & posisi kursor di input yang lagi diketik
+// (biar search-as-you-type gak keputus tiap render ulang tabel).
+window.reRenderEmployeeList = function () {
+    const active = document.activeElement;
+    const activeId = active && active.id;
+    const selStart = active && typeof active.selectionStart === "number" ? active.selectionStart : null;
+    renderEmployeeAdminList();
+    if (activeId) {
+        const el = document.getElementById(activeId);
+        if (el) {
+            el.focus();
+            if (selStart !== null && el.setSelectionRange) el.setSelectionRange(selStart, selStart);
+        }
+    }
+};
+
+function renderEmployeeAdminList() {
+    const depts = [...new Set(window.STATE.employees.map(e => e.dept).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+    const usersByUsername = {};
+    window.STATE.users.forEach(u => { usersByUsername[normalizeUsername(u.username)] = u; });
+
+    const term = employeeSearch.trim().toLowerCase();
+    const list = [...window.STATE.employees]
+        .filter(e => !employeeDeptFilter || e.dept === employeeDeptFilter)
+        .filter(e => !term || (e.nama||"").toLowerCase().includes(term) || (e.username||"").toLowerCase().includes(term))
+        .sort((a, b) => (a.nama || "").localeCompare(b.nama || ""));
+
+    const rows = list.map(e => {
+        const acc = usersByUsername[e.username];
+        return `
+        <tr class="border-b border-slate-50 hover:bg-slate-50/60">
+            <td class="px-3 py-3">
+                <p class="font-bold text-slate-700 text-sm">${window.escapeHtml(e.nama)}</p>
+                <p class="text-[11px] text-slate-400">@${window.escapeHtml(e.username)} • ${window.escapeHtml(e.posisi||e.designation||'-')}</p>
+            </td>
+            <td class="px-3 py-3 text-xs text-slate-500">${window.escapeHtml(e.dept||'-')}</td>
+            <td class="px-3 py-3 text-xs text-slate-500">${window.escapeHtml(e.kontak||'-')}</td>
+            <td class="px-3 py-3 text-xs text-slate-500">${window.fmtDate(e.tglBergabung)} <span class="block text-[10px] text-slate-400">${fmtMasaKerja(e.masaKerja)}</span></td>
+            <td class="px-3 py-3 text-center">
+                ${acc ? `<span class="text-[10px] font-black px-2 py-1 rounded-full bg-emerald-50 text-emerald-600">Aktif</span>` : `<span class="text-[10px] font-black px-2 py-1 rounded-full bg-rose-50 text-rose-500">Belum ada akun</span>`}
+            </td>
+            <td class="px-3 py-3 text-right">
+                <button onclick="window.showEmployeeDetail('${e.id}')" class="text-indigo-500 hover:text-indigo-700"><i class="fas fa-circle-info"></i></button>
+            </td>
+        </tr>`;
+    }).join("");
+
+    window.setPage(`
+        <div class="flex items-center justify-between flex-wrap gap-3 mb-5">
+            <div>
+                <h1 class="text-xl font-black text-slate-800">Data Karyawan</h1>
+                <p class="text-sm text-slate-500">Master data karyawan &amp; sumber pembuatan akun otomatis. Upload ulang file Excel yang sama buat sinkronisasi data terbaru.</p>
+            </div>
+            <div class="flex items-center gap-2">
+                <button onclick="window.downloadEmployeeTemplate()" class="bg-white border border-slate-200 hover:border-indigo-300 text-slate-600 text-xs font-bold px-3.5 py-2.5 rounded-2xl"><i class="fas fa-download mr-1"></i> Template</button>
+                <button onclick="window.guardedClick(this, () => window.uploadEmployeeExcel())" class="bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold px-3.5 py-2.5 rounded-2xl"><i class="fas fa-file-excel mr-1"></i> Upload Data Karyawan</button>
+            </div>
+        </div>
+        <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-5">
+            ${statCard("fa-id-card-clip", "indigo", window.STATE.employees.length, "Total Karyawan")}
+            ${statCard("fa-user-check", "emerald", window.STATE.employees.filter(e => usersByUsername[e.username]).length, "Sudah Ada Akun")}
+            ${statCard("fa-sitemap", "amber", depts.length, "Departemen")}
+            ${statCard("fa-user-xmark", "rose", window.STATE.employees.filter(e => !usersByUsername[e.username]).length, "Belum Ada Akun")}
+        </div>
+        <div class="flex items-center gap-2 mb-4 flex-wrap">
+            <input id="employee-search-input" value="${window.escapeHtml(employeeSearch)}" oninput="employeeSearch=this.value; window.reRenderEmployeeList()" placeholder="Cari nama / username..." class="border border-slate-200 rounded-xl px-3 py-2 text-sm flex-1 min-w-[180px]">
+            <select onchange="employeeDeptFilter=this.value; renderEmployeeAdminList()" class="border border-slate-200 rounded-xl px-3 py-2 text-sm">
+                <option value="">Semua Departemen</option>
+                ${depts.map(d => `<option value="${window.escapeHtml(d)}" ${employeeDeptFilter===d?'selected':''}>${window.escapeHtml(d)}</option>`).join("")}
+            </select>
+        </div>
+        <div class="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-x-auto">
+            <table class="w-full text-left">
+                <thead class="bg-slate-50 text-[10px] font-black uppercase text-slate-400">
+                    <tr><th class="px-3 py-3">Karyawan</th><th class="px-3 py-3">Departemen</th><th class="px-3 py-3">No Kontak</th><th class="px-3 py-3">Tgl Bergabung</th><th class="px-3 py-3 text-center">Akun</th><th class="px-3 py-3 text-right">Detail</th></tr>
+                </thead>
+                <tbody>${rows || `<tr><td colspan="6" class="text-center py-12 text-slate-400">Belum ada data karyawan. Klik "Upload Data Karyawan" untuk mengimpor dari Excel.</td></tr>`}</tbody>
+            </table>
+        </div>
+    `);
+}
+
+window.showEmployeeDetail = function (empId) {
+    const e = window.STATE.employees.find(x => x.id === empId);
+    if (!e) return;
+    const row = (label, val) => `<div class="flex justify-between text-xs py-1.5 border-b border-slate-50"><span class="text-slate-400">${label}</span><span class="font-bold text-slate-700">${window.escapeHtml(val || "-")}</span></div>`;
+    document.getElementById("employee-detail-body").innerHTML = `
+        <h3 class="font-black text-lg text-slate-800 mb-1">${window.escapeHtml(e.nama)}</h3>
+        <p class="text-xs text-slate-400 mb-3">@${window.escapeHtml(e.username)}</p>
+        ${row("Departemen", e.dept)}
+        ${row("Designation", e.designation)}
+        ${row("Posisi", e.posisi)}
+        ${row("RM", e.rm)}
+        ${row("BM", e.bm)}
+        ${row("Mentor/SPV", e.mentor)}
+        ${row("Masa Kerja", fmtMasaKerja(e.masaKerja))}
+        ${row("Keterangan", e.keterangan)}
+        ${row("Tgl Bergabung", window.fmtDate(e.tglBergabung))}
+        ${row("No Kontak", e.kontak)}
+        ${row("Tanggal Lahir", window.fmtDate(e.tglLahir))}
+    `;
+    window.openModal("modal-employee-detail");
+};
+
 // ================= ADMIN: KELOLA AKUN =================
 window.ROUTES["admin/users"] = requireAdmin(function () {
     const rows = window.STATE.users.map(u => `
         <tr class="border-b border-slate-50 hover:bg-slate-50/60">
-            <td class="px-3 py-3"><p class="font-bold text-slate-700 text-sm">${window.escapeHtml(u.username)}</p><p class="text-[11px] text-slate-400">${window.escapeHtml(u.email||'-')} • ${window.escapeHtml(u.dept||'-')}</p></td>
+            <td class="px-3 py-3"><p class="font-bold text-slate-700 text-sm">${window.escapeHtml(u.name || u.username)}</p><p class="text-[11px] text-slate-400">@${window.escapeHtml(u.username)} • ${window.escapeHtml(u.email||'-')} • ${window.escapeHtml(u.dept||'-')}</p></td>
             <td class="px-3 py-3 text-center">
                 <select onchange="window.guardedClick(this, () => window.changeUserRole('${u.id}', this.value))" ${!window.sel.isSuperAdmin() ? 'disabled' : ''} class="border border-slate-200 rounded-lg px-2 py-1 text-xs">
                     <option value="user" ${u.role==='user'?'selected':''}>User</option>
