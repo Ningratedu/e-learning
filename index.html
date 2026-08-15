@@ -226,7 +226,7 @@ button:disabled, input[type="submit"]:disabled {
 <div id="modal-evaluation" class="fixed inset-0 z-[10000] hide modal-overlay flex items-center justify-center p-4">
     <div class="bg-white w-full max-w-md rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
         <div class="p-5 border-b flex justify-between items-center bg-indigo-50 shrink-0">
-            <h3 class="text-lg font-black text-indigo-600"><i class="fas fa-star mr-1"></i> Evaluasi Training</h3>
+            <h3 class="text-lg font-black text-indigo-600"><i class="fas fa-star mr-1"></i> Rating & Feedback Training</h3>
             <button onclick="window.closeModal('modal-evaluation')" class="text-slate-400 hover:text-slate-700"><i class="fas fa-times"></i></button>
         </div>
         <div class="p-5 space-y-5 overflow-y-auto">
@@ -237,21 +237,33 @@ button:disabled, input[type="submit"]:disabled {
             <div>
                 <label class="text-[10px] font-bold uppercase text-slate-400">Kualitas Materi</label>
                 <div id="eval-stars-materi" class="flex items-center gap-1.5 my-1.5">
-                    ${[1,2,3,4,5].map(n => `<button type="button" onclick="window.setEvalStar('materi',${n})" class="eval-star text-2xl leading-none transition hover:scale-110" data-val="${n}"><i class="fas fa-star"></i></button>`).join("")}
+                    <button type="button" onclick="window.setEvalStar('materi',1)" class="eval-star text-2xl leading-none transition hover:scale-110" data-val="1"><i class="fas fa-star"></i></button>
+                    <button type="button" onclick="window.setEvalStar('materi',2)" class="eval-star text-2xl leading-none transition hover:scale-110" data-val="2"><i class="fas fa-star"></i></button>
+                    <button type="button" onclick="window.setEvalStar('materi',3)" class="eval-star text-2xl leading-none transition hover:scale-110" data-val="3"><i class="fas fa-star"></i></button>
+                    <button type="button" onclick="window.setEvalStar('materi',4)" class="eval-star text-2xl leading-none transition hover:scale-110" data-val="4"><i class="fas fa-star"></i></button>
+                    <button type="button" onclick="window.setEvalStar('materi',5)" class="eval-star text-2xl leading-none transition hover:scale-110" data-val="5"><i class="fas fa-star"></i></button>
                 </div>
                 <textarea id="eval-feedback-materi" rows="2" placeholder="Feedback tentang materi training..." class="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-400"></textarea>
             </div>
             <div>
                 <label class="text-[10px] font-bold uppercase text-slate-400">Kualitas Trainer</label>
                 <div id="eval-stars-trainer" class="flex items-center gap-1.5 my-1.5">
-                    ${[1,2,3,4,5].map(n => `<button type="button" onclick="window.setEvalStar('trainer',${n})" class="eval-star text-2xl leading-none transition hover:scale-110" data-val="${n}"><i class="fas fa-star"></i></button>`).join("")}
+                    <button type="button" onclick="window.setEvalStar('trainer',1)" class="eval-star text-2xl leading-none transition hover:scale-110" data-val="1"><i class="fas fa-star"></i></button>
+                    <button type="button" onclick="window.setEvalStar('trainer',2)" class="eval-star text-2xl leading-none transition hover:scale-110" data-val="2"><i class="fas fa-star"></i></button>
+                    <button type="button" onclick="window.setEvalStar('trainer',3)" class="eval-star text-2xl leading-none transition hover:scale-110" data-val="3"><i class="fas fa-star"></i></button>
+                    <button type="button" onclick="window.setEvalStar('trainer',4)" class="eval-star text-2xl leading-none transition hover:scale-110" data-val="4"><i class="fas fa-star"></i></button>
+                    <button type="button" onclick="window.setEvalStar('trainer',5)" class="eval-star text-2xl leading-none transition hover:scale-110" data-val="5"><i class="fas fa-star"></i></button>
                 </div>
                 <textarea id="eval-feedback-trainer" rows="2" placeholder="Feedback tentang trainer..." class="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-400"></textarea>
             </div>
             <div>
                 <label class="text-[10px] font-bold uppercase text-slate-400">Fasilitas</label>
                 <div id="eval-stars-fasilitas" class="flex items-center gap-1.5 my-1.5">
-                    ${[1,2,3,4,5].map(n => `<button type="button" onclick="window.setEvalStar('fasilitas',${n})" class="eval-star text-2xl leading-none transition hover:scale-110" data-val="${n}"><i class="fas fa-star"></i></button>`).join("")}
+                    <button type="button" onclick="window.setEvalStar('fasilitas',1)" class="eval-star text-2xl leading-none transition hover:scale-110" data-val="1"><i class="fas fa-star"></i></button>
+                    <button type="button" onclick="window.setEvalStar('fasilitas',2)" class="eval-star text-2xl leading-none transition hover:scale-110" data-val="2"><i class="fas fa-star"></i></button>
+                    <button type="button" onclick="window.setEvalStar('fasilitas',3)" class="eval-star text-2xl leading-none transition hover:scale-110" data-val="3"><i class="fas fa-star"></i></button>
+                    <button type="button" onclick="window.setEvalStar('fasilitas',4)" class="eval-star text-2xl leading-none transition hover:scale-110" data-val="4"><i class="fas fa-star"></i></button>
+                    <button type="button" onclick="window.setEvalStar('fasilitas',5)" class="eval-star text-2xl leading-none transition hover:scale-110" data-val="5"><i class="fas fa-star"></i></button>
                 </div>
                 <textarea id="eval-feedback-fasilitas" rows="2" placeholder="Feedback tentang fasilitas..." class="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-400"></textarea>
             </div>
@@ -2265,7 +2277,7 @@ function renderTrainingDetail(id) {
     } else if ((hasMateri || hasQuiz || hasAssignment) && !materiComplete) {
         ctaBlock = `<div class="text-center text-sm text-slate-500 bg-slate-50 rounded-2xl py-3">Selesaikan materi${hasQuiz ? ', lulus post-test' : ''}${hasAssignment ? ', & kumpulkan tugas' : ''} di bawah untuk lanjut ke evaluasi.</div>`;
     } else if (!evalDone) {
-        ctaBlock = `<button onclick="openEvaluation('${t.id}')" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-2xl transition"><i class="fas fa-star mr-1"></i> Isi Evaluasi</button>`;
+        ctaBlock = `<button onclick="openEvaluation('${t.id}')" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-2xl transition"><i class="fas fa-star mr-1"></i> Isi Rating & Feedback</button>`;
     } else {
         ctaBlock = `<button onclick="window.navigate('/certificates')" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 rounded-2xl transition"><i class="fas fa-award mr-1"></i> Lihat Sertifikat</button>`;
     }
