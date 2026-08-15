@@ -906,6 +906,7 @@ function renderUserDashboard() {
     const u = window.STATE.user;
     const myEnr = window.STATE.enrollments.filter(e => e.userId === u.id);
     const completedCourses = myEnr.filter(e => e.status === "completed").length;
+    const myAssignedCourses = window.STATE.courses.filter(c => c.published && window.deptAllowed(c));
     const myRegs = window.STATE.trainingRegs.filter(r => r.userId === u.id);
     const myCerts = window.STATE.certificates.filter(c => c.userId === u.id);
 
@@ -943,7 +944,7 @@ function renderUserDashboard() {
             <p class="text-sm text-slate-500">Ini ringkasan progres belajar kamu.</p>
         </div>
         <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-            ${clickableStatCard("fa-book-open", "indigo", myEnr.length, "Training Diikuti", "window.openDashboardDetail('enrolled')")}
+            ${clickableStatCard("fa-book-open", "indigo", myAssignedCourses.length, "Training Diikuti", "window.openDashboardDetail('enrolled')")}
             ${clickableStatCard("fa-circle-check", "emerald", completedCourses, "Training Selesai", "window.openDashboardDetail('completed')")}
             ${clickableStatCard("fa-chalkboard-user", "amber", myRegs.length, "Training Terdaftar", "window.openDashboardDetail('registered')")}
             ${clickableStatCard("fa-award", "rose", myCerts.length, "Sertifikat", "window.openDashboardDetail('certificates')")}
@@ -1180,23 +1181,34 @@ window.openDashboardDetail = function (type) {
 
     if (type === "enrolled") {
         const myEnr = window.STATE.enrollments.filter(e => e.userId === u.id);
+        const assignedCourses = window.STATE.courses.filter(c => c.published && window.deptAllowed(c));
         titleEl.innerHTML = `<i class="fas fa-book-open mr-1"></i> Training Diikuti`;
-        bodyEl.innerHTML = myEnr.length ? myEnr.map(e => {
-            const c = window.STATE.courses.find(x => x.id === e.courseId);
-            if (!c) return "";
-            const progress = window.sel.courseProgress(c.id);
-            const done = e.status === "completed";
+        bodyEl.innerHTML = assignedCourses.length ? assignedCourses.map(c => {
+            const e = myEnr.find(x => x.courseId === c.id) || null;
+            const started = !!e;
+            const progress = started ? window.sel.courseProgress(c.id) : 0;
+            const done = started && e.status === "completed";
+            const hasQuiz = c.quiz && (c.quiz.questions || []).length > 0;
+            const pre = hasQuiz ? window.sel.myPretestAttempt("course", c.id) : null;
+            const postAttempts = hasQuiz ? window.sel.myPostTestAttempts("course", c.id) : [];
+            const post = postAttempts[0] || null;
+            const testInfo = hasQuiz ? `
+                <p class="text-[11px] text-slate-500 font-semibold mt-1">
+                    <span class="mr-2"><i class="fas fa-list-check text-sky-400 mr-0.5"></i>Pre-test: ${pre ? pre.score : '-'}</span>
+                    <span><i class="fas fa-clipboard-question text-violet-400 mr-0.5"></i>Post-test: ${post ? `${post.score} ${post.passed ? '<span class="text-emerald-500 font-bold">(Lulus)</span>' : '<span class="text-rose-500 font-bold">(Belum)</span>'}` : '-'}</span>
+                </p>` : "";
             return `
             <div class="flex items-center gap-3 p-3 rounded-2xl border border-slate-100 hover:bg-indigo-50/40 transition">
                 <div class="w-12 h-12 rounded-xl bg-cover bg-center shrink-0" style="${courseCoverStyleSafe(c)}"></div>
                 <div class="flex-1 min-w-0">
                     <p class="text-sm font-bold text-slate-700 truncate">${window.escapeHtml(c.title)}</p>
                     <div class="h-1.5 bg-slate-100 rounded-full overflow-hidden mt-1.5"><div class="h-full ${done ? 'bg-emerald-500' : 'bg-indigo-500'}" style="width:${progress}%"></div></div>
-                    <p class="text-[11px] text-slate-400 font-semibold mt-1">${done ? 'Selesai' : progress + '% selesai'}</p>
+                    <p class="text-[11px] text-slate-400 font-semibold mt-1">${done ? 'Selesai' : (started ? progress + '% selesai' : 'Belum dimulai')}</p>
+                    ${testInfo}
                 </div>
-                <button onclick="window.closeModal('modal-dashboard-detail'); window.navigate('/courses/${c.id}')" class="shrink-0 text-[11px] font-black px-3 py-2 rounded-xl ${done ? 'bg-emerald-50 text-emerald-600 hover:bg-emerald-100' : 'bg-indigo-600 text-white hover:bg-indigo-700'} transition">${done ? 'Lihat Kembali' : 'Lanjutkan'}</button>
+                <button onclick="window.closeModal('modal-dashboard-detail'); window.navigate('/courses/${c.id}')" class="shrink-0 text-[11px] font-black px-3 py-2 rounded-xl ${done ? 'bg-emerald-50 text-emerald-600 hover:bg-emerald-100' : 'bg-indigo-600 text-white hover:bg-indigo-700'} transition">${done ? 'Lihat Kembali' : (started ? 'Lanjutkan' : 'Mulai Training')}</button>
             </div>`;
-        }).join("") : dashboardEmptyState("fa-book-open", "Kamu belum mengikuti training apa pun.", "/courses", "Jelajahi Training");
+        }).join("") : dashboardEmptyState("fa-book-open", "Belum ada training onboarding yang ditugaskan untukmu.", "/courses", "Jelajahi Training");
     }
 
     else if (type === "completed") {
@@ -1617,8 +1629,7 @@ function renderCourseDetail(id) {
         ctaBlock = `<button onclick="window.guardedClick(this, () => window.enrollCourse('${c.id}'))" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-2xl transition"><i class="fas fa-play mr-1"></i> Mulai Training</button>`;
     } else if (cert) {
         ctaBlock = `<button onclick="window.navigate('/certificates')" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 rounded-2xl transition"><i class="fas fa-award mr-1"></i> Lihat Sertifikat</button>`;
-    } else if (!pretestDone) {
-        ctaBlock = `<button onclick="openQuiz('course','${c.id}','pretest')" class="w-full bg-sky-500 hover:bg-sky-600 text-white font-bold py-3 rounded-2xl transition"><i class="fas fa-list-check mr-1"></i> Kerjakan Pre-test</button>
+    } else if (!pretestDone) {        ctaBlock = `<button onclick="openQuiz('course','${c.id}','pretest')" class="w-full bg-sky-500 hover:bg-sky-600 text-white font-bold py-3 rounded-2xl transition"><i class="fas fa-list-check mr-1"></i> Kerjakan Pre-test</button>
         <p class="text-center text-xs text-slate-400">Pre-test wajib dikerjakan dulu sebelum materi bisa dibuka.</p>`;
     } else if (!evalReady) {
         ctaBlock = `<div class="text-center text-sm text-slate-500 bg-slate-50 rounded-2xl py-3">Selesaikan semua materi secara berurutan untuk lanjut${(hasQuiz||hasAssignment) ? ' ke evaluasi' : ''}.</div>`;
@@ -1651,6 +1662,28 @@ function renderCourseDetail(id) {
         ctaBlock = parts.join("");
     }
 
+    // Ringkasan nilai Pre-test, Post-test, dan Penugasan — selalu ditampilkan begitu peserta
+    // sudah terdaftar (enr) dan training ini punya kuis/penugasan, termasuk saat training
+    // sudah selesai & lulus (waktu ctaBlock cuma nampilin tombol "Lihat Sertifikat").
+    const scoreSummary = (enr && (hasQuiz || hasAssignment)) ? `
+        <div class="border-t border-slate-100 pt-3 space-y-2">
+            <p class="text-[10px] font-black uppercase text-slate-400">Ringkasan Nilai</p>
+            ${hasQuiz ? `
+            <div class="flex justify-between items-center text-xs">
+                <span class="text-slate-500"><i class="fas fa-list-check text-sky-400 mr-1"></i>Pre-test</span>
+                <span class="font-bold text-slate-700">${pretestAttempt ? pretestAttempt.score : '-'}</span>
+            </div>
+            <div class="flex justify-between items-center text-xs">
+                <span class="text-slate-500"><i class="fas fa-clipboard-question text-violet-400 mr-1"></i>Post-test</span>
+                <span class="font-bold ${attempt ? (attempt.passed ? 'text-emerald-600' : 'text-rose-500') : 'text-slate-700'}">${attempt ? `${attempt.score} (${attempt.passed ? 'Lulus' : 'Belum lulus'})` : '-'}</span>
+            </div>` : ""}
+            ${hasAssignment ? `
+            <div class="flex justify-between items-center text-xs">
+                <span class="text-slate-500"><i class="fas fa-file-signature text-violet-400 mr-1"></i>Penugasan</span>
+                <span class="font-bold ${assignmentSub && assignmentSub.status === 'graded' ? 'text-emerald-600' : 'text-amber-500'}">${assignmentSub ? (assignmentSub.status === 'graded' ? assignmentSub.score : 'Belum dinilai') : '-'}</span>
+            </div>` : ""}
+        </div>` : "";
+
     window.setPage(`
         <a href="#/courses" class="text-xs font-bold text-slate-400 hover:text-indigo-600"><i class="fas fa-arrow-left mr-1"></i> Kembali ke Katalog</a>
         <div class="mt-3 rounded-3xl overflow-hidden h-44 bg-cover bg-center relative" style="${courseCoverStyle(c)}">
@@ -1669,6 +1702,7 @@ function renderCourseDetail(id) {
                     <div class="flex justify-between text-xs text-slate-500"><span>Total Materi</span><span class="font-bold text-slate-700">${totalLessons} lesson</span></div>
                     ${enr ? `<div><div class="h-2 bg-slate-100 rounded-full overflow-hidden"><div class="h-full bg-indigo-500" style="width:${progress}%"></div></div><p class="text-[11px] text-slate-400 mt-1 font-semibold">${progress}% selesai</p></div>` : ""}
                     ${ctaBlock}
+                    ${scoreSummary}
                 </div>
             </div>
             <div class="order-2 lg:order-1 lg:col-span-2 space-y-4">
