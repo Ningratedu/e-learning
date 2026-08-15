@@ -129,12 +129,12 @@ button:disabled, input[type="submit"]:disabled {
 
 <!-- ================= MODAL: DETAIL KARYAWAN ================= -->
 <div id="modal-employee-detail" class="fixed inset-0 z-[10000] hide modal-overlay flex items-center justify-center p-4">
-    <div class="bg-white w-full max-w-sm rounded-3xl shadow-2xl overflow-hidden">
+    <div class="bg-white w-full max-w-2xl rounded-3xl shadow-2xl overflow-hidden">
         <div class="p-5 border-b flex justify-between items-center bg-indigo-50">
             <h3 class="text-sm font-black text-indigo-600"><i class="fas fa-id-card-clip mr-1"></i> Detail Karyawan</h3>
             <button onclick="window.closeModal('modal-employee-detail')" class="text-slate-400 hover:text-slate-700"><i class="fas fa-times"></i></button>
         </div>
-        <div id="employee-detail-body" class="p-5 max-h-[70vh] overflow-y-auto"></div>
+        <div id="employee-detail-body" class="p-5 max-h-[75vh] overflow-y-auto"></div>
     </div>
 </div>
 
@@ -3258,10 +3258,261 @@ function renderEmployeeAdminList() {
     `);
 }
 
+// ================= RINGKASAN TRAINING KARYAWAN (untuk modal Detail Karyawan) =================
+// Semua helper di bawah ini SENGAJA dibuat versi "generik" (terima userId/deptName sebagai
+// parameter, bukan window.STATE.user) karena helper bawaan (window.sel.*, deptAllowed,
+// orderedPublishedCourses, courseLockInfo) semuanya terikat ke user yang sedang login.
+// Admin butuh lihat data training milik KARYAWAN LAIN, jadi gak bisa pakai versi itu langsung.
+
+// Sama seperti window.deptAllowed, tapi departemen-nya diinput manual (bukan dari sesi login).
+function deptAllowedForDept(item, deptName) {
+    const targets = Array.isArray(item.departments) ? item.departments.filter(Boolean) : [];
+    if (!targets.length) return true;
+    const d = (deptName || "").trim().toLowerCase();
+    if (!d) return false;
+    return targets.some(t => String(t).trim().toLowerCase() === d);
+}
+
+// Sama seperti orderedPublishedCourses, tapi untuk departemen tertentu (bukan dept user login).
+// Urutan HARUS identik dengan yang dipakai di katalog peserta supaya "training berikutnya yang
+// harus diselesaikan" konsisten dengan yang dilihat karyawan sendiri.
+function orderedPublishedCoursesForDept(deptName) {
+    const list = window.STATE.courses.filter(c => c.published && deptAllowedForDept(c, deptName));
+    return list.sort((a, b) => {
+        const oa = Number.isFinite(a.order) ? a.order : Infinity;
+        const ob = Number.isFinite(b.order) ? b.order : Infinity;
+        if (oa !== ob) return oa - ob;
+        const ta = a.createdAt?.seconds || 0, tb = b.createdAt?.seconds || 0;
+        if (ta !== tb) return ta - tb;
+        return String(a.id).localeCompare(String(b.id));
+    });
+}
+
+function enrollmentOfUser(courseId, userId) {
+    return window.STATE.enrollments.find(e => e.courseId === courseId && e.userId === userId) || null;
+}
+function certOfUser(courseId, userId) {
+    return window.STATE.certificates.find(c => c.courseId === courseId && c.userId === userId) || null;
+}
+function pretestAttemptOfUser(courseId, userId) {
+    const attempts = window.STATE.quizAttempts.filter(a => a.courseId === courseId && a.userId === userId && a.attemptType === "pretest");
+    if (!attempts.length) return null;
+    return attempts.sort((a, b) => (b.attemptAt?.seconds || 0) - (a.attemptAt?.seconds || 0))[0];
+}
+function postTestAttemptsOfUser(courseId, userId) {
+    return window.STATE.quizAttempts
+        .filter(a => a.courseId === courseId && a.userId === userId && a.attemptType !== "pretest")
+        .sort((a, b) => (b.attemptAt?.seconds || 0) - (a.attemptAt?.seconds || 0));
+}
+// Training onboarding ke-N terkunci buat user ini kalau ADA SAJA training sebelumnya (di
+// `ordered`) yang sertifikatnya belum terbit — persis logika courseLockInfo, cuma generik.
+function courseLockInfoOfUser(courseId, userId, ordered) {
+    const idx = ordered.findIndex(c => c.id === courseId);
+    if (idx < 0) return { locked: true };
+    for (let i = 0; i < idx; i++) {
+        if (!certOfUser(ordered[i].id, userId)) {
+            return { locked: true, blockingTitle: ordered[i].title, blockingId: ordered[i].id };
+        }
+    }
+    return { locked: false };
+}
+
+// Bangun HTML checklist materi (per modul/lesson) punya SATU training, ditandai
+// sudah/belum berdasarkan completedLessonIds di dokumen enrollment user ini.
+function buildMateriChecklist(course, enr) {
+    const doneSet = new Set(enr?.completedLessonIds || []);
+    const modules = course.modules || [];
+    if (!modules.length) return `<p class="text-[11px] text-slate-400">Training ini belum punya materi.</p>`;
+    return modules.map(m => `
+        <div class="mb-2 last:mb-0">
+            <p class="text-[10px] font-black text-slate-500 uppercase mb-1">${window.escapeHtml(m.title)}</p>
+            <div class="space-y-1">
+                ${(m.lessons || []).map(l => {
+                    const done = doneSet.has(l.id);
+                    return `<div class="flex items-center gap-2 text-[11px] ${done ? "text-slate-600" : "text-slate-400"}">
+                        <i class="fas ${done ? "fa-circle-check text-emerald-500" : "fa-circle text-slate-300"}"></i>
+                        <span class="truncate">${window.escapeHtml(l.title)}</span>
+                        ${done ? "" : `<span class="ml-auto text-[9px] font-bold text-amber-500 shrink-0">Belum</span>`}
+                    </div>`;
+                }).join("") || `<p class="text-[10px] text-slate-300">Belum ada materi di modul ini.</p>`}
+            </div>
+        </div>`).join("");
+}
+
+// Bangun satu card training (dipakai di dalam ringkasan training karyawan). Menampilkan status
+// Lulus/Belum Lulus, nilai pre-test & post-test masing-masing, progress materi, dan checklist
+// materi sudah/belum yang bisa dibuka lewat <details>.
+function buildEmployeeTrainingCard(course, userId, ordered) {
+    const lock = courseLockInfoOfUser(course.id, userId, ordered);
+    const enr = enrollmentOfUser(course.id, userId);
+    const cert = certOfUser(course.id, userId);
+    const totalLessons = (course.modules || []).reduce((s, m) => s + (m.lessons || []).length, 0);
+    const doneLessons = Math.min(totalLessons, (enr?.completedLessonIds || []).length);
+    const lessonProgress = totalLessons ? Math.round((doneLessons / totalLessons) * 100) : 0;
+
+    const hasQuiz = !!(course.quiz && (course.quiz.questions || []).length);
+    const pretest = hasQuiz ? pretestAttemptOfUser(course.id, userId) : null;
+    const postAttempts = hasQuiz ? postTestAttemptsOfUser(course.id, userId) : [];
+    const latestPost = postAttempts[0] || null;
+    const quizPassed = !hasQuiz || !!(latestPost && latestPost.passed);
+
+    const completed = !!cert;
+
+    let statusBadge;
+    if (lock.locked) {
+        statusBadge = `<span class="text-[10px] font-black px-2.5 py-1 rounded-full bg-slate-100 text-slate-400"><i class="fas fa-lock mr-1"></i> Terkunci</span>`;
+    } else if (completed) {
+        statusBadge = `<span class="text-[10px] font-black px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-600"><i class="fas fa-circle-check mr-1"></i> Selesai</span>`;
+    } else if (doneLessons > 0 || postAttempts.length) {
+        statusBadge = `<span class="text-[10px] font-black px-2.5 py-1 rounded-full bg-amber-50 text-amber-600"><i class="fas fa-spinner mr-1"></i> Sedang Berjalan</span>`;
+    } else {
+        statusBadge = `<span class="text-[10px] font-black px-2.5 py-1 rounded-full bg-rose-50 text-rose-500"><i class="fas fa-circle-exclamation mr-1"></i> Belum Dimulai</span>`;
+    }
+
+    const lulusBadge = !hasQuiz
+        ? `<span class="text-[10px] font-black px-2.5 py-1 rounded-full bg-slate-100 text-slate-400">Tanpa Post-Test</span>`
+        : (quizPassed
+            ? `<span class="text-[10px] font-black px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-600"><i class="fas fa-check mr-1"></i> Lulus</span>`
+            : `<span class="text-[10px] font-black px-2.5 py-1 rounded-full bg-rose-50 text-rose-500"><i class="fas fa-xmark mr-1"></i> Belum Lulus</span>`);
+
+    return `
+    <div class="border border-slate-100 rounded-2xl p-4 ${lock.locked ? "opacity-70" : ""}">
+        <div class="flex items-start justify-between gap-2 flex-wrap">
+            <div class="min-w-0">
+                <p class="text-[10px] font-bold text-indigo-500 uppercase tracking-wide">${window.escapeHtml(course.category || "Training")}</p>
+                <p class="font-black text-sm text-slate-800 leading-snug">${window.escapeHtml(course.title)}</p>
+            </div>
+            ${statusBadge}
+        </div>
+
+        ${lock.locked ? `<p class="text-[10px] text-rose-400 font-semibold mt-1.5"><i class="fas fa-triangle-exclamation mr-1"></i> Menunggu "${window.escapeHtml(lock.blockingTitle)}" diselesaikan dulu.</p>` : ""}
+
+        <div class="mt-2.5">
+            <div class="h-1.5 bg-slate-100 rounded-full overflow-hidden"><div class="h-full bg-indigo-500" style="width:${lessonProgress}%"></div></div>
+            <p class="text-[10px] text-slate-400 mt-1 font-semibold">${doneLessons}/${totalLessons} materi selesai (${lessonProgress}%)</p>
+        </div>
+
+        <div class="grid grid-cols-2 gap-2 mt-3">
+            <div class="bg-slate-50 rounded-xl p-2 text-center">
+                <p class="text-[9px] uppercase text-slate-400 font-black tracking-wide">Nilai Pre-Test</p>
+                <p class="text-sm font-black text-slate-700 mt-0.5">${pretest ? pretest.score : "-"}</p>
+            </div>
+            <div class="bg-slate-50 rounded-xl p-2 text-center">
+                <p class="text-[9px] uppercase text-slate-400 font-black tracking-wide">Nilai Post-Test</p>
+                <p class="text-sm font-black mt-0.5 ${latestPost ? (latestPost.passed ? "text-emerald-600" : "text-rose-500") : "text-slate-700"}">${latestPost ? latestPost.score : "-"}</p>
+            </div>
+        </div>
+
+        <div class="flex items-center justify-between mt-3">
+            ${lulusBadge}
+            ${hasQuiz && postAttempts.length ? `<span class="text-[10px] text-slate-400 font-semibold">${postAttempts.length}/${MAX_POSTTEST_ATTEMPTS}x percobaan</span>` : ""}
+        </div>
+
+        <details class="mt-3">
+            <summary class="text-[11px] font-bold text-indigo-500 cursor-pointer select-none">Lihat detail materi</summary>
+            <div class="mt-2 bg-slate-50 rounded-xl p-3">${buildMateriChecklist(course, enr)}</div>
+        </details>
+    </div>`;
+}
+
+// Bangun keseluruhan blok ringkasan training (persentase onboarding + list card training +
+// tombol kirim reminder) untuk ditempel di bawah data pribadi karyawan pada modal detail.
+function buildEmployeeTrainingSummary(emp, user) {
+    if (!user) {
+        return `
+        <div class="mt-4 pt-4 border-t border-slate-100">
+            <h4 class="font-black text-sm text-slate-700 mb-2"><i class="fas fa-graduation-cap mr-1.5 text-indigo-400"></i> Ringkasan Training</h4>
+            <div class="bg-rose-50 text-rose-500 text-xs font-semibold rounded-2xl p-3">
+                Karyawan ini belum punya akun, jadi belum bisa mengakses training onboarding.
+            </div>
+        </div>`;
+    }
+
+    const dept = (user.dept || emp.dept || "").trim();
+    const ordered = orderedPublishedCoursesForDept(dept);
+
+    if (!ordered.length) {
+        return `
+        <div class="mt-4 pt-4 border-t border-slate-100">
+            <h4 class="font-black text-sm text-slate-700 mb-2"><i class="fas fa-graduation-cap mr-1.5 text-indigo-400"></i> Ringkasan Training</h4>
+            <div class="bg-slate-50 text-slate-400 text-xs font-semibold rounded-2xl p-3">
+                Belum ada training onboarding yang ditargetkan untuk departemen ${dept ? `"${window.escapeHtml(dept)}"` : "karyawan ini"}.
+            </div>
+        </div>`;
+    }
+
+    const completedCount = ordered.filter(c => certOfUser(c.id, user.id)).length;
+    const percent = Math.round((completedCount / ordered.length) * 100);
+    const remaining = ordered.length - completedCount;
+    const allDone = remaining === 0;
+
+    const cards = ordered.map(c => buildEmployeeTrainingCard(c, user.id, ordered)).join("");
+
+    return `
+    <div class="mt-4 pt-4 border-t border-slate-100">
+        <div class="flex items-center justify-between flex-wrap gap-2 mb-3">
+            <h4 class="font-black text-sm text-slate-700"><i class="fas fa-graduation-cap mr-1.5 text-indigo-400"></i> Ringkasan Training Onboarding</h4>
+            ${!allDone ? `<button onclick="window.guardedClick(this, () => window.sendTrainingReminder('${emp.id}'))" class="bg-indigo-600 hover:bg-indigo-700 text-white text-[11px] font-bold px-3 py-2 rounded-xl transition"><i class="fab fa-whatsapp mr-1"></i> Kirim Reminder</button>` : ""}
+        </div>
+
+        <div class="bg-indigo-50 rounded-2xl p-4 flex items-center justify-between gap-3 mb-4">
+            <div class="min-w-0">
+                <p class="text-[10px] font-bold uppercase text-indigo-400 tracking-wide">Progress Onboarding • ${window.escapeHtml(dept || "-")}</p>
+                <p class="text-sm font-black text-indigo-700 mt-0.5">${completedCount}/${ordered.length} training selesai</p>
+                <p class="text-[11px] text-indigo-400 font-semibold mt-0.5">${allDone ? "Semua training onboarding sudah tuntas 🎉" : `${remaining} training masih belum selesai`}</p>
+            </div>
+            <div class="text-2xl font-black text-indigo-600 shrink-0">${percent}%</div>
+        </div>
+
+        <div class="space-y-3">${cards}</div>
+    </div>`;
+}
+
+// Cari & buka link WhatsApp berisi reminder buat menyelesaikan training onboarding yang belum
+// tuntas. Link yang disisipkan selalu mengarah ke training PALING AWAL yang belum selesai
+// (sesuai urutan resmi), jadi karyawan diarahkan lanjut dari titik yang benar, bukan loncat.
+window.sendTrainingReminder = function (empId) {
+    const e = window.STATE.employees.find(x => x.id === empId);
+    if (!e) { window.toast("Data karyawan tidak ditemukan.", "error"); return; }
+
+    const usersByUsername = {};
+    window.STATE.users.forEach(u => { usersByUsername[normalizeUsername(u.username)] = u; });
+    const user = usersByUsername[normalizeUsername(e.username)];
+    if (!user) { window.toast("Karyawan ini belum punya akun, reminder tidak bisa dikirim.", "warn"); return; }
+
+    const dept = (user.dept || e.dept || "").trim();
+    const ordered = orderedPublishedCoursesForDept(dept);
+    if (!ordered.length) { window.toast("Tidak ada training onboarding untuk departemen karyawan ini.", "info"); return; }
+
+    const incomplete = ordered.filter(c => !certOfUser(c.id, user.id));
+    if (!incomplete.length) { window.toast("Semua training onboarding karyawan ini sudah selesai, tidak perlu reminder.", "success"); return; }
+
+    const next = incomplete[0];
+    const phoneDigits = String(e.kontak || "").replace(/[^\d]/g, "");
+    if (!phoneDigits) { window.toast("Nomor kontak karyawan ini belum tersedia di data karyawan.", "warn"); return; }
+    let phone = phoneDigits;
+    if (phone.startsWith("0")) phone = "62" + phone.slice(1);
+    else if (!phone.startsWith("62")) phone = "62" + phone;
+
+    const link = `${location.origin}${location.pathname}#/courses/${next.id}`;
+    const text = `Halo ${e.nama}, ini pengingat dari NingratEdu 👋\n\n`
+        + `Kamu masih punya ${incomplete.length} training onboarding yang belum diselesaikan. `
+        + `Yuk lanjutkan training "${next.title}" terlebih dahulu ya, materi berikutnya akan otomatis terbuka setelah ini selesai:\n${link}\n\n`
+        + `Terima kasih!`;
+
+    window.open(`https://wa.me/${phone}?text=${encodeURIComponent(text)}`, "_blank");
+    window.toast(`Link reminder WhatsApp untuk "${next.title}" berhasil dibuka.`, "success");
+};
+
 window.showEmployeeDetail = function (empId) {
     const e = window.STATE.employees.find(x => x.id === empId);
     if (!e) return;
     const row = (label, val) => `<div class="flex justify-between text-xs py-1.5 border-b border-slate-50"><span class="text-slate-400">${label}</span><span class="font-bold text-slate-700">${window.escapeHtml(val || "-")}</span></div>`;
+
+    const usersByUsername = {};
+    window.STATE.users.forEach(u => { usersByUsername[normalizeUsername(u.username)] = u; });
+    const linkedUser = usersByUsername[normalizeUsername(e.username)];
+
     document.getElementById("employee-detail-body").innerHTML = `
         <h3 class="font-black text-lg text-slate-800 mb-1">${window.escapeHtml(e.nama)}</h3>
         <p class="text-xs text-slate-400 mb-3">@${window.escapeHtml(e.username)}</p>
@@ -3276,6 +3527,7 @@ window.showEmployeeDetail = function (empId) {
         ${row("Tgl Bergabung", window.fmtDate(e.tglBergabung))}
         ${row("No Kontak", e.kontak)}
         ${row("Tanggal Lahir", window.fmtDate(e.tglLahir))}
+        ${buildEmployeeTrainingSummary(e, linkedUser)}
     `;
     window.openModal("modal-employee-detail");
 };
