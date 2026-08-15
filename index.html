@@ -276,9 +276,6 @@ import {
     getFirestore, collection, doc, addDoc, getDoc, getDocs, setDoc, updateDoc,
     deleteDoc, onSnapshot, query, where, orderBy, serverTimestamp, writeBatch
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
-import {
-    getStorage, ref as storageRef, uploadBytes, uploadBytesResumable, getDownloadURL
-} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-storage.js";
 
 const firebaseConfig = {
     apiKey: "AIzaSyAdNlDuqIbpoZvb1f1_u6SC2zcFcXbB8DM",
@@ -291,9 +288,17 @@ const firebaseConfig = {
 
 const appFb = initializeApp(firebaseConfig);
 const db = getFirestore(appFb);
-const storage = getStorage(appFb);
 const appId = "booking-ruang-training";
 const NS = "lms"; // namespace khusus data LMS
+
+// ================= CLOUDINARY (pengganti Firebase Storage) =================
+// Firebase Storage butuh plan Blaze (kartu kredit) sejak Feb 2026, jadi upload
+// file (PPT materi, cover course, lampiran tugas) dipindah ke Cloudinary yang
+// punya free tier 25 credit/bulan tanpa perlu kartu kredit. Upload dilakukan
+// langsung dari browser pakai "unsigned upload preset" (aman, gak perlu API secret).
+const CLOUDINARY_CLOUD_NAME = "tmxumxfb";
+const CLOUDINARY_UPLOAD_PRESET = "ningratedu_unsigned";
+const CLOUDINARY_FOLDER_BASE = "ningratedu";
 
 function col(name) {
     return collection(db, "artifacts", appId, NS, "data", name);
@@ -302,41 +307,76 @@ function ref(name, id) {
     return doc(db, "artifacts", appId, NS, "data", name, id);
 }
 
-// Upload file ke Firebase Storage, return public download URL.
+// Resource type Cloudinary ditentukan dari ekstensi file: gambar → "image",
+// selain itu (pptx, pdf, docx, dll) → "raw". Ini nentuin endpoint upload yang dipakai.
+function cloudinaryResourceType(fileName) {
+    const ext = (fileName.split(".").pop() || "").toLowerCase();
+    const imageExt = ["jpg", "jpeg", "png", "gif", "webp", "svg", "bmp"];
+    return imageExt.includes(ext) ? "image" : "raw";
+}
+
+// Upload file ke Cloudinary (pengganti Firebase Storage), return public URL.
 // folder contoh: "ppt", "assignments/course/<id>", dst.
 async function uploadFile(file, folder) {
     const safeName = file.name.replace(/[^a-zA-Z0-9.\-_]/g, "_");
-    const path = `artifacts/${appId}/${NS}/uploads/${folder}/${Date.now()}_${safeName}`;
-    const sRef = storageRef(storage, path);
-    await uploadBytes(sRef, file);
-    return getDownloadURL(sRef);
+    const resourceType = cloudinaryResourceType(safeName);
+    const fd = new FormData();
+    fd.append("file", file);
+    fd.append("upload_preset", CLOUDINARY_UPLOAD_PRESET);
+    fd.append("folder", `${CLOUDINARY_FOLDER_BASE}/${folder}`);
+    fd.append("public_id", `${Date.now()}_${safeName}`);
+
+    const res = await fetch(`https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/${resourceType}/upload`, {
+        method: "POST",
+        body: fd
+    });
+    if (!res.ok) {
+        const errBody = await res.text().catch(() => "");
+        throw new Error(`Upload ke Cloudinary gagal (${res.status}): ${errBody}`);
+    }
+    const data = await res.json();
+    return data.secure_url;
 }
 
-// Sama seperti uploadFile, tapi pakai uploadBytesResumable supaya progress upload (0-100%)
+// Sama seperti uploadFile, tapi pakai XMLHttpRequest supaya progress upload (0-100%)
 // bisa dipantau lewat callback onProgress — dipakai untuk nampilkan progress bar di UI
 // (mis. upload materi PPT/PPTX di course/training builder).
 function uploadFileWithProgress(file, folder, onProgress) {
     const safeName = file.name.replace(/[^a-zA-Z0-9.\-_]/g, "_");
-    const path = `artifacts/${appId}/${NS}/uploads/${folder}/${Date.now()}_${safeName}`;
-    const sRef = storageRef(storage, path);
-    const task = uploadBytesResumable(sRef, file);
+    const resourceType = cloudinaryResourceType(safeName);
+    const fd = new FormData();
+    fd.append("file", file);
+    fd.append("upload_preset", CLOUDINARY_UPLOAD_PRESET);
+    fd.append("folder", `${CLOUDINARY_FOLDER_BASE}/${folder}`);
+    fd.append("public_id", `${Date.now()}_${safeName}`);
+
     return new Promise((resolve, reject) => {
-        task.on("state_changed", (snap) => {
-            const pct = snap.totalBytes ? Math.round((snap.bytesTransferred / snap.totalBytes) * 100) : 0;
-            if (onProgress) onProgress(pct);
-        }, (err) => reject(err), async () => {
-            try {
-                const url = await getDownloadURL(task.snapshot.ref);
-                resolve(url);
-            } catch (e) { reject(e); }
-        });
+        const xhr = new XMLHttpRequest();
+        xhr.open("POST", `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/${resourceType}/upload`);
+        xhr.upload.onprogress = (e) => {
+            if (e.lengthComputable && onProgress) {
+                onProgress(Math.round((e.loaded / e.total) * 100));
+            }
+        };
+        xhr.onload = () => {
+            if (xhr.status >= 200 && xhr.status < 300) {
+                try {
+                    const data = JSON.parse(xhr.responseText);
+                    resolve(data.secure_url);
+                } catch (e) { reject(e); }
+            } else {
+                reject(new Error(`Upload ke Cloudinary gagal (${xhr.status}): ${xhr.responseText}`));
+            }
+        };
+        xhr.onerror = () => reject(new Error("Upload ke Cloudinary gagal: koneksi terputus."));
+        xhr.send(fd);
     });
 }
 
 window.LMS_DB = {
     db, col, ref, addDoc, getDoc, getDocs, setDoc, updateDoc, deleteDoc,
     onSnapshot, query, where, orderBy, serverTimestamp, writeBatch,
-    storage, storageRef, uploadBytes, uploadBytesResumable, getDownloadURL, uploadFile, uploadFileWithProgress
+    uploadFile, uploadFileWithProgress
 };
 
 // Beritahu main.js bahwa firebase siap
