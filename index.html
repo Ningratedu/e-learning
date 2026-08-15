@@ -26,6 +26,8 @@
 <script src="https://cdn.tailwindcss.com" defer></script>
 <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" defer></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrious/4.0.2/qrious.min.js" defer></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jsQR/1.4.0/jsQR.js" defer></script>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap');
 
@@ -269,6 +271,43 @@ button:disabled, input[type="submit"]:disabled {
             </div>
         </div>
         <div class="p-4 border-t shrink-0"><button onclick="window.guardedClick(this, () => window.submitEvaluation())" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-2xl transition">Kirim Evaluasi & Ambil Sertifikat</button></div>
+    </div>
+</div>
+
+<!-- ================= MODAL: SCAN QR PRESENSI (USER) ================= -->
+<div id="modal-qr-scan" class="fixed inset-0 z-[10000] hide modal-overlay flex items-center justify-center p-4">
+    <div class="bg-white w-full max-w-sm rounded-3xl shadow-2xl overflow-hidden">
+        <div class="p-5 border-b flex justify-between items-center bg-amber-50">
+            <h3 class="text-lg font-black text-amber-600"><i class="fas fa-qrcode mr-1"></i> Scan QR Presensi</h3>
+            <button onclick="window.closeModal('modal-qr-scan')" class="text-slate-400 hover:text-slate-700"><i class="fas fa-times"></i></button>
+        </div>
+        <div class="p-5 space-y-3">
+            <div class="relative rounded-2xl overflow-hidden bg-slate-900 aspect-square">
+                <video id="qr-scan-video" class="w-full h-full object-cover" playsinline muted></video>
+                <div class="absolute inset-8 border-2 border-amber-400/80 rounded-2xl pointer-events-none"></div>
+            </div>
+            <p id="qr-scan-status" class="text-xs text-center text-slate-400 font-semibold">Mengaktifkan kamera...</p>
+        </div>
+    </div>
+</div>
+
+<!-- ================= MODAL: TAMPILKAN QR PRESENSI (ADMIN) ================= -->
+<div id="modal-qr-display" class="fixed inset-0 z-[10000] hide modal-overlay flex items-center justify-center p-4">
+    <div class="bg-white w-full max-w-sm rounded-3xl shadow-2xl overflow-hidden">
+        <div class="p-5 border-b flex justify-between items-center bg-amber-50">
+            <h3 class="text-lg font-black text-amber-600"><i class="fas fa-qrcode mr-1"></i> QR Code Presensi</h3>
+            <button onclick="window.closeModal('modal-qr-display')" class="text-slate-400 hover:text-slate-700"><i class="fas fa-times"></i></button>
+        </div>
+        <div class="p-6 text-center space-y-3">
+            <p id="qr-display-title" class="text-sm font-black text-slate-700"></p>
+            <p id="qr-display-sub" class="text-xs text-slate-400"></p>
+            <div class="flex justify-center py-2"><canvas id="qr-display-canvas"></canvas></div>
+            <p class="text-xs text-slate-400">Kode manual: <span id="qr-display-code" class="font-mono font-black text-amber-600 tracking-widest"></span></p>
+            <div class="flex gap-2 pt-2">
+                <button onclick="window.downloadQrDisplay()" class="flex-1 bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold py-2.5 rounded-xl transition"><i class="fas fa-download mr-1"></i> Unduh PNG</button>
+                <button onclick="window.print()" class="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-bold py-2.5 rounded-xl transition"><i class="fas fa-print mr-1"></i> Cetak</button>
+            </div>
+        </div>
     </div>
 </div>
 
@@ -671,6 +710,7 @@ window.closeModal = function (id) {
         clearInterval(window._pptTimerId);
         window._pptTimerId = null;
     }
+    if (id === "modal-qr-scan" && window.stopQrScan) window.stopQrScan();
 };
 
 // ================= ROUTER (hash based) =================
@@ -2271,6 +2311,7 @@ function renderTrainingDetail(id) {
                     <input id="attendance-code-input" placeholder="Kode presensi" class="flex-1 border border-slate-200 rounded-xl px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-amber-400 uppercase">
                     <button onclick="window.guardedClick(this, () => window.checkInTraining('${t.id}'))" class="bg-amber-500 hover:bg-amber-600 text-white font-bold px-4 rounded-xl text-sm">Hadir</button>
                 </div>
+                <button onclick="window.openQrScan('${t.id}')" class="w-full bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold text-xs py-2.5 rounded-xl transition"><i class="fas fa-qrcode mr-1"></i> atau Scan QR Code Presensi</button>
             </div>`;
     } else if (!pretestDone) {
         ctaBlock = `<div class="text-center text-sm text-sky-600 bg-sky-50 rounded-2xl py-3 font-semibold">Kerjakan Pre-test di bawah untuk membuka materi.</div>`;
@@ -2334,6 +2375,75 @@ window.checkInTraining = async function (trainingId) {
     });
     window.toast("Presensi berhasil!", "success");
     renderTrainingDetail(trainingId);
+};
+
+// ================= SCAN QR PRESENSI (KAMERA) =================
+// QR Code presensi berisi teks format "NINGRATEDU-ATT:<trainingId>:<attendanceCode>" (dibuat
+// oleh admin lewat window.openTrainingQr). Peserta scan pakai kamera HP, hasilnya dicocokkan
+// dengan training yang sedang dibuka lalu langsung dipakai buat presensi otomatis.
+let qrScanStream = null;
+let qrScanRAF = null;
+let qrScanTrainingId = null;
+
+window.openQrScan = async function (trainingId) {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        window.toast("Perangkat/browser ini tidak mendukung akses kamera", "error");
+        return;
+    }
+    qrScanTrainingId = trainingId;
+    window.openModal("modal-qr-scan");
+    const statusEl = document.getElementById("qr-scan-status");
+    statusEl.textContent = "Mengaktifkan kamera...";
+    try {
+        qrScanStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
+    } catch (err) {
+        statusEl.textContent = "Gagal mengakses kamera. Pastikan izin kamera sudah diberikan ke browser ini.";
+        window.toast("Gagal mengakses kamera", "error");
+        return;
+    }
+    const video = document.getElementById("qr-scan-video");
+    video.srcObject = qrScanStream;
+    try { await video.play(); } catch (e) {}
+    statusEl.textContent = "Arahkan kamera ke QR Code presensi dari trainer...";
+
+    const canvas = document.createElement("canvas");
+    const ctx = canvas.getContext("2d");
+    function tick() {
+        if (!qrScanStream) return;
+        if (video.readyState === video.HAVE_ENOUGH_DATA && window.jsQR) {
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            const result = window.jsQR(imageData.data, imageData.width, imageData.height);
+            if (result && result.data) {
+                handleQrScanResult(result.data);
+                return;
+            }
+        }
+        qrScanRAF = requestAnimationFrame(tick);
+    }
+    qrScanRAF = requestAnimationFrame(tick);
+};
+
+function handleQrScanResult(text) {
+    const m = /^NINGRATEDU-ATT:([^:]+):(.+)$/.exec(String(text).trim());
+    const trainingId = qrScanTrainingId;
+    window.closeModal("modal-qr-scan");
+    if (!m) { window.toast("QR Code ini bukan QR presensi NingratEdu yang valid", "error"); return; }
+    const [, scannedTrainingId, code] = m;
+    if (scannedTrainingId !== trainingId) {
+        window.toast("QR Code ini bukan untuk training yang sedang kamu buka", "error");
+        return;
+    }
+    const input = document.getElementById("attendance-code-input");
+    if (input) input.value = code;
+    window.checkInTraining(trainingId);
+}
+
+window.stopQrScan = function () {
+    if (qrScanRAF) { cancelAnimationFrame(qrScanRAF); qrScanRAF = null; }
+    if (qrScanStream) { qrScanStream.getTracks().forEach(tr => tr.stop()); qrScanStream = null; }
 };
 
 window.openEvaluation = function (trainingId) {
@@ -2955,6 +3065,7 @@ function renderTrainingAdminList() {
             <td class="px-3 py-3 text-center text-sm text-slate-500">${window.STATE.attendance.filter(a=>a.trainingId===t.id).length}</td>
             <td class="px-3 py-3 text-center"><span class="font-mono text-xs bg-amber-50 text-amber-600 px-2 py-1 rounded-lg font-bold">${window.escapeHtml(t.attendanceCode||'-')}</span></td>
             <td class="px-3 py-3 text-right space-x-2">
+                <button onclick="window.openTrainingQr('${t.id}')" title="Tampilkan QR Code Presensi" class="text-sky-500 hover:text-sky-700"><i class="fas fa-qrcode"></i></button>
                 <button onclick="window.openTrainingInvite('${t.id}')" title="Kirim Undangan" class="text-amber-500 hover:text-amber-700"><i class="fas fa-paper-plane"></i></button>
                 <a href="#/admin/training-report/${t.id}" title="Laporan Keterlaksanaan" class="text-emerald-500 hover:text-emerald-700"><i class="fas fa-chart-simple"></i></a>
                 <a href="#/admin/trainings/${t.id}" class="text-indigo-500 hover:text-indigo-700"><i class="fas fa-pen"></i></a>
@@ -3051,6 +3162,67 @@ window.sendTrainingInvite = function (trainingId, empId) {
 
     window.open(`https://wa.me/${phone}?text=${encodeURIComponent(text)}`, "_blank");
     window.toast(`Undangan WhatsApp untuk ${e.nama} berhasil dibuka.`, "success");
+};
+
+// ================= QR CODE PRESENSI (ADMIN) =================
+// QR berisi teks "NINGRATEDU-ATT:<trainingId>:<attendanceCode>" — dipindai peserta lewat
+// window.openQrScan supaya presensi otomatis tanpa perlu ketik manual.
+window.openTrainingQr = function (id) {
+    const t = window.STATE.trainings.find(x => x.id === id);
+    if (!t) { window.toast("Training tidak ditemukan", "error"); return; }
+    document.getElementById("qr-display-title").textContent = t.title;
+    document.getElementById("qr-display-sub").textContent = `${window.fmtDate(t.date)} • ${t.location || "-"}`;
+    document.getElementById("qr-display-code").textContent = t.attendanceCode || "-";
+    const payload = `NINGRATEDU-ATT:${t.id}:${(t.attendanceCode || "").toUpperCase()}`;
+    const canvas = document.getElementById("qr-display-canvas");
+    if (window.QRious) {
+        new QRious({ element: canvas, value: payload, size: 220, background: "#ffffff", foreground: "#1e1b4b", level: "M" });
+    } else if (canvas) {
+        const ctx = canvas.getContext("2d");
+        canvas.width = 220; canvas.height = 220;
+        ctx.fillStyle = "#f1f5f9"; ctx.fillRect(0, 0, 220, 220);
+        ctx.fillStyle = "#94a3b8"; ctx.font = "11px sans-serif"; ctx.textAlign = "center";
+        ctx.fillText("QR gagal dimuat,", 110, 100);
+        ctx.fillText("gunakan kode manual", 110, 116);
+    }
+    window.openModal("modal-qr-display");
+};
+window.downloadQrDisplay = function () {
+    const canvas = document.getElementById("qr-display-canvas");
+    if (!canvas) return;
+    const link = document.createElement("a");
+    link.download = "qr-presensi-training.png";
+    link.href = canvas.toDataURL("image/png");
+    link.click();
+};
+
+// ================= REMINDER PRESENSI (VIA WHATSAPP) =================
+// Dipakai di Laporan Keterlaksanaan Training buat kirim reminder ke peserta yang sudah
+// terdaftar tapi belum presensi/hadir.
+function employeeOfUserId(userId) {
+    const u = window.STATE.users.find(x => x.id === userId);
+    return u ? window.sel.employeeOfUser(u) : null;
+}
+window.sendAttendanceReminder = function (trainingId, userId) {
+    const t = window.STATE.trainings.find(x => x.id === trainingId);
+    const e = employeeOfUserId(userId);
+    if (!t || !e) { window.toast("Data kontak peserta ini tidak ditemukan di data karyawan.", "error"); return; }
+    const phoneDigits = String(e.kontak || "").replace(/[^\d]/g, "");
+    if (!phoneDigits) { window.toast("Nomor kontak karyawan ini belum tersedia di data karyawan.", "warn"); return; }
+    let phone = phoneDigits;
+    if (phone.startsWith("0")) phone = "62" + phone.slice(1);
+    else if (!phone.startsWith("62")) phone = "62" + phone;
+
+    const link = `${location.origin}${location.pathname}#/trainings/${t.id}`;
+    const jadwal = `${window.fmtDate(t.date)}${t.startTime ? ` • ${t.startTime}${t.endTime ? '-' + t.endTime : ''}` : ''}`;
+    const text = `Halo ${e.nama}, ini pengingat untuk Training TNA berikut 👋\n\n`
+        + `📘 *${t.title}*\n`
+        + `🗓️ ${jadwal}\n`
+        + `📍 ${t.location || '-'}\n\n`
+        + `Kamu terdaftar tapi belum tercatat presensi/hadir. Yuk cek detail & lakukan presensi di sini:\n${link}\n\nTerima kasih!`;
+
+    window.open(`https://wa.me/${phone}?text=${encodeURIComponent(text)}`, "_blank");
+    window.toast(`Reminder WhatsApp untuk ${e.nama} berhasil dibuka.`, "success");
 };
 
 // ---- Training Builder (mirror Onboarding Builder): info + modul/lesson + kuis ----
@@ -3346,6 +3518,8 @@ window.ROUTES["admin/training-report"] = requireAdmin(function (id) {
     renderTrainingReport(id);
 });
 
+let trainingReportAttendanceFilter = "all"; // all | hadir | belum
+
 function renderTrainingReport(id) {
     const t = window.STATE.trainings.find(x => x.id === id);
     if (!t) { window.setPage(`<p class="text-center text-slate-400 py-20">Training tidak ditemukan.</p><a href="#/admin/trainings" class="block text-center text-xs font-bold text-amber-600 hover:underline">Kembali ke Kelola Training TNA</a>`); return; }
@@ -3431,7 +3605,30 @@ function renderTrainingReport(id) {
     }).join("") : `<p class="text-sm text-slate-400 text-center py-6">Belum ada evaluasi yang diisi peserta.</p>`;
 
     // ---- Rincian per peserta terdaftar ----
-    const detailRows = regs.map(r => {
+    const totalLessons = totalLessonsOf(t);
+    const hasQuizForProgress = t.quiz && (t.quiz.questions || []).length > 0;
+    const hasAssignmentForProgress = !!(t.assignment && t.assignment.enabled);
+    function participantProgress(userId, att, pre, post, asub, ev, cert) {
+        if (cert) return 100;
+        const reg2 = regOfUserForTraining(id, userId);
+        const completedLessonIds = (reg2 && reg2.completedLessonIds) || [];
+        const steps = [!!att];
+        if (hasQuizForProgress) steps.push(!!pre);
+        if (totalLessons > 0) steps.push(completedLessonIds.length >= totalLessons);
+        if (hasQuizForProgress) steps.push(!!(post && post.passed));
+        if (hasAssignmentForProgress) steps.push(!!(asub && asub.status === "graded"));
+        steps.push(!!ev);
+        const done = steps.filter(Boolean).length;
+        return steps.length ? Math.round((done / steps.length) * 100) : 0;
+    }
+
+    const regsFiltered = regs.filter(r => {
+        if (trainingReportAttendanceFilter === "all") return true;
+        const has = !!attendanceOfUserForTraining(id, r.userId);
+        return trainingReportAttendanceFilter === "hadir" ? has : !has;
+    });
+
+    const detailRows = regsFiltered.map(r => {
         const att = attendanceOfUserForTraining(id, r.userId);
         const pre = pretestAttemptOfUserTraining(id, r.userId);
         const postList = postTestAttemptsOfUserTraining(id, r.userId);
@@ -3439,16 +3636,33 @@ function renderTrainingReport(id) {
         const asub = window.STATE.assignmentSubmissions.find(s => s.trainingId === id && s.userId === r.userId) || null;
         const ev = evalOfUserForTraining(id, r.userId);
         const cert = certOfUserForTraining(id, r.userId);
+        const progress = participantProgress(r.userId, att, pre, post, asub, ev, cert);
+        const postLocked = hasQuizForProgress && postList.length >= MAX_POSTTEST_ATTEMPTS && !(post && post.passed);
+        const oldestFailedAttemptId = postLocked ? postList[postList.length - 1].id : null;
         return `<tr class="border-b border-slate-50 hover:bg-slate-50/60">
             <td class="px-3 py-2.5 text-sm font-bold text-slate-700">${window.escapeHtml(r.userName || userName(r.userId))}</td>
             <td class="px-3 py-2.5 text-center">${att ? '<i class="fas fa-circle-check text-emerald-500"></i>' : '<i class="fas fa-circle-xmark text-slate-300"></i>'}</td>
             <td class="px-3 py-2.5 text-center text-xs text-slate-600">${pre ? pre.score : '-'}</td>
-            <td class="px-3 py-2.5 text-center text-xs text-slate-600">${post ? `${post.score} ${post.passed ? '<span class="text-emerald-600 font-bold">(Lulus)</span>' : '<span class="text-rose-500 font-bold">(Belum)</span>'}` : '-'}</td>
+            <td class="px-3 py-2.5 text-center text-xs text-slate-600">
+                ${post ? `${post.score} ${post.passed ? '<span class="text-emerald-600 font-bold">(Lulus)</span>' : '<span class="text-rose-500 font-bold">(Belum)</span>'}` : '-'}
+                ${hasQuizForProgress ? `<div class="text-[10px] text-slate-400 mt-0.5">${postList.length}/${MAX_POSTTEST_ATTEMPTS}x percobaan</div>` : ''}
+            </td>
             <td class="px-3 py-2.5 text-center text-xs text-slate-600">${asub ? (asub.status === 'graded' ? asub.score : 'Menunggu nilai') : '-'}</td>
             <td class="px-3 py-2.5 text-center">${ev ? '<i class="fas fa-circle-check text-emerald-500"></i>' : '<i class="fas fa-circle-xmark text-slate-300"></i>'}</td>
+            <td class="px-3 py-2.5">
+                <div class="flex items-center gap-2">
+                    <div class="w-16 bg-slate-100 rounded-full h-1.5 overflow-hidden shrink-0"><div class="h-1.5 ${progress >= 100 ? 'bg-emerald-500' : 'bg-amber-400'}" style="width:${progress}%"></div></div>
+                    <span class="text-[10px] font-black text-slate-500 shrink-0">${progress}%</span>
+                </div>
+            </td>
             <td class="px-3 py-2.5 text-center"><span class="text-[10px] font-black px-2 py-1 rounded-full ${cert ? 'bg-emerald-50 text-emerald-600' : 'bg-amber-50 text-amber-600'}">${cert ? 'Lulus' : 'Proses'}</span></td>
+            <td class="px-3 py-2.5 text-center whitespace-nowrap">
+                ${!att ? `<button onclick="window.guardedClick(this, () => window.sendAttendanceReminder('${id}','${r.userId}'))" title="Kirim Reminder Kehadiran via WhatsApp" class="text-amber-500 hover:text-amber-700 mx-1"><i class="fab fa-whatsapp"></i></button>` : ''}
+                ${postLocked ? `<button onclick="window.guardedClick(this, () => window.adminDeleteQuizAttempt('${oldestFailedAttemptId}'))" title="Sudah ${MAX_POSTTEST_ATTEMPTS}x gagal post-test — hapus 1 percobaan supaya bisa mengulang" class="text-rose-400 hover:text-rose-600 mx-1"><i class="fas fa-rotate-left"></i></button>` : ''}
+                ${(att || postLocked) ? '' : '<span class="text-slate-200 text-xs">-</span>'}
+            </td>
         </tr>`;
-    }).join("") || `<tr><td colspan="7" class="text-center py-8 text-slate-400 text-sm">Belum ada peserta terdaftar</td></tr>`;
+    }).join("") || `<tr><td colspan="9" class="text-center py-8 text-slate-400 text-sm">${trainingReportAttendanceFilter === "all" ? "Belum ada peserta terdaftar" : "Tidak ada peserta yang cocok dengan filter ini"}</td></tr>`;
 
     window.setPage(`
         <a href="#/admin/trainings" class="text-xs font-bold text-slate-400 hover:text-amber-600"><i class="fas fa-arrow-left mr-1"></i> Kembali</a>
@@ -3457,7 +3671,10 @@ function renderTrainingReport(id) {
                 <h1 class="text-xl font-black text-slate-800">Laporan Keterlaksanaan Training</h1>
                 <p class="text-sm text-slate-500">${window.escapeHtml(t.title)} • ${window.fmtDate(t.date)}</p>
             </div>
-            <span class="text-[11px] font-bold px-3 py-1.5 rounded-full ${hasScope ? 'bg-amber-50 text-amber-600' : 'bg-slate-100 text-slate-500'}"><i class="fas fa-users mr-1"></i>${window.escapeHtml(window.trainingScopeLabel(t))}</span>
+            <div class="flex items-center gap-2 flex-wrap">
+                <button onclick="window.openTrainingQr('${t.id}')" class="text-xs font-black px-3 py-1.5 rounded-full bg-sky-50 text-sky-600 hover:bg-sky-100 transition"><i class="fas fa-qrcode mr-1"></i>Tampilkan QR Presensi</button>
+                <span class="text-[11px] font-bold px-3 py-1.5 rounded-full ${hasScope ? 'bg-amber-50 text-amber-600' : 'bg-slate-100 text-slate-500'}"><i class="fas fa-users mr-1"></i>${window.escapeHtml(window.trainingScopeLabel(t))}</span>
+            </div>
         </div>
 
         <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
@@ -3477,7 +3694,14 @@ function renderTrainingReport(id) {
         </div>
 
         <div class="bg-white rounded-3xl border border-slate-100 shadow-sm p-5 mb-6">
-            <h3 class="font-black text-sm text-slate-700 mb-3">Rincian per Peserta Terdaftar</h3>
+            <div class="flex items-center justify-between flex-wrap gap-2 mb-3">
+                <h3 class="font-black text-sm text-slate-700">Rincian per Peserta Terdaftar</h3>
+                <div class="flex gap-1 bg-slate-100 rounded-xl p-1">
+                    <button onclick="trainingReportAttendanceFilter='all'; renderTrainingReport('${id}')" class="text-[11px] font-bold px-2.5 py-1.5 rounded-lg transition ${trainingReportAttendanceFilter === 'all' ? 'bg-white shadow text-slate-700' : 'text-slate-500'}">Semua</button>
+                    <button onclick="trainingReportAttendanceFilter='hadir'; renderTrainingReport('${id}')" class="text-[11px] font-bold px-2.5 py-1.5 rounded-lg transition ${trainingReportAttendanceFilter === 'hadir' ? 'bg-white shadow text-emerald-600' : 'text-slate-500'}">Sudah Hadir</button>
+                    <button onclick="trainingReportAttendanceFilter='belum'; renderTrainingReport('${id}')" class="text-[11px] font-bold px-2.5 py-1.5 rounded-lg transition ${trainingReportAttendanceFilter === 'belum' ? 'bg-white shadow text-rose-600' : 'text-slate-500'}">Belum Hadir</button>
+                </div>
+            </div>
             <div class="overflow-x-auto">
                 <table class="w-full text-left">
                     <thead class="bg-slate-50 text-[10px] font-black uppercase text-slate-400">
@@ -3488,7 +3712,9 @@ function renderTrainingReport(id) {
                             <th class="px-3 py-2.5 text-center">Post-test</th>
                             <th class="px-3 py-2.5 text-center">Tugas</th>
                             <th class="px-3 py-2.5 text-center">Evaluasi</th>
+                            <th class="px-3 py-2.5">Progress</th>
                             <th class="px-3 py-2.5 text-center">Status</th>
+                            <th class="px-3 py-2.5 text-center">Aksi</th>
                         </tr>
                     </thead>
                     <tbody>${detailRows}</tbody>
