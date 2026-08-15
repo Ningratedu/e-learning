@@ -485,7 +485,30 @@ window.sel = {
     },
     isSuperAdmin() {
         return window.STATE.user?.role === "superadmin";
+    },
+    // Departemen milik user yang sedang login (di-normalize: trim + lowercase) buat dicocokkan
+    // ke daftar target departemen sebuah training.
+    myDept() {
+        return (window.STATE.user?.dept || "").trim();
+    },
+    // Daftar semua nama departemen unik yang pernah dipakai user (buat opsi/saran di form admin).
+    allDeptNames() {
+        const set = new Set();
+        (window.STATE.users || []).forEach(u => { const d = (u.dept || "").trim(); if (d) set.add(d); });
+        return [...set].sort((a, b) => a.localeCompare(b));
     }
+};
+
+// Cek apakah sebuah training (course/training) boleh dilihat oleh departemen user yang login.
+// targetDepts kosong/undefined artinya training itu berlaku untuk SEMUA departemen.
+// Admin selalu bisa lihat semua (buat keperluan kelola/preview).
+window.deptAllowed = function (item) {
+    if (window.sel.isAdmin()) return true;
+    const targets = Array.isArray(item.departments) ? item.departments.filter(Boolean) : [];
+    if (!targets.length) return true;
+    const myDept = window.sel.myDept().toLowerCase();
+    if (!myDept) return false;
+    return targets.some(d => String(d).trim().toLowerCase() === myDept);
 };
 
 
@@ -1140,11 +1163,18 @@ function courseCoverStyle(c) {
 }
 
 // Urutan resmi Onboarding Training (dipakai buat aturan "harus training sebelumnya selesai
-// dulu"), diurut dari yang paling lama dibuat -> paling baru. Kalau createdAt belum ke-set
-// (data lama), fallback ke urutan id.
+// dulu"), diurut berdasarkan field "order" yang diatur admin di menu Kelola Onboarding
+// (angka lebih kecil = lebih dulu). Kalau "order" belum ke-set (data lama), fallback ke
+// createdAt, lalu ke urutan id. List juga sudah difilter sesuai departemen user yang login
+// (training yang tidak menargetkan departemen ini tidak akan muncul/dihitung sama sekali),
+// jadi urutan & rantai "harus selesai training sebelumnya dulu" otomatis mengikuti daftar
+// training yang relevan untuk departemen masing-masing user.
 function orderedPublishedCourses() {
-    const list = window.STATE.courses.filter(c => c.published || window.sel.isAdmin());
+    const list = window.STATE.courses.filter(c => (c.published || window.sel.isAdmin()) && window.deptAllowed(c));
     return list.sort((a, b) => {
+        const oa = Number.isFinite(a.order) ? a.order : Infinity;
+        const ob = Number.isFinite(b.order) ? b.order : Infinity;
+        if (oa !== ob) return oa - ob;
         const ta = a.createdAt?.seconds || 0, tb = b.createdAt?.seconds || 0;
         if (ta !== tb) return ta - tb;
         return String(a.id).localeCompare(String(b.id));
@@ -1161,9 +1191,14 @@ function courseCompleted(courseId) {
 // Admin selalu dianggap terbuka (supaya bisa preview/kelola kapan saja).
 function courseLockInfo(courseId) {
     if (window.sel.isAdmin()) return { locked: false };
+    const course = window.STATE.courses.find(c => c.id === courseId);
+    if (course && !window.deptAllowed(course)) {
+        return { locked: true, notForDept: true };
+    }
     const ordered = orderedPublishedCourses();
     const idx = ordered.findIndex(c => c.id === courseId);
-    if (idx <= 0) return { locked: false };
+    if (idx < 0) return { locked: true, notForDept: true };
+    if (idx === 0) return { locked: false };
     const prev = ordered[idx - 1];
     if (courseCompleted(prev.id)) return { locked: false };
     return { locked: true, blockingTitle: prev.title, blockingId: prev.id };
@@ -1225,9 +1260,11 @@ function renderCourseDetail(id) {
             <a href="#/courses" class="text-xs font-bold text-slate-400 hover:text-indigo-600"><i class="fas fa-arrow-left mr-1"></i> Kembali ke Katalog</a>
             <div class="mt-10 text-center py-16 bg-white border border-slate-100 rounded-3xl">
                 <i class="fas fa-lock text-3xl text-slate-300 mb-3"></i>
-                <p class="font-black text-slate-700">Training ini masih terkunci</p>
+                ${lockInfo.notForDept
+                    ? `<p class="font-black text-slate-700">Training ini tidak tersedia untuk departemen kamu</p><p class="text-sm text-slate-400 mt-1">Hubungi admin kalau menurut kamu ini keliru.</p>`
+                    : `<p class="font-black text-slate-700">Training ini masih terkunci</p>
                 <p class="text-sm text-slate-400 mt-1">Selesaikan "${window.escapeHtml(lockInfo.blockingTitle)}" terlebih dahulu untuk membuka "${window.escapeHtml(c.title)}".</p>
-                <a href="#/courses/${lockInfo.blockingId}" class="inline-block mt-4 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-sm px-5 py-2.5 rounded-2xl transition">Lanjutkan "${window.escapeHtml(lockInfo.blockingTitle)}"</a>
+                <a href="#/courses/${lockInfo.blockingId}" class="inline-block mt-4 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-sm px-5 py-2.5 rounded-2xl transition">Lanjutkan "${window.escapeHtml(lockInfo.blockingTitle)}"</a>`}
             </div>
         `);
         return;
@@ -1322,7 +1359,9 @@ function renderCourseDetail(id) {
 window.enrollCourse = async function (courseId) {
     const lockInfo = courseLockInfo(courseId);
     if (lockInfo.locked) {
-        window.toast(`Selesaikan "${lockInfo.blockingTitle}" terlebih dahulu sebelum bisa memulai training ini.`, "warn");
+        window.toast(lockInfo.notForDept
+            ? "Training ini tidak tersedia untuk departemen kamu."
+            : `Selesaikan "${lockInfo.blockingTitle}" terlebih dahulu sebelum bisa memulai training ini.`, "warn");
         return;
     }
     const { col, addDoc, serverTimestamp } = window.LMS_DB;
@@ -2196,11 +2235,24 @@ window.ROUTES["admin/courses"] = requireAdmin(function (id) {
 });
 
 function renderCourseAdminList() {
-    const rows = window.STATE.courses.map(c => `
+    const sorted = [...window.STATE.courses].sort((a, b) => {
+        const oa = Number.isFinite(a.order) ? a.order : Infinity, ob = Number.isFinite(b.order) ? b.order : Infinity;
+        if (oa !== ob) return oa - ob;
+        return String(a.title||"").localeCompare(String(b.title||""));
+    });
+    const rows = sorted.map((c, i) => `
         <tr class="border-b border-slate-50 hover:bg-slate-50/60">
+            <td class="px-3 py-3">
+                <div class="flex flex-col items-center gap-0.5">
+                    <button ${i===0?'disabled':''} onclick="window.guardedClick(this, () => window.moveCourseOrder('${c.id}', -1))" class="text-slate-300 hover:text-indigo-600 leading-none"><i class="fas fa-chevron-up"></i></button>
+                    <span class="text-xs font-black text-slate-500">${Number.isFinite(c.order) ? c.order : '-'}</span>
+                    <button ${i===sorted.length-1?'disabled':''} onclick="window.guardedClick(this, () => window.moveCourseOrder('${c.id}', 1))" class="text-slate-300 hover:text-indigo-600 leading-none"><i class="fas fa-chevron-down"></i></button>
+                </div>
+            </td>
             <td class="px-3 py-3">
                 <p class="font-bold text-slate-700 text-sm">${window.escapeHtml(c.title)}</p>
                 <p class="text-[11px] text-slate-400">${(c.modules||[]).length} modul • ${window.escapeHtml(c.category||'-')}</p>
+                <p class="text-[11px] text-indigo-500 font-semibold mt-0.5">${(c.departments && c.departments.length) ? '<i class="fas fa-sitemap mr-1"></i>' + c.departments.map(window.escapeHtml).join(", ") : '<span class="text-emerald-500"><i class="fas fa-globe mr-1"></i>Semua departemen</span>'}</p>
             </td>
             <td class="px-3 py-3 text-center">
                 <span class="text-[10px] font-black px-2 py-1 rounded-full ${c.published ? 'bg-emerald-50 text-emerald-600' : 'bg-slate-100 text-slate-500'}">${c.published ? 'Terbit' : 'Draft'}</span>
@@ -2217,16 +2269,37 @@ function renderCourseAdminList() {
             <h1 class="text-xl font-black text-slate-800">Kelola Onboarding</h1>
             <a href="#/admin/courses/new" class="bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold px-4 py-2.5 rounded-2xl"><i class="fas fa-plus mr-1"></i> Training Baru</a>
         </div>
+        <p class="text-xs text-slate-400 mb-3">Pakai panah naik/turun buat atur urutan pengerjaan. Training dikunci berurutan sesuai urutan ini, dihitung terpisah untuk tiap departemen (lihat kolom target departemen).</p>
         <div class="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-x-auto">
             <table class="w-full text-left">
                 <thead class="bg-slate-50 text-[10px] font-black uppercase text-slate-400">
-                    <tr><th class="px-3 py-3">Training</th><th class="px-3 py-3 text-center">Status</th><th class="px-3 py-3 text-center">Peserta</th><th class="px-3 py-3 text-right">Aksi</th></tr>
+                    <tr><th class="px-3 py-3">Urutan</th><th class="px-3 py-3">Training</th><th class="px-3 py-3 text-center">Status</th><th class="px-3 py-3 text-center">Peserta</th><th class="px-3 py-3 text-right">Aksi</th></tr>
                 </thead>
-                <tbody>${rows || `<tr><td colspan="4" class="text-center py-10 text-slate-400">Belum ada training</td></tr>`}</tbody>
+                <tbody>${rows || `<tr><td colspan="5" class="text-center py-10 text-slate-400">Belum ada training</td></tr>`}</tbody>
             </table>
         </div>
     `);
 }
+
+// Tukar posisi "order" dua training yang bersebelahan di daftar admin (dir: -1 naik, 1 turun).
+window.moveCourseOrder = async function (id, dir) {
+    const sorted = [...window.STATE.courses].sort((a, b) => {
+        const oa = Number.isFinite(a.order) ? a.order : Infinity, ob = Number.isFinite(b.order) ? b.order : Infinity;
+        if (oa !== ob) return oa - ob;
+        return String(a.title||"").localeCompare(String(b.title||""));
+    });
+    const idx = sorted.findIndex(c => c.id === id);
+    const swapIdx = idx + dir;
+    if (idx < 0 || swapIdx < 0 || swapIdx >= sorted.length) return;
+    const a = sorted[idx], b = sorted[swapIdx];
+    const orderA = Number.isFinite(a.order) ? a.order : idx + 1;
+    const orderB = Number.isFinite(b.order) ? b.order : swapIdx + 1;
+    const { updateDoc, ref } = window.LMS_DB;
+    await Promise.all([
+        updateDoc(ref("courses", a.id), { order: orderB }),
+        updateDoc(ref("courses", b.id), { order: orderA })
+    ]);
+};
 
 window.deleteCourse = async function (id) {
     if (!confirm("Hapus training ini? Data progress peserta terkait tidak ikut terhapus otomatis.")) return;
@@ -2239,16 +2312,22 @@ let courseDraft = null;
 function renderCourseBuilder(id) {
     if (!courseDraft || courseDraft._loadedId !== (id || "new")) {
         const existing = id ? window.STATE.courses.find(c => c.id === id) : null;
+        const nextOrder = window.STATE.courses.length
+            ? Math.max(0, ...window.STATE.courses.map(c => Number.isFinite(c.order) ? c.order : 0)) + 1
+            : 1;
         courseDraft = existing ? JSON.parse(JSON.stringify(existing)) : {
             title: "", description: "", category: "", instructor: "", level: "Umum",
             coverImage: "", published: false, modules: [], quiz: { passingScore: 70, questions: [] },
-            assignment: { enabled: false, title: "", description: "", deadline: "" }
+            assignment: { enabled: false, title: "", description: "", deadline: "" },
+            order: nextOrder, departments: []
         };
         if (!courseDraft.assignment) courseDraft.assignment = { enabled: false, title: "", description: "", deadline: "" };
         if (!Array.isArray(courseDraft.modules)) courseDraft.modules = [];
         courseDraft.modules.forEach(m => { if (!Array.isArray(m.lessons)) m.lessons = []; });
         if (!courseDraft.quiz) courseDraft.quiz = { passingScore: 70, questions: [] };
         if (!Array.isArray(courseDraft.quiz.questions)) courseDraft.quiz.questions = [];
+        if (!Number.isFinite(courseDraft.order)) courseDraft.order = nextOrder;
+        if (!Array.isArray(courseDraft.departments)) courseDraft.departments = [];
         courseDraft._loadedId = id || "new";
         courseDraft._id = id;
     }
@@ -2344,6 +2423,33 @@ function renderCourseBuilder(id) {
                 </div>
 
                 <div class="bg-white rounded-3xl border border-slate-100 shadow-sm p-5 space-y-3">
+                    <h3 class="font-black text-sm text-slate-700"><i class="fas fa-arrow-down-1-9 text-indigo-500 mr-1"></i> Urutan & Target Departemen</h3>
+                    <p class="text-xs text-slate-400">Peserta wajib menyelesaikan training secara berurutan (angka lebih kecil = lebih dulu). Urutan &amp; kunci "harus selesai dulu" ini dihitung ulang per departemen, hanya dari training-training yang memang ditampilkan ke departemen tersebut.</p>
+                    <div>
+                        <label class="text-[10px] font-bold uppercase text-slate-400">Urutan Pengerjaan</label>
+                        <input type="number" step="1" value="${Number.isFinite(d.order) ? d.order : 1}" oninput="courseDraft.order=parseInt(this.value)||1" class="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm mt-1">
+                    </div>
+                    <div>
+                        <label class="flex items-center justify-between">
+                            <span class="text-[10px] font-bold uppercase text-slate-400">Tampil untuk Departemen</span>
+                            <button type="button" onclick="courseDraft.departments=[]; rerenderBuilder()" class="text-[10px] font-bold text-indigo-500 hover:text-indigo-700">Semua Departemen</button>
+                        </label>
+                        ${!d.departments.length ? `<p class="text-xs text-emerald-600 font-semibold bg-emerald-50 rounded-xl px-3 py-2 mt-1"><i class="fas fa-globe mr-1"></i> Training ini tampil untuk semua departemen.</p>` : ""}
+                        <div class="flex flex-wrap gap-1.5 mt-2">
+                            ${window.sel.allDeptNames().map(dep => {
+                                const active = d.departments.some(x => x.toLowerCase() === dep.toLowerCase());
+                                return `<button type="button" onclick="window.toggleCourseDept('${window.escapeHtml(dep).replace(/'/g, "\\'")}')" class="text-[11px] font-bold px-2.5 py-1.5 rounded-full border transition ${active ? 'bg-indigo-600 border-indigo-600 text-white' : 'bg-white border-slate-200 text-slate-500 hover:border-indigo-300'}">${active ? '<i class="fas fa-check mr-1"></i>' : ''}${window.escapeHtml(dep)}</button>`;
+                            }).join("") || '<p class="text-[11px] text-slate-400">Belum ada departemen terdaftar dari akun pengguna.</p>'}
+                        </div>
+                        <div class="flex items-center gap-2 mt-2">
+                            <input id="new-dept-input" placeholder="Tambah nama departemen baru..." class="flex-1 border border-slate-200 rounded-xl px-3 py-2 text-xs">
+                            <button type="button" onclick="window.addCustomCourseDept()" class="shrink-0 text-[11px] font-bold text-indigo-500 hover:text-indigo-700 bg-indigo-50 px-3 py-2 rounded-xl">Tambah</button>
+                        </div>
+                        ${d.departments.length ? `<div class="flex flex-wrap gap-1.5 mt-2">${d.departments.map(dep => `<span class="text-[11px] font-bold px-2.5 py-1 rounded-full bg-indigo-50 text-indigo-600 flex items-center gap-1">${window.escapeHtml(dep)} <button type="button" onclick="window.toggleCourseDept('${window.escapeHtml(dep).replace(/'/g, "\\'")}')" class="hover:text-indigo-900"><i class="fas fa-xmark"></i></button></span>`).join("")}</div>` : ""}
+                    </div>
+                </div>
+
+                <div class="bg-white rounded-3xl border border-slate-100 shadow-sm p-5 space-y-3">
                     <div class="flex items-center justify-between">
                         <h3 class="font-black text-sm text-slate-700">Modul & Lesson</h3>
                         <button onclick="courseDraft.modules.push({id:'m'+Date.now(),title:'',lessons:[]}); rerenderBuilder()" class="text-[11px] font-bold text-indigo-500 hover:text-indigo-700"><i class="fas fa-plus mr-1"></i> Tambah Modul</button>
@@ -2399,6 +2505,22 @@ function renderCourseBuilder(id) {
 }
 window.rerenderBuilder = function () { renderCourseBuilder(courseDraft._id); };
 
+// Toggle satu nama departemen di daftar target courseDraft.departments (dipakai tombol chip).
+window.toggleCourseDept = function (dep) {
+    const d = courseDraft;
+    const idx = d.departments.findIndex(x => x.toLowerCase() === dep.toLowerCase());
+    if (idx >= 0) d.departments.splice(idx, 1); else d.departments.push(dep);
+    rerenderBuilder();
+};
+window.addCustomCourseDept = function () {
+    const input = document.getElementById("new-dept-input");
+    const val = (input?.value || "").trim();
+    if (!val) return;
+    const d = courseDraft;
+    if (!d.departments.some(x => x.toLowerCase() === val.toLowerCase())) d.departments.push(val);
+    rerenderBuilder();
+};
+
 window.saveCourseDraft = async function () {
     const d = courseDraft;
     if (!d.title.trim()) { window.toast("Judul training wajib diisi", "warn"); return; }
@@ -2406,7 +2528,9 @@ window.saveCourseDraft = async function () {
     const payload = {
         title: d.title, description: d.description, category: d.category, instructor: d.instructor,
         level: d.level, coverImage: d.coverImage, published: !!d.published,
-        modules: d.modules, quiz: d.quiz, assignment: d.assignment, updatedAt: serverTimestamp()
+        modules: d.modules, quiz: d.quiz, assignment: d.assignment,
+        order: Number.isFinite(d.order) ? d.order : 1, departments: Array.isArray(d.departments) ? d.departments : [],
+        updatedAt: serverTimestamp()
     };
     if (d._id) {
         await setDoc(ref("courses", d._id), payload, { merge: true });
