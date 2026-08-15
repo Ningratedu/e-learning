@@ -501,6 +501,10 @@ window.openModal = function (id) {
 };
 window.closeModal = function (id) {
     document.getElementById(id)?.classList.add("hide");
+    if (id === "modal-lesson" && window._pptTimerId) {
+        clearInterval(window._pptTimerId);
+        window._pptTimerId = null;
+    }
 };
 
 // ================= ROUTER (hash based) =================
@@ -1307,7 +1311,7 @@ window.openLesson = function (kind, refId, lessonId) {
         const officeEmbedSrc = `https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(lesson.pptUrl)}`;
         const officeViewSrc = `https://view.officeapps.live.com/op/view.aspx?src=${encodeURIComponent(lesson.pptUrl)}`;
         body = `
-        <div id="ppt-viewer" data-total="${totalSlides}" data-current="1">
+        <div id="ppt-viewer">
             <div class="aspect-video rounded-2xl overflow-hidden bg-slate-900 relative">
                 <div id="ppt-loading" class="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-slate-900 text-slate-300 z-10">
                     <i class="fas fa-spinner fa-spin text-xl"></i>
@@ -1315,17 +1319,17 @@ window.openLesson = function (kind, refId, lessonId) {
                 </div>
                 <iframe class="w-full h-full relative z-0" src="${officeEmbedSrc}" allowfullscreen onload="const el=document.getElementById('ppt-loading'); if(el) el.style.display='none';"></iframe>
             </div>
-            <div class="flex items-center justify-between mt-3 bg-slate-50 rounded-xl px-3 py-2">
-                <button onclick="pptNav(-1)" class="text-xs font-bold text-slate-500 hover:text-indigo-600"><i class="fas fa-chevron-left mr-1"></i> Sebelumnya</button>
-                <span class="text-xs font-bold text-slate-600">Slide <span id="ppt-current">1</span> / ${totalSlides}</span>
-                <button onclick="pptNav(1)" class="text-xs font-bold text-indigo-600 hover:text-indigo-800">Selanjutnya <i class="fas fa-chevron-right ml-1"></i></button>
-            </div>
+            <p class="text-[11px] text-slate-400 mt-2 text-center"><i class="fas fa-arrows-left-right mr-1"></i> Gunakan panah navigasi <strong>di dalam frame di atas</strong> untuk berpindah slide.</p>
             <div class="flex flex-wrap items-center gap-2 mt-2">
                 <a href="${officeViewSrc}" target="_blank" rel="noopener" class="text-[11px] font-bold text-indigo-500 hover:text-indigo-700 bg-indigo-50 px-3 py-1.5 rounded-lg"><i class="fas fa-up-right-from-square mr-1"></i> Buka di Tab Baru</a>
                 <a href="${lesson.pptUrl}" target="_blank" rel="noopener" class="text-[11px] font-bold text-slate-500 hover:text-slate-700 bg-slate-100 px-3 py-1.5 rounded-lg"><i class="fas fa-download mr-1"></i> Unduh File PPT</a>
             </div>
             <p class="text-[11px] text-slate-400 mt-1">Kalau tampilan slide di atas tidak muncul (kadang tergantung koneksi/jaringan kantor), pakai tombol "Buka di Tab Baru" ya.</p>
-            <p id="lesson-ppt-hint" class="text-xs text-amber-600 font-semibold mt-2"><i class="fas fa-circle-info mr-1"></i> Buka sampai slide terakhir untuk mengaktifkan tombol "Tandai Selesai".</p>
+            ${requireFullWatch ? `
+            <div class="mt-2 bg-slate-50 rounded-xl px-3 py-2">
+                <div class="h-1.5 bg-slate-200 rounded-full overflow-hidden"><div id="ppt-timer-bar" class="h-full bg-amber-400 transition-all" style="width:0%"></div></div>
+                <p id="lesson-ppt-hint" class="text-xs text-amber-600 font-semibold mt-2"><i class="fas fa-hourglass-half mr-1"></i> Pelajari materi ini selama <span id="ppt-timer-secs">${pptRequiredSeconds(totalSlides)}</span> detik untuk mengaktifkan tombol "Tandai Selesai".</p>
+            </div>` : ""}
         </div>`;
     } else if (lesson.type === "ppt" && !lesson.pptUrl) {
         body = `<div class="aspect-video rounded-2xl bg-slate-50 border border-dashed border-slate-200 flex flex-col items-center justify-center text-center px-4"><i class="fas fa-file-powerpoint text-2xl text-slate-300 mb-2"></i><p class="text-sm text-slate-400 font-semibold">File PPT belum diupload admin. Hubungi admin untuk melengkapi materi ini.</p></div>`;
@@ -1345,20 +1349,37 @@ window.openLesson = function (kind, refId, lessonId) {
         setTimeout(() => attachVideoEndWatcher(lesson.videoUrl, () => enableCompleteBtn()), 300);
     }
     if (lesson.type === "ppt" && requireFullWatch) {
-        window._pptState = { current: 1, total: totalSlidesSafe(lesson) };
+        startPptTimer(totalSlidesSafe(lesson));
     }
 };
 
 function totalSlidesSafe(lesson) { return lesson.slideCount || 1; }
 
-window.pptNav = function (dir) {
-    if (!window._pptState) return;
-    const st = window._pptState;
-    st.current = Math.max(1, Math.min(st.total, st.current + dir));
-    const el = document.getElementById("ppt-current");
-    if (el) el.textContent = st.current;
-    if (st.current >= st.total) enableCompleteBtn();
-};
+// Estimasi waktu wajib "belajar" materi PPT sebelum tombol Tandai Selesai aktif.
+// ~6 detik/slide, minimal 15 detik, maksimal 5 menit — dipakai sebagai pengganti
+// pelacakan slide asli (gak bisa diakses karena viewer PPT dari domain lain/cross-origin).
+function pptRequiredSeconds(totalSlides) {
+    return Math.max(15, Math.min(300, totalSlides * 6));
+}
+
+function startPptTimer(totalSlides) {
+    if (window._pptTimerId) { clearInterval(window._pptTimerId); window._pptTimerId = null; }
+    const totalSecs = pptRequiredSeconds(totalSlides);
+    let elapsed = 0;
+    const secsEl = document.getElementById("ppt-timer-secs");
+    const barEl = document.getElementById("ppt-timer-bar");
+    window._pptTimerId = setInterval(() => {
+        elapsed++;
+        const remaining = totalSecs - elapsed;
+        if (secsEl) secsEl.textContent = Math.max(0, remaining);
+        if (barEl) barEl.style.width = `${Math.min(100, Math.round((elapsed / totalSecs) * 100))}%`;
+        if (elapsed >= totalSecs) {
+            clearInterval(window._pptTimerId);
+            window._pptTimerId = null;
+            enableCompleteBtn();
+        }
+    }, 1000);
+}
 
 function enableCompleteBtn() {
     const btn = document.getElementById("lesson-modal-complete-btn");
@@ -1366,7 +1387,7 @@ function enableCompleteBtn() {
     const vidHint = document.getElementById("lesson-video-hint");
     if (vidHint) vidHint.innerHTML = '<i class="fas fa-circle-check mr-1 text-emerald-500"></i> Video selesai ditonton, kamu bisa menandai materi ini selesai.';
     const pptHint = document.getElementById("lesson-ppt-hint");
-    if (pptHint) pptHint.innerHTML = '<i class="fas fa-circle-check mr-1 text-emerald-500"></i> Sudah sampai slide terakhir, kamu bisa menandai materi ini selesai.';
+    if (pptHint) pptHint.innerHTML = '<i class="fas fa-circle-check mr-1 text-emerald-500"></i> Waktu belajar terpenuhi, kamu bisa menandai materi ini selesai.';
 }
 
 // Deteksi video YouTube selesai ditonton via YouTube IFrame API (fallback: timer estimasi durasi)
