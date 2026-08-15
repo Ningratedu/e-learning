@@ -1230,6 +1230,23 @@ function renderCourseCatalog() {
         const progress = window.sel.courseProgress(c.id);
         const enr = window.sel.myEnrollment(c.id);
         const lock = courseLockInfo(c.id);
+
+        // Info nilai pre-test/post-test & status Lulus/Belum Lulus, ditampilkan langsung di card
+        // katalog biar peserta (dan admin yang preview) langsung lihat pencapaiannya tanpa perlu
+        // buka detail training satu-satu. Kalau training masih terkunci, gak usah tampil dulu.
+        const hasQuiz = !lock.locked && c.quiz && (c.quiz.questions || []).length > 0;
+        const pretestAttempt = hasQuiz ? window.sel.myPretestAttempt("course", c.id) : null;
+        const postTestAttempts = hasQuiz ? window.sel.myPostTestAttempts("course", c.id) : [];
+        const latestPost = postTestAttempts[0] || null;
+        const quizPassed = hasQuiz && !!(latestPost && latestPost.passed);
+        const statusBadge = !hasQuiz ? "" : (
+            latestPost
+                ? (quizPassed
+                    ? `<span class="text-[9px] font-black px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-600"><i class="fas fa-check mr-0.5"></i>Lulus</span>`
+                    : `<span class="text-[9px] font-black px-2 py-0.5 rounded-full bg-rose-50 text-rose-500"><i class="fas fa-xmark mr-0.5"></i>Belum Lulus</span>`)
+                : `<span class="text-[9px] font-black px-2 py-0.5 rounded-full bg-slate-100 text-slate-400">Belum Post-Test</span>`
+        );
+
         const cardInner = `
             <div class="h-36 bg-cover bg-center relative" style="${courseCoverStyle(c)}">
                 <div class="absolute inset-0 ${lock.locked ? "bg-black/50" : "bg-black/10"}"></div>
@@ -1238,13 +1255,27 @@ function renderCourseCatalog() {
                 ${lock.locked ? `<div class="absolute inset-0 flex items-center justify-center"><span class="bg-white/95 text-slate-600 text-xs font-black px-3 py-1.5 rounded-full"><i class="fas fa-lock mr-1.5"></i> Terkunci</span></div>` : ""}
             </div>
             <div class="p-5 flex flex-col gap-2 flex-1">
-                <p class="text-[11px] font-bold text-indigo-500 uppercase tracking-wide">${window.escapeHtml(c.category || "Training")}</p>
+                <div class="flex items-center justify-between gap-2">
+                    <p class="text-[11px] font-bold text-indigo-500 uppercase tracking-wide">${window.escapeHtml(c.category || "Training")}</p>
+                    ${statusBadge}
+                </div>
                 <h3 class="font-black text-slate-800 leading-snug ${lock.locked ? "" : "group-hover:text-indigo-600"} transition">${window.escapeHtml(c.title)}</h3>
                 <p class="text-xs text-slate-500 line-clamp-2 flex-1">${window.escapeHtml(c.description || "")}</p>
                 <div class="flex items-center justify-between text-[11px] text-slate-400 pt-2 border-t border-slate-50 mt-1">
                     <span><i class="fas fa-layer-group mr-1"></i>${(c.modules||[]).length} modul</span>
                     <span><i class="fas fa-user-tie mr-1"></i>${window.escapeHtml(c.instructor || "-")}</span>
                 </div>
+                ${hasQuiz ? `
+                <div class="grid grid-cols-2 gap-2">
+                    <div class="bg-slate-50 rounded-lg px-2 py-1.5 text-center">
+                        <p class="text-[8px] uppercase text-slate-400 font-black tracking-wide">Pre-Test</p>
+                        <p class="text-xs font-black text-slate-700">${pretestAttempt ? pretestAttempt.score : "-"}</p>
+                    </div>
+                    <div class="bg-slate-50 rounded-lg px-2 py-1.5 text-center">
+                        <p class="text-[8px] uppercase text-slate-400 font-black tracking-wide">Post-Test</p>
+                        <p class="text-xs font-black ${latestPost ? (latestPost.passed ? "text-emerald-600" : "text-rose-500") : "text-slate-700"}">${latestPost ? latestPost.score : "-"}</p>
+                    </div>
+                </div>` : ""}
                 ${lock.locked
                     ? `<p class="text-[11px] text-rose-400 font-semibold mt-1"><i class="fas fa-triangle-exclamation mr-1"></i> Selesaikan "${window.escapeHtml(lock.blockingTitle)}" dulu untuk buka training ini.</p>`
                     : (enr ? `
@@ -1270,6 +1301,7 @@ function renderCourseCatalog() {
         </div>
     `);
 }
+
 
 function renderCourseDetail(id) {
     const c = window.STATE.courses.find(x => x.id === id);
@@ -3317,154 +3349,200 @@ function courseLockInfoOfUser(courseId, userId, ordered) {
     return { locked: false };
 }
 
-// Bangun HTML checklist materi (per modul/lesson) punya SATU training, ditandai
-// sudah/belum berdasarkan completedLessonIds di dokumen enrollment user ini.
-function buildMateriChecklist(course, enr) {
-    const doneSet = new Set(enr?.completedLessonIds || []);
-    const modules = course.modules || [];
-    if (!modules.length) return `<p class="text-[11px] text-slate-400">Training ini belum punya materi.</p>`;
-    return modules.map(m => `
-        <div class="mb-2 last:mb-0">
-            <p class="text-[10px] font-black text-slate-500 uppercase mb-1">${window.escapeHtml(m.title)}</p>
-            <div class="space-y-1">
-                ${(m.lessons || []).map(l => {
-                    const done = doneSet.has(l.id);
-                    return `<div class="flex items-center gap-2 text-[11px] ${done ? "text-slate-600" : "text-slate-400"}">
-                        <i class="fas ${done ? "fa-circle-check text-emerald-500" : "fa-circle text-slate-300"}"></i>
-                        <span class="truncate">${window.escapeHtml(l.title)}</span>
-                        ${done ? "" : `<span class="ml-auto text-[9px] font-bold text-amber-500 shrink-0">Belum</span>`}
-                    </div>`;
-                }).join("") || `<p class="text-[10px] text-slate-300">Belum ada materi di modul ini.</p>`}
-            </div>
-        </div>`).join("");
+function certOfUserForTraining(trainingId, userId) {
+    return window.STATE.certificates.find(c => c.trainingId === trainingId && c.userId === userId) || null;
+}
+function regOfUserForTraining(trainingId, userId) {
+    return window.STATE.trainingRegs.find(r => r.trainingId === trainingId && r.userId === userId) || null;
+}
+function attendanceOfUserForTraining(trainingId, userId) {
+    return window.STATE.attendance.find(a => a.trainingId === trainingId && a.userId === userId) || null;
+}
+function evalOfUserForTraining(trainingId, userId) {
+    return window.STATE.evaluations.find(ev => ev.trainingId === trainingId && ev.userId === userId) || null;
+}
+function pretestAttemptOfUserTraining(trainingId, userId) {
+    const attempts = window.STATE.quizAttempts.filter(a => a.trainingId === trainingId && a.userId === userId && a.attemptType === "pretest");
+    if (!attempts.length) return null;
+    return attempts.sort((a, b) => (b.attemptAt?.seconds || 0) - (a.attemptAt?.seconds || 0))[0];
+}
+function postTestAttemptsOfUserTraining(trainingId, userId) {
+    return window.STATE.quizAttempts
+        .filter(a => a.trainingId === trainingId && a.userId === userId && a.attemptType !== "pretest")
+        .sort((a, b) => (b.attemptAt?.seconds || 0) - (a.attemptAt?.seconds || 0));
 }
 
-// Bangun satu card training (dipakai di dalam ringkasan training karyawan). Menampilkan status
-// Lulus/Belum Lulus, nilai pre-test & post-test masing-masing, progress materi, dan checklist
-// materi sudah/belum yang bisa dibuka lewat <details>.
-function buildEmployeeTrainingCard(course, userId, ordered) {
+// Satu baris tabel "Penyelesaian Onboarding Training" untuk SATU training milik SATU karyawan.
+// Tanggal Penyelesaian = tanggal sertifikat terbit (kalau sudah lulus/selesai), atau tanggal
+// percobaan post-test/pre-test TERAKHIR (kalau masih on-progress), sesuai permintaan.
+function buildOnboardingTableRow(course, userId, ordered) {
     const lock = courseLockInfoOfUser(course.id, userId, ordered);
     const enr = enrollmentOfUser(course.id, userId);
     const cert = certOfUser(course.id, userId);
     const totalLessons = (course.modules || []).reduce((s, m) => s + (m.lessons || []).length, 0);
     const doneLessons = Math.min(totalLessons, (enr?.completedLessonIds || []).length);
-    const lessonProgress = totalLessons ? Math.round((doneLessons / totalLessons) * 100) : 0;
 
     const hasQuiz = !!(course.quiz && (course.quiz.questions || []).length);
     const pretest = hasQuiz ? pretestAttemptOfUser(course.id, userId) : null;
     const postAttempts = hasQuiz ? postTestAttemptsOfUser(course.id, userId) : [];
     const latestPost = postAttempts[0] || null;
     const quizPassed = !hasQuiz || !!(latestPost && latestPost.passed);
-
     const completed = !!cert;
 
-    let statusBadge;
-    if (lock.locked) {
-        statusBadge = `<span class="text-[10px] font-black px-2.5 py-1 rounded-full bg-slate-100 text-slate-400"><i class="fas fa-lock mr-1"></i> Terkunci</span>`;
-    } else if (completed) {
-        statusBadge = `<span class="text-[10px] font-black px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-600"><i class="fas fa-circle-check mr-1"></i> Selesai</span>`;
-    } else if (doneLessons > 0 || postAttempts.length) {
-        statusBadge = `<span class="text-[10px] font-black px-2.5 py-1 rounded-full bg-amber-50 text-amber-600"><i class="fas fa-spinner mr-1"></i> Sedang Berjalan</span>`;
-    } else {
-        statusBadge = `<span class="text-[10px] font-black px-2.5 py-1 rounded-full bg-rose-50 text-rose-500"><i class="fas fa-circle-exclamation mr-1"></i> Belum Dimulai</span>`;
-    }
+    let statusLabel, statusClass;
+    if (lock.locked) { statusLabel = "Terkunci"; statusClass = "bg-slate-100 text-slate-400"; }
+    else if (completed) { statusLabel = "Selesai"; statusClass = "bg-emerald-50 text-emerald-600"; }
+    else if (doneLessons > 0 || postAttempts.length || pretest) { statusLabel = "Sedang Berjalan"; statusClass = "bg-amber-50 text-amber-600"; }
+    else { statusLabel = "Belum Dimulai"; statusClass = "bg-rose-50 text-rose-500"; }
 
-    const lulusBadge = !hasQuiz
-        ? `<span class="text-[10px] font-black px-2.5 py-1 rounded-full bg-slate-100 text-slate-400">Tanpa Post-Test</span>`
-        : (quizPassed
-            ? `<span class="text-[10px] font-black px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-600"><i class="fas fa-check mr-1"></i> Lulus</span>`
-            : `<span class="text-[10px] font-black px-2.5 py-1 rounded-full bg-rose-50 text-rose-500"><i class="fas fa-xmark mr-1"></i> Belum Lulus</span>`);
+    let tglPenyelesaian = "-";
+    if (completed) tglPenyelesaian = window.fmtDate(cert.issuedAt);
+    else if (latestPost) tglPenyelesaian = window.fmtDate(latestPost.attemptAt);
+    else if (pretest) tglPenyelesaian = window.fmtDate(pretest.attemptAt);
 
     return `
-    <div class="border border-slate-100 rounded-2xl p-4 ${lock.locked ? "opacity-70" : ""}">
-        <div class="flex items-start justify-between gap-2 flex-wrap">
-            <div class="min-w-0">
-                <p class="text-[10px] font-bold text-indigo-500 uppercase tracking-wide">${window.escapeHtml(course.category || "Training")}</p>
-                <p class="font-black text-sm text-slate-800 leading-snug">${window.escapeHtml(course.title)}</p>
-            </div>
-            ${statusBadge}
-        </div>
+    <tr class="border-b border-slate-50 hover:bg-slate-50/60 align-top">
+        <td class="px-3 py-3">
+            <p class="font-bold text-slate-700 text-xs">${window.escapeHtml(course.title)}</p>
+            <p class="text-[10px] text-slate-400 mt-0.5">${(course.modules || []).length} modul • ${doneLessons}/${totalLessons} lesson selesai</p>
+            ${lock.locked ? `<p class="text-[10px] text-rose-400 font-semibold mt-0.5"><i class="fas fa-lock mr-1"></i>Menunggu "${window.escapeHtml(lock.blockingTitle)}"</p>` : ""}
+        </td>
+        <td class="px-3 py-3 text-center">
+            <span class="text-[10px] font-black px-2 py-1 rounded-full ${statusClass} whitespace-nowrap">${statusLabel}</span>
+            ${!lock.locked && hasQuiz ? `<p class="mt-1 text-[9px] font-bold ${quizPassed ? "text-emerald-600" : (latestPost ? "text-rose-500" : "text-slate-300")}">${quizPassed ? "Lulus" : (latestPost ? "Belum Lulus" : "-")}</p>` : ""}
+        </td>
+        <td class="px-3 py-3 text-center text-xs font-bold text-slate-700">${pretest ? pretest.score : "-"}</td>
+        <td class="px-3 py-3 text-center text-xs font-bold ${latestPost ? (latestPost.passed ? "text-emerald-600" : "text-rose-500") : "text-slate-700"}">${latestPost ? latestPost.score : "-"}</td>
+        <td class="px-3 py-3 text-center text-[11px] text-slate-500 whitespace-nowrap">${tglPenyelesaian}</td>
+    </tr>`;
+}
 
-        ${lock.locked ? `<p class="text-[10px] text-rose-400 font-semibold mt-1.5"><i class="fas fa-triangle-exclamation mr-1"></i> Menunggu "${window.escapeHtml(lock.blockingTitle)}" diselesaikan dulu.</p>` : ""}
-
-        <div class="mt-2.5">
-            <div class="h-1.5 bg-slate-100 rounded-full overflow-hidden"><div class="h-full bg-indigo-500" style="width:${lessonProgress}%"></div></div>
-            <p class="text-[10px] text-slate-400 mt-1 font-semibold">${doneLessons}/${totalLessons} materi selesai (${lessonProgress}%)</p>
-        </div>
-
-        <div class="grid grid-cols-2 gap-2 mt-3">
-            <div class="bg-slate-50 rounded-xl p-2 text-center">
-                <p class="text-[9px] uppercase text-slate-400 font-black tracking-wide">Nilai Pre-Test</p>
-                <p class="text-sm font-black text-slate-700 mt-0.5">${pretest ? pretest.score : "-"}</p>
-            </div>
-            <div class="bg-slate-50 rounded-xl p-2 text-center">
-                <p class="text-[9px] uppercase text-slate-400 font-black tracking-wide">Nilai Post-Test</p>
-                <p class="text-sm font-black mt-0.5 ${latestPost ? (latestPost.passed ? "text-emerald-600" : "text-rose-500") : "text-slate-700"}">${latestPost ? latestPost.score : "-"}</p>
-            </div>
-        </div>
-
-        <div class="flex items-center justify-between mt-3">
-            ${lulusBadge}
-            ${hasQuiz && postAttempts.length ? `<span class="text-[10px] text-slate-400 font-semibold">${postAttempts.length}/${MAX_POSTTEST_ATTEMPTS}x percobaan</span>` : ""}
-        </div>
-
-        <details class="mt-3">
-            <summary class="text-[11px] font-bold text-indigo-500 cursor-pointer select-none">Lihat detail materi</summary>
-            <div class="mt-2 bg-slate-50 rounded-xl p-3">${buildMateriChecklist(course, enr)}</div>
-        </details>
+function buildOnboardingTable(ordered, userId) {
+    const rows = ordered.map(c => buildOnboardingTableRow(c, userId, ordered)).join("");
+    return `
+    <div class="bg-white rounded-2xl border border-slate-100 overflow-x-auto">
+        <table class="w-full text-left">
+            <thead class="bg-slate-50 text-[9px] font-black uppercase text-slate-400">
+                <tr>
+                    <th class="px-3 py-2.5">Judul &amp; Lesson</th>
+                    <th class="px-3 py-2.5 text-center">Status Penyelesaian</th>
+                    <th class="px-3 py-2.5 text-center">Nilai Pre-Test</th>
+                    <th class="px-3 py-2.5 text-center">Nilai Post-Test</th>
+                    <th class="px-3 py-2.5 text-center">Tgl Penyelesaian</th>
+                </tr>
+            </thead>
+            <tbody>${rows}</tbody>
+        </table>
     </div>`;
 }
 
-// Bangun keseluruhan blok ringkasan training (persentase onboarding + list card training +
-// tombol kirim reminder) untuk ditempel di bawah data pribadi karyawan pada modal detail.
+// Satu baris tabel "Training By TNA yang Diikuti" — hanya training yang karyawan ini SUDAH
+// daftar (punya dokumen trainingRegistrations), lengkap dengan presensi, nilai post-test,
+// status evaluasi, dan sertifikat kalau sudah terbit.
+function buildTnaTableRow(training, userId) {
+    const reg = regOfUserForTraining(training.id, userId);
+    const att = attendanceOfUserForTraining(training.id, userId);
+    const evalDoc = evalOfUserForTraining(training.id, userId);
+    const cert = certOfUserForTraining(training.id, userId);
+    const hasQuiz = !!(training.quiz && (training.quiz.questions || []).length);
+    const postAttempts = hasQuiz ? postTestAttemptsOfUserTraining(training.id, userId) : [];
+    const latestPost = postAttempts[0] || null;
+
+    let statusLabel, statusClass;
+    if (cert) { statusLabel = "Selesai"; statusClass = "bg-emerald-50 text-emerald-600"; }
+    else if (evalDoc) { statusLabel = "Evaluasi Terkirim"; statusClass = "bg-emerald-50 text-emerald-600"; }
+    else if (att) { statusLabel = "Hadir"; statusClass = "bg-amber-50 text-amber-600"; }
+    else if (reg) { statusLabel = "Terdaftar"; statusClass = "bg-sky-50 text-sky-600"; }
+    else { statusLabel = "-"; statusClass = "bg-slate-100 text-slate-400"; }
+
+    return `
+    <tr class="border-b border-slate-50 hover:bg-slate-50/60 align-top">
+        <td class="px-3 py-3">
+            <p class="font-bold text-slate-700 text-xs">${window.escapeHtml(training.title)}</p>
+            <p class="text-[10px] text-slate-400 mt-0.5">${window.fmtDate(training.date)} • ${window.escapeHtml(training.location || "-")}</p>
+            <p class="text-[10px] text-slate-400"><i class="fas fa-user-tie mr-1"></i>${window.escapeHtml(training.trainer || "-")}</p>
+        </td>
+        <td class="px-3 py-3 text-center"><span class="text-[10px] font-black px-2 py-1 rounded-full ${statusClass} whitespace-nowrap">${statusLabel}</span></td>
+        <td class="px-3 py-3 text-center text-[11px] text-slate-500 whitespace-nowrap">${att ? window.fmtDate(att.checkedInAt) : "-"}</td>
+        <td class="px-3 py-3 text-center text-xs font-bold ${latestPost ? (latestPost.passed ? "text-emerald-600" : "text-rose-500") : "text-slate-700"}">${hasQuiz ? (latestPost ? latestPost.score : "-") : "-"}</td>
+        <td class="px-3 py-3 text-center text-[11px]">${evalDoc ? '<span class="text-emerald-600 font-bold"><i class="fas fa-check"></i></span>' : '<span class="text-slate-300">-</span>'}</td>
+        <td class="px-3 py-3 text-center text-[11px]">${cert ? `<span class="text-emerald-600 font-bold"><i class="fas fa-award mr-1"></i>${window.escapeHtml(cert.certId)}</span>` : '<span class="text-slate-300">-</span>'}</td>
+    </tr>`;
+}
+
+function buildTnaTable(userId) {
+    const myRegs = window.STATE.trainingRegs.filter(r => r.userId === userId);
+    if (!myRegs.length) {
+        return `<div class="bg-slate-50 text-slate-400 text-xs font-semibold rounded-2xl p-3">Karyawan ini belum mengikuti training by TNA apa pun.</div>`;
+    }
+    const trainings = myRegs
+        .map(r => window.STATE.trainings.find(t => t.id === r.trainingId))
+        .filter(Boolean)
+        .sort((a, b) => new Date(b.date) - new Date(a.date));
+    if (!trainings.length) {
+        return `<div class="bg-slate-50 text-slate-400 text-xs font-semibold rounded-2xl p-3">Karyawan ini belum mengikuti training by TNA apa pun.</div>`;
+    }
+    const rows = trainings.map(t => buildTnaTableRow(t, userId)).join("");
+    return `
+    <div class="bg-white rounded-2xl border border-slate-100 overflow-x-auto">
+        <table class="w-full text-left">
+            <thead class="bg-slate-50 text-[9px] font-black uppercase text-slate-400">
+                <tr>
+                    <th class="px-3 py-2.5">Training</th>
+                    <th class="px-3 py-2.5 text-center">Status</th>
+                    <th class="px-3 py-2.5 text-center">Tgl Hadir</th>
+                    <th class="px-3 py-2.5 text-center">Nilai Post-Test</th>
+                    <th class="px-3 py-2.5 text-center">Evaluasi</th>
+                    <th class="px-3 py-2.5 text-center">Sertifikat</th>
+                </tr>
+            </thead>
+            <tbody>${rows}</tbody>
+        </table>
+    </div>`;
+}
+
+// Blok ringkasan training di modal Detail Karyawan: persentase keseluruhan penyelesaian
+// training onboarding di atas, lalu tabel penyelesaian onboarding, lalu tabel Training by TNA
+// yang sudah diikuti berikut detailnya.
 function buildEmployeeTrainingSummary(emp, user) {
     if (!user) {
         return `
         <div class="mt-4 pt-4 border-t border-slate-100">
-            <h4 class="font-black text-sm text-slate-700 mb-2"><i class="fas fa-graduation-cap mr-1.5 text-indigo-400"></i> Ringkasan Training</h4>
             <div class="bg-rose-50 text-rose-500 text-xs font-semibold rounded-2xl p-3">
-                Karyawan ini belum punya akun, jadi belum bisa mengakses training onboarding.
+                Karyawan ini belum punya akun, jadi belum bisa mengakses training onboarding maupun training by TNA.
             </div>
         </div>`;
     }
 
     const dept = (user.dept || emp.dept || "").trim();
     const ordered = orderedPublishedCoursesForDept(dept);
-
-    if (!ordered.length) {
-        return `
-        <div class="mt-4 pt-4 border-t border-slate-100">
-            <h4 class="font-black text-sm text-slate-700 mb-2"><i class="fas fa-graduation-cap mr-1.5 text-indigo-400"></i> Ringkasan Training</h4>
-            <div class="bg-slate-50 text-slate-400 text-xs font-semibold rounded-2xl p-3">
-                Belum ada training onboarding yang ditargetkan untuk departemen ${dept ? `"${window.escapeHtml(dept)}"` : "karyawan ini"}.
-            </div>
-        </div>`;
-    }
-
     const completedCount = ordered.filter(c => certOfUser(c.id, user.id)).length;
-    const percent = Math.round((completedCount / ordered.length) * 100);
+    const percent = ordered.length ? Math.round((completedCount / ordered.length) * 100) : 0;
     const remaining = ordered.length - completedCount;
-    const allDone = remaining === 0;
-
-    const cards = ordered.map(c => buildEmployeeTrainingCard(c, user.id, ordered)).join("");
+    const allDone = ordered.length > 0 && remaining === 0;
 
     return `
-    <div class="mt-4 pt-4 border-t border-slate-100">
-        <div class="flex items-center justify-between flex-wrap gap-2 mb-3">
-            <h4 class="font-black text-sm text-slate-700"><i class="fas fa-graduation-cap mr-1.5 text-indigo-400"></i> Ringkasan Training Onboarding</h4>
-            ${!allDone ? `<button onclick="window.guardedClick(this, () => window.sendTrainingReminder('${emp.id}'))" class="bg-indigo-600 hover:bg-indigo-700 text-white text-[11px] font-bold px-3 py-2 rounded-xl transition"><i class="fab fa-whatsapp mr-1"></i> Kirim Reminder</button>` : ""}
-        </div>
-
-        <div class="bg-indigo-50 rounded-2xl p-4 flex items-center justify-between gap-3 mb-4">
+    <div class="mt-4 pt-4 border-t border-slate-100 space-y-4">
+        <div class="bg-indigo-50 rounded-2xl p-4 flex items-center justify-between gap-3 flex-wrap">
             <div class="min-w-0">
-                <p class="text-[10px] font-bold uppercase text-indigo-400 tracking-wide">Progress Onboarding • ${window.escapeHtml(dept || "-")}</p>
-                <p class="text-sm font-black text-indigo-700 mt-0.5">${completedCount}/${ordered.length} training selesai</p>
-                <p class="text-[11px] text-indigo-400 font-semibold mt-0.5">${allDone ? "Semua training onboarding sudah tuntas 🎉" : `${remaining} training masih belum selesai`}</p>
+                <p class="text-[10px] font-bold uppercase text-indigo-400 tracking-wide">Progress Onboarding Training • ${window.escapeHtml(dept || "-")}</p>
+                <p class="text-sm font-black text-indigo-700 mt-0.5">${ordered.length ? `${completedCount}/${ordered.length} training selesai` : "Tidak ada training untuk departemen ini"}</p>
             </div>
-            <div class="text-2xl font-black text-indigo-600 shrink-0">${percent}%</div>
+            <div class="flex items-center gap-3">
+                <div class="text-2xl font-black text-indigo-600">${percent}%</div>
+                ${(ordered.length && !allDone) ? `<button onclick="window.guardedClick(this, () => window.sendTrainingReminder('${emp.id}'))" class="bg-indigo-600 hover:bg-indigo-700 text-white text-[11px] font-bold px-3 py-2 rounded-xl transition"><i class="fab fa-whatsapp mr-1"></i> Kirim Reminder</button>` : ""}
+            </div>
         </div>
 
-        <div class="space-y-3">${cards}</div>
+        <div>
+            <h4 class="font-black text-xs text-slate-700 mb-2 uppercase tracking-wide"><i class="fas fa-book-open mr-1.5 text-indigo-400"></i> Penyelesaian Onboarding Training</h4>
+            ${ordered.length ? buildOnboardingTable(ordered, user.id) : `<div class="bg-slate-50 text-slate-400 text-xs font-semibold rounded-2xl p-3">Belum ada training onboarding yang ditargetkan untuk departemen ${dept ? `"${window.escapeHtml(dept)}"` : "karyawan ini"}.</div>`}
+        </div>
+
+        <div>
+            <h4 class="font-black text-xs text-slate-700 mb-2 uppercase tracking-wide"><i class="fas fa-chalkboard-user mr-1.5 text-amber-400"></i> Training By TNA yang Diikuti</h4>
+            ${buildTnaTable(user.id)}
+        </div>
     </div>`;
 }
 
