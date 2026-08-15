@@ -1291,9 +1291,14 @@ window.openLesson = function (kind, refId, lessonId) {
 
     if (lesson.type === "video" && lesson.videoUrl) {
         const embed = toEmbedUrl(lesson.videoUrl);
-        requireFullWatch = !done;
-        body = `<div class="aspect-video rounded-2xl overflow-hidden bg-black"><iframe id="lesson-video-frame" class="w-full h-full" src="${embed}?enablejsapi=1" allowfullscreen></iframe></div>
-        ${requireFullWatch ? `<p id="lesson-video-hint" class="text-xs text-amber-600 font-semibold mt-2"><i class="fas fa-circle-info mr-1"></i> Tonton video sampai selesai untuk mengaktifkan tombol "Tandai Selesai".</p>` : ""}`;
+        if (embed) {
+            requireFullWatch = !done;
+            const embedSrc = `${embed}?enablejsapi=1&origin=${encodeURIComponent(location.origin)}`;
+            body = `<div class="aspect-video rounded-2xl overflow-hidden bg-black"><iframe id="lesson-video-frame" class="w-full h-full" src="${embedSrc}" allow="autoplay; encrypted-media" allowfullscreen></iframe></div>
+            ${requireFullWatch ? `<p id="lesson-video-hint" class="text-xs text-amber-600 font-semibold mt-2"><i class="fas fa-circle-info mr-1"></i> Tonton video sampai selesai untuk mengaktifkan tombol "Tandai Selesai".</p>` : ""}`;
+        } else {
+            body = `<div class="aspect-video rounded-2xl bg-rose-50 border border-dashed border-rose-200 flex flex-col items-center justify-center text-center px-4"><i class="fas fa-triangle-exclamation text-2xl text-rose-300 mb-2"></i><p class="text-sm text-rose-500 font-semibold">Link video tidak dikenali sebagai URL YouTube yang valid.</p><p class="text-xs text-rose-400 mt-1">Hubungi admin untuk memperbaiki URL video pada materi ini.</p></div>`;
+        }
     } else if (lesson.type === "video" && !lesson.videoUrl) {
         body = `<div class="aspect-video rounded-2xl bg-slate-50 border border-dashed border-slate-200 flex flex-col items-center justify-center text-center px-4"><i class="fas fa-circle-play text-2xl text-slate-300 mb-2"></i><p class="text-sm text-slate-400 font-semibold">Video belum tersedia. Hubungi admin untuk melengkapi materi ini.</p></div>`;
     } else if (lesson.type === "ppt" && lesson.pptUrl) {
@@ -1387,10 +1392,46 @@ function bindYtPlayer(frame) {
     } catch (e) { console.error(e); }
 }
 
+// Ekstrak YouTube video ID dari berbagai format link yang mungkin di-paste admin:
+// watch?v=, youtu.be/, embed/, shorts/, live/, m.youtube.com, music.youtube.com,
+// dengan/tanpa protokol, dan urutan query parameter apapun. Return null kalau
+// bukan link YouTube yang valid (biar UI nampilin pesan error, bukan iframe blank).
+function extractYouTubeId(raw) {
+    if (!raw) return null;
+    let input = String(raw).trim();
+    if (!input) return null;
+    if (!/^https?:\/\//i.test(input)) input = "https://" + input.replace(/^\/\//, "");
+
+    let u;
+    try { u = new URL(input); } catch (e) { return null; }
+
+    const host = u.hostname.replace(/^www\./, "").replace(/^m\./, "").replace(/^music\./, "");
+    if (!/(^|\.)youtube\.com$/.test(host) && host !== "youtu.be") return null;
+
+    const isValidId = (id) => !!id && /^[\w-]{6,}$/.test(id);
+
+    // youtu.be/<id>
+    if (host === "youtu.be") {
+        const id = u.pathname.split("/").filter(Boolean)[0];
+        return isValidId(id) ? id : null;
+    }
+
+    // youtube.com/watch?v=<id>  (urutan query bebas)
+    const vParam = u.searchParams.get("v");
+    if (isValidId(vParam)) return vParam;
+
+    // youtube.com/embed/<id>, /shorts/<id>, /live/<id>
+    const segs = u.pathname.split("/").filter(Boolean);
+    const knownPrefixes = ["embed", "shorts", "live", "v"];
+    const idx = segs.findIndex(s => knownPrefixes.includes(s));
+    if (idx !== -1 && segs[idx + 1] && isValidId(segs[idx + 1])) return segs[idx + 1];
+
+    return null;
+}
+
 function toEmbedUrl(url) {
-    const yt = url.match(/(?:youtu\.be\/|youtube\.com\/watch\?v=|youtube\.com\/embed\/)([\w-]+)/);
-    if (yt) return `https://www.youtube.com/embed/${yt[1]}`;
-    return url;
+    const id = extractYouTubeId(url);
+    return id ? `https://www.youtube.com/embed/${id}` : null;
 }
 
 async function markLessonComplete(kind, refId, lessonId) {
