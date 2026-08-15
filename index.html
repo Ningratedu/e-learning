@@ -1,0 +1,2500 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NingratEdu - Learning Management System</title>
+
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
+
+<link rel="manifest" href="manifest.json">
+<link rel="icon" type="image/png" sizes="192x192" href="https://raw.githubusercontent.com/Ningratedu/asset-foto/refs/heads/main/ChatGPT%20Image%2010%20Jul%202026%2C%2007.45.48.png">
+<meta name="theme-color" content="#4338ca">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="NingratEdu">
+
+<link rel="preconnect" href="https://cdn.tailwindcss.com">
+<link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="preconnect" href="https://firestore.googleapis.com">
+
+<script src="https://cdn.tailwindcss.com" defer></script>
+<link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" defer></script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap');
+
+#boot-loader {
+    position: fixed; inset: 0; z-index: 99999;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px;
+    background: #0f172a; transition: opacity .35s ease;
+}
+#boot-loader.boot-loader-hide { opacity: 0; pointer-events: none; }
+#boot-loader .boot-spinner {
+    width: 42px; height: 42px; border-radius: 50%;
+    border: 3px solid rgba(255,255,255,0.2); border-top-color: #818cf8;
+    animation: boot-spin .8s linear infinite;
+}
+#boot-loader .boot-label {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    font-size: 13px; font-weight: 600; color: #cbd5e1; letter-spacing: .02em;
+}
+@keyframes boot-spin { to { transform: rotate(360deg); } }
+
+body { font-family: 'Plus Jakarta Sans', sans-serif; background: #f8fafc; }
+
+.hide { display: none !important; }
+
+button:disabled, input[type="submit"]:disabled {
+    opacity: 0.5 !important; cursor: not-allowed !important; filter: grayscale(0.25); pointer-events: none;
+}
+
+.modal-overlay { background: rgba(15, 23, 42, 0.55); backdrop-filter: blur(2px); }
+
+.nav-item {
+    display: flex; align-items: center; gap: 12px;
+    padding: 10px 16px; border-radius: 14px; font-size: 13.5px; font-weight: 700;
+    color: #c7d2fe; transition: all .15s ease;
+}
+.nav-item:hover { background: rgba(255,255,255,0.06); color: #fff; }
+.nav-item.nav-active { background: #4f46e5; color: #fff; box-shadow: 0 4px 14px rgba(79,70,229,.4); }
+
+@keyframes toast-in { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: translateY(0); } }
+.animate-toast-in { animation: toast-in .25s ease; transition: opacity .3s ease, transform .3s ease; }
+
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 8px; }
+
+.line-clamp-2 { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+
+</style>
+</head>
+<body>
+
+<!-- ================= BOOT LOADER ================= -->
+<div id="boot-loader">
+    <div class="boot-spinner"></div>
+    <div class="boot-label">Memuat NingratEdu…</div>
+</div>
+
+<!-- ================= TOAST ================= -->
+<div id="toast-box" class="fixed top-4 right-4 z-[99998] w-72"></div>
+
+<!-- ================= AUTH SCREEN ================= -->
+<div id="auth-screen" class="hide min-h-screen flex items-center justify-center bg-gradient-to-br from-indigo-950 via-slate-900 to-violet-950 p-4">
+    <div class="w-full max-w-sm">
+        <div class="text-center mb-6">
+            <div class="w-14 h-14 rounded-2xl bg-indigo-600 flex items-center justify-center mx-auto mb-3 shadow-lg shadow-indigo-900/50">
+                <i class="fas fa-graduation-cap text-white text-2xl"></i>
+            </div>
+            <h1 class="text-white text-xl font-black">NingratEdu</h1>
+            <p class="text-indigo-200/60 text-xs font-semibold mt-1">Training & Development Trusmi Group</p>
+        </div>
+        <div class="bg-white rounded-3xl shadow-2xl p-6 space-y-3">
+            <div>
+                <label class="text-[10px] font-bold uppercase text-slate-400">Username</label>
+                <input id="login-username" type="text" class="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm mt-1 outline-none focus:ring-2 focus:ring-indigo-400" placeholder="Username">
+            </div>
+            <div>
+                <label class="text-[10px] font-bold uppercase text-slate-400">Password</label>
+                <input id="login-password" type="password" class="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm mt-1 outline-none focus:ring-2 focus:ring-indigo-400" placeholder="••••••••" onkeydown="if(event.key==='Enter') window.guardedClick(this, () => window.doLogin())">
+            </div>
+            <button onclick="window.guardedClick(this, () => window.doLogin())" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-2xl transition"><i class="fas fa-right-to-bracket mr-1"></i> Masuk</button>
+            <button onclick="window.openModal('modal-register')" class="w-full text-indigo-600 text-xs font-bold py-2">Belum punya akun? Daftar di sini</button>
+        </div>
+    </div>
+</div>
+
+<!-- ================= MODAL: REGISTER ================= -->
+<div id="modal-register" class="fixed inset-0 z-[10000] hide modal-overlay flex items-center justify-center p-4">
+    <div class="bg-white w-full max-w-sm rounded-3xl shadow-2xl overflow-hidden">
+        <div class="p-6 border-b flex justify-between items-center bg-indigo-50">
+            <h3 class="text-lg font-black text-indigo-600"><i class="fas fa-user-plus mr-1"></i> Daftar Akun</h3>
+            <button onclick="window.closeModal('modal-register')" class="text-slate-400 hover:text-slate-700"><i class="fas fa-times"></i></button>
+        </div>
+        <div class="p-6 space-y-3">
+            <input id="register-username" placeholder="Username" class="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-indigo-400">
+            <input id="register-email" type="email" placeholder="Email" class="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-indigo-400">
+            <input id="register-dept" placeholder="Departemen" class="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-indigo-400">
+            <input id="register-password" type="password" placeholder="Password" class="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-indigo-400">
+            <button onclick="window.guardedClick(this, () => window.doRegister())" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-2xl transition">Buat Akun</button>
+        </div>
+    </div>
+</div>
+
+<!-- ================= APP SHELL ================= -->
+<div id="app-shell" class="hide min-h-screen lg:flex">
+
+    <!-- Sidebar overlay (mobile) -->
+    <div id="sidebar-overlay" class="hide fixed inset-0 bg-black/40 z-30 lg:hidden" onclick="document.getElementById('sidebar').classList.add('-translate-x-full'); this.classList.add('hide')"></div>
+
+    <!-- Sidebar -->
+    <aside id="sidebar" class="fixed lg:static inset-y-0 left-0 w-64 bg-slate-900 z-40 -translate-x-full lg:translate-x-0 transition-transform flex flex-col">
+        <div class="flex items-center gap-2 px-5 py-5">
+            <div class="w-9 h-9 rounded-xl bg-indigo-600 flex items-center justify-center"><i class="fas fa-graduation-cap text-white"></i></div>
+            <span class="text-white font-black text-lg">NingratEdu</span>
+        </div>
+        <nav id="sidebar-nav" class="flex-1 px-3 space-y-1 overflow-y-auto"></nav>
+        <div class="p-3 border-t border-white/10">
+            <button onclick="window.doLogout()" class="nav-item w-full text-rose-300 hover:text-rose-200"><i class="fas fa-right-from-bracket w-5 text-center"></i><span>Keluar</span></button>
+        </div>
+    </aside>
+
+    <!-- Main -->
+    <div class="flex-1 min-w-0 flex flex-col">
+        <header class="bg-white border-b border-slate-100 px-4 lg:px-6 py-3 flex items-center justify-between sticky top-0 z-20">
+            <button class="lg:hidden text-slate-500" onclick="document.getElementById('sidebar').classList.remove('-translate-x-full'); document.getElementById('sidebar-overlay').classList.remove('hide')"><i class="fas fa-bars text-lg"></i></button>
+            <div class="hidden lg:block"></div>
+            <div class="flex items-center gap-3">
+                <div class="text-right hidden sm:block">
+                    <p id="topbar-username" class="text-sm font-bold text-slate-700 leading-none"></p>
+                    <p id="topbar-role" class="text-[10px] text-indigo-500 font-bold mt-0.5"></p>
+                </div>
+                <div id="topbar-avatar" class="w-9 h-9 rounded-full bg-indigo-600 text-white flex items-center justify-center font-black text-sm"></div>
+            </div>
+        </header>
+        <main id="page-content" class="flex-1 p-4 lg:p-6"></main>
+    </div>
+</div>
+
+<!-- ================= MODAL: LESSON VIEWER ================= -->
+<div id="modal-lesson" class="fixed inset-0 z-[10000] hide modal-overlay flex items-center justify-center p-4">
+    <div class="bg-white w-full max-w-2xl rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+        <div class="p-5 border-b flex justify-between items-start bg-indigo-50">
+            <div><h3 id="lesson-modal-title" class="text-lg font-black text-indigo-700"></h3><p id="lesson-modal-sub" class="text-xs text-indigo-400 font-bold"></p></div>
+            <button onclick="window.closeModal('modal-lesson')" class="text-slate-400 hover:text-slate-700"><i class="fas fa-times"></i></button>
+        </div>
+        <div id="lesson-modal-body" class="p-5 overflow-y-auto flex-1"></div>
+        <div class="p-4 border-t"><button id="lesson-modal-complete-btn" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-2xl transition"></button></div>
+    </div>
+</div>
+
+<!-- ================= MODAL: KUIS ================= -->
+<div id="modal-quiz" class="fixed inset-0 z-[10000] hide modal-overlay flex items-center justify-center p-4">
+    <div class="bg-white w-full max-w-2xl rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+        <div class="p-5 border-b flex justify-between items-center bg-amber-50">
+            <h3 id="quiz-modal-title" class="text-lg font-black text-amber-600"></h3>
+            <button onclick="window.closeModal('modal-quiz')" class="text-slate-400 hover:text-slate-700"><i class="fas fa-times"></i></button>
+        </div>
+        <div id="quiz-modal-body" class="p-5 overflow-y-auto flex-1 space-y-3"></div>
+        <div class="p-4 border-t"><button id="quiz-submit-btn" class="w-full bg-amber-500 hover:bg-amber-600 text-white font-bold py-3 rounded-2xl transition"><i class="fas fa-paper-plane mr-1"></i> Kumpulkan Jawaban</button></div>
+    </div>
+</div>
+
+<!-- ================= MODAL: PENUGASAN (ASSIGNMENT) ================= -->
+<div id="modal-assignment" class="fixed inset-0 z-[10000] hide modal-overlay flex items-center justify-center p-4">
+    <div class="bg-white w-full max-w-lg rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+        <div class="p-5 border-b flex justify-between items-start bg-violet-50">
+            <div>
+                <h3 id="assignment-modal-title" class="text-lg font-black text-violet-700"><i class="fas fa-file-signature mr-1"></i></h3>
+                <p id="assignment-modal-deadline" class="text-[11px] text-violet-400 font-bold"></p>
+            </div>
+            <button onclick="window.closeModal('modal-assignment')" class="text-slate-400 hover:text-slate-700"><i class="fas fa-times"></i></button>
+        </div>
+        <div id="assignment-modal-body" class="p-5 overflow-y-auto flex-1 space-y-3"></div>
+    </div>
+</div>
+
+<!-- ================= MODAL: EVALUASI TRAINING ================= -->
+<div id="modal-evaluation" class="fixed inset-0 z-[10000] hide modal-overlay flex items-center justify-center p-4">
+    <div class="bg-white w-full max-w-md rounded-3xl shadow-2xl overflow-hidden">
+        <div class="p-5 border-b flex justify-between items-center bg-indigo-50">
+            <h3 class="text-lg font-black text-indigo-600"><i class="fas fa-star mr-1"></i> Evaluasi Training</h3>
+            <button onclick="window.closeModal('modal-evaluation')" class="text-slate-400 hover:text-slate-700"><i class="fas fa-times"></i></button>
+        </div>
+        <div class="p-5 space-y-4">
+            <input type="hidden" id="eval-training-id">
+            <div>
+                <label class="text-[10px] font-bold uppercase text-slate-400">Kualitas Materi (1-5)</label>
+                <input id="eval-rating-materi" type="range" min="1" max="5" value="5" class="w-full accent-indigo-600">
+            </div>
+            <div>
+                <label class="text-[10px] font-bold uppercase text-slate-400">Kualitas Trainer (1-5)</label>
+                <input id="eval-rating-trainer" type="range" min="1" max="5" value="5" class="w-full accent-indigo-600">
+            </div>
+            <div>
+                <label class="text-[10px] font-bold uppercase text-slate-400">Fasilitas (1-5)</label>
+                <input id="eval-rating-fasilitas" type="range" min="1" max="5" value="5" class="w-full accent-indigo-600">
+            </div>
+            <div>
+                <label class="text-[10px] font-bold uppercase text-slate-400">Komentar / Saran</label>
+                <textarea id="eval-comment" rows="3" class="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm mt-1 outline-none focus:ring-2 focus:ring-indigo-400"></textarea>
+            </div>
+            <button onclick="window.guardedClick(this, () => window.submitEvaluation())" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-2xl transition">Kirim Evaluasi & Ambil Sertifikat</button>
+        </div>
+    </div>
+</div>
+
+<!-- ================= MODAL: INFO FORMAT EXCEL SOAL KUIS ================= -->
+<div id="modal-quiz-excel-info" class="fixed inset-0 z-[10000] hide modal-overlay flex items-center justify-center p-4">
+    <div class="bg-white w-full max-w-lg rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+        <div class="p-5 border-b flex justify-between items-center bg-emerald-50">
+            <h3 class="text-lg font-black text-emerald-600"><i class="fas fa-file-excel mr-1"></i> Format Upload Soal via Excel</h3>
+            <button onclick="window.closeModal('modal-quiz-excel-info')" class="text-slate-400 hover:text-slate-700"><i class="fas fa-times"></i></button>
+        </div>
+        <div class="p-5 overflow-y-auto space-y-4">
+            <p class="text-sm text-slate-600">File Excel (.xlsx) harus memiliki <strong>1 baris header</strong> lalu 1 baris untuk setiap soal, dengan urutan kolom berikut:</p>
+            <div class="overflow-x-auto rounded-xl border border-slate-100">
+                <table class="w-full text-left text-[11px]">
+                    <thead class="bg-slate-50 font-black text-slate-500 uppercase">
+                        <tr>
+                            <th class="px-2 py-2">Pertanyaan</th><th class="px-2 py-2">Opsi A</th><th class="px-2 py-2">Opsi B</th><th class="px-2 py-2">Opsi C</th><th class="px-2 py-2">Opsi D</th><th class="px-2 py-2">Jawaban Benar</th>
+                        </tr>
+                    </thead>
+                    <tbody class="text-slate-600">
+                        <tr class="border-t border-slate-50">
+                            <td class="px-2 py-2">Apa kepanjangan TNA?</td><td class="px-2 py-2">Training Need Analysis</td><td class="px-2 py-2">Total Nilai Akhir</td><td class="px-2 py-2">Tim Nilai Absensi</td><td class="px-2 py-2">Target Nilai Anggaran</td><td class="px-2 py-2 font-bold text-emerald-600">A</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+            <ul class="text-xs text-slate-500 list-disc pl-4 space-y-1">
+                <li>Kolom <strong>Jawaban Benar</strong> diisi salah satu huruf: A, B, C, atau D (sesuai opsi yang benar).</li>
+                <li>Soal hasil import akan <strong>ditambahkan</strong> ke daftar soal yang sudah ada, tidak menimpa soal lama.</li>
+                <li>Boleh diisi lebih dari 4 opsi jawaban? Tidak — sistem hanya membaca kolom Opsi A–D.</li>
+                <li>Simpan file dalam format <strong>.xlsx</strong> sebelum diupload.</li>
+            </ul>
+            <button onclick="window.downloadQuizTemplate()" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 rounded-2xl transition"><i class="fas fa-download mr-1"></i> Download Template Excel</button>
+        </div>
+    </div>
+</div>
+
+<script type="module">
+// ================= FIREBASE (reuse project & pola yang sama dengan TrainingHub) =================
+// 🔥 CATATAN: config di bawah ini SAMA dengan project Firebase TrainingHub yang lama.
+// Supaya data LMS TIDAK nabrak/campur sama data booking aset yang lama, semua koleksi
+// LMS ditaruh di namespace terpisah: artifacts/{appId}/lms/data/{collection}
+// (punya lama pakai namespace 'public': artifacts/{appId}/public/data/{collection}).
+
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import {
+    getFirestore, collection, doc, addDoc, getDoc, getDocs, setDoc, updateDoc,
+    deleteDoc, onSnapshot, query, where, orderBy, serverTimestamp, writeBatch
+} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+import {
+    getStorage, ref as storageRef, uploadBytes, getDownloadURL
+} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-storage.js";
+
+const firebaseConfig = {
+    apiKey: "AIzaSyAdNlDuqIbpoZvb1f1_u6SC2zcFcXbB8DM",
+    authDomain: "booking-ruang-training.firebaseapp.com",
+    projectId: "booking-ruang-training",
+    storageBucket: "booking-ruang-training.firebasestorage.app",
+    messagingSenderId: "627204181280",
+    appId: "1:627204181280:web:df6653f289326d65135b45"
+};
+
+const appFb = initializeApp(firebaseConfig);
+const db = getFirestore(appFb);
+const storage = getStorage(appFb);
+const appId = "booking-ruang-training";
+const NS = "lms"; // namespace khusus data LMS
+
+function col(name) {
+    return collection(db, "artifacts", appId, NS, "data", name);
+}
+function ref(name, id) {
+    return doc(db, "artifacts", appId, NS, "data", name, id);
+}
+
+// Upload file ke Firebase Storage, return public download URL.
+// folder contoh: "ppt", "assignments/course/<id>", dst.
+async function uploadFile(file, folder) {
+    const safeName = file.name.replace(/[^a-zA-Z0-9.\-_]/g, "_");
+    const path = `artifacts/${appId}/${NS}/uploads/${folder}/${Date.now()}_${safeName}`;
+    const sRef = storageRef(storage, path);
+    await uploadBytes(sRef, file);
+    return getDownloadURL(sRef);
+}
+
+window.LMS_DB = {
+    db, col, ref, addDoc, getDoc, getDocs, setDoc, updateDoc, deleteDoc,
+    onSnapshot, query, where, orderBy, serverTimestamp, writeBatch,
+    storage, storageRef, uploadBytes, getDownloadURL, uploadFile
+};
+
+// Beritahu main.js bahwa firebase siap
+window.dispatchEvent(new Event("lms-firebase-ready"));
+
+</script>
+<script>
+// ================= GLOBAL STATE =================
+window.STATE = {
+    user: null,          // user login saat ini {id, username, role, ...}
+    users: [],
+    courses: [],
+    trainings: [],
+    enrollments: [],
+    quizAttempts: [],
+    certificates: [],
+    trainingRegs: [],
+    attendance: [],
+    evaluations: [],
+    assignmentSubmissions: [],
+    ready: false
+};
+
+function startLiveListeners() {
+    const { col, onSnapshot } = window.LMS_DB;
+    const bind = (name, key) => {
+        onSnapshot(col(name), (snap) => {
+            window.STATE[key] = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+            window.dispatchEvent(new CustomEvent("lms-state-changed", { detail: key }));
+        }, (err) => console.error("Listener error " + name, err));
+    };
+    bind("users", "users");
+    bind("courses", "courses");
+    bind("trainings", "trainings");
+    bind("enrollments", "enrollments");
+    bind("quizAttempts", "quizAttempts");
+    bind("certificates", "certificates");
+    bind("trainingRegistrations", "trainingRegs");
+    bind("attendance", "attendance");
+    bind("evaluations", "evaluations");
+    bind("assignmentSubmissions", "assignmentSubmissions");
+}
+window.startLiveListeners = startLiveListeners;
+
+// ================= HELPER SELECTOR =================
+window.sel = {
+    myEnrollment(courseId) {
+        const u = window.STATE.user;
+        if (!u) return null;
+        return window.STATE.enrollments.find(e => e.courseId === courseId && e.userId === u.id) || null;
+    },
+    courseProgress(courseId) {
+        const course = window.STATE.courses.find(c => c.id === courseId);
+        const enr = window.sel.myEnrollment(courseId);
+        if (!course || !enr) return 0;
+        const totalLessons = (course.modules || []).reduce((s, m) => s + (m.lessons || []).length, 0);
+        if (!totalLessons) return 0;
+        const done = (enr.completedLessonIds || []).length;
+        return Math.round((done / totalLessons) * 100);
+    },
+    myQuizAttempt(courseId) {
+        const u = window.STATE.user;
+        if (!u) return null;
+        const attempts = window.STATE.quizAttempts.filter(a => a.courseId === courseId && a.userId === u.id);
+        if (!attempts.length) return null;
+        return attempts.sort((a, b) => (b.attemptAt?.seconds || 0) - (a.attemptAt?.seconds || 0))[0];
+    },
+    myCertForCourse(courseId) {
+        const u = window.STATE.user;
+        if (!u) return null;
+        return window.STATE.certificates.find(c => c.courseId === courseId && c.userId === u.id) || null;
+    },
+    myRegForTraining(trainingId) {
+        const u = window.STATE.user;
+        if (!u) return null;
+        return window.STATE.trainingRegs.find(r => r.trainingId === trainingId && r.userId === u.id) || null;
+    },
+    myAttendance(trainingId) {
+        const u = window.STATE.user;
+        if (!u) return null;
+        return window.STATE.attendance.find(a => a.trainingId === trainingId && a.userId === u.id) || null;
+    },
+    isAdmin() {
+        const u = window.STATE.user;
+        return !!u && (u.role === "admin" || u.role === "superadmin");
+    },
+    isSuperAdmin() {
+        return window.STATE.user?.role === "superadmin";
+    }
+};
+
+
+// ================= TOAST =================
+window.toast = function (msg, type = "info") {
+    const box = document.getElementById("toast-box");
+    const colors = {
+        info: "bg-slate-800", success: "bg-emerald-600",
+        error: "bg-rose-600", warn: "bg-amber-500"
+    };
+    const el = document.createElement("div");
+    el.className = `${colors[type] || colors.info} text-white text-sm font-semibold px-4 py-3 rounded-2xl shadow-xl mb-2 flex items-center gap-2 animate-toast-in`;
+    const icons = { info: "fa-circle-info", success: "fa-circle-check", error: "fa-circle-exclamation", warn: "fa-triangle-exclamation" };
+    el.innerHTML = `<i class="fas ${icons[type] || icons.info}"></i><span>${msg}</span>`;
+    box.appendChild(el);
+    setTimeout(() => { el.style.opacity = "0"; el.style.transform = "translateY(-6px)"; }, 2600);
+    setTimeout(() => el.remove(), 3000);
+};
+
+// ================= ANTI DOUBLE-SUBMIT =================
+window.guardedClick = function (btn, fn) {
+    if (btn.disabled) return;
+    btn.disabled = true;
+    Promise.resolve().then(fn).catch(err => {
+        console.error(err);
+        window.toast(err.message || "Terjadi kesalahan", "error");
+    }).finally(() => { btn.disabled = false; });
+};
+
+// ================= MODAL =================
+window.openModal = function (id) {
+    document.getElementById(id)?.classList.remove("hide");
+};
+window.closeModal = function (id) {
+    document.getElementById(id)?.classList.add("hide");
+};
+
+// ================= ROUTER (hash based) =================
+window.ROUTES = {}; // path -> render function
+window.navigate = function (path) {
+    location.hash = path;
+};
+function resolveRoute() {
+    const hash = location.hash.replace(/^#/, "") || "/dashboard";
+    const segs = hash.split("/").filter(Boolean);
+    // supported: dashboard | courses | courses/:id | trainings | trainings/:id
+    // | certificates | admin/courses | admin/courses/:id | admin/trainings | admin/users | admin/reports
+    let key = segs[0] || "dashboard";
+    let id = null;
+    if (segs[0] === "admin") {
+        key = "admin/" + (segs[1] || "courses");
+        id = segs[2] || null;
+    } else {
+        id = segs[1] || null;
+    }
+    setActiveNav(segs[0] === "admin" ? "admin/" + (segs[1] || "courses") : (segs[0] || "dashboard"));
+    const fn = window.ROUTES[key];
+    if (fn) fn(id);
+    else window.ROUTES["dashboard"] && window.ROUTES["dashboard"]();
+}
+window.addEventListener("hashchange", resolveRoute);
+window.resolveRoute = resolveRoute;
+
+function setActiveNav(key) {
+    document.querySelectorAll("[data-nav]").forEach(a => {
+        a.classList.toggle("nav-active", a.dataset.nav === key);
+    });
+    // close mobile sidebar after navigating
+    document.getElementById("sidebar")?.classList.add("-translate-x-full", "lg:translate-x-0");
+    document.getElementById("sidebar-overlay")?.classList.add("hide");
+}
+
+window.setPage = function (html) {
+    document.getElementById("page-content").innerHTML = html;
+};
+
+window.escapeHtml = function (str) {
+    if (str === undefined || str === null) return "";
+    return String(str).replace(/[&<>"']/g, s => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[s]));
+};
+
+window.fmtDate = function (ts) {
+    if (!ts) return "-";
+    const d = ts.seconds ? new Date(ts.seconds * 1000) : new Date(ts);
+    return d.toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" });
+};
+window.fmtDateTime = function (ts) {
+    if (!ts) return "-";
+    const d = ts.seconds ? new Date(ts.seconds * 1000) : new Date(ts);
+    return d.toLocaleString("id-ID", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
+};
+
+
+// ================= AUTH (pola sederhana: koleksi lmsUsers di Firestore, sama seperti app lama) =================
+
+const SESSION_KEY = "lms_session_user_id";
+
+window.doLogin = async function () {
+    const username = document.getElementById("login-username").value.trim();
+    const password = document.getElementById("login-password").value;
+    if (!username || !password) { window.toast("Isi username & password", "warn"); return; }
+
+    const { col, getDocs, query, where } = window.LMS_DB;
+    const snap = await getDocs(query(col("users"), where("username", "==", username)));
+    if (snap.empty) { window.toast("Username tidak ditemukan", "error"); return; }
+    const userDoc = snap.docs[0];
+    const data = userDoc.data();
+    if (data.password !== password) { window.toast("Password salah", "error"); return; }
+
+    localStorage.setItem(SESSION_KEY, userDoc.id);
+    window.STATE.user = { id: userDoc.id, ...data };
+    window.toast(`Selamat datang, ${data.username}!`, "success");
+    window.enterApp();
+};
+
+window.doRegister = async function () {
+    const username = document.getElementById("register-username").value.trim();
+    const email = document.getElementById("register-email").value.trim();
+    const dept = document.getElementById("register-dept").value.trim();
+    const password = document.getElementById("register-password").value;
+    if (!username || !password) { window.toast("Username & password wajib diisi", "warn"); return; }
+
+    const { col, getDocs, query, where, addDoc, serverTimestamp } = window.LMS_DB;
+    const existing = await getDocs(query(col("users"), where("username", "==", username)));
+    if (!existing.empty) { window.toast("Username sudah dipakai", "error"); return; }
+
+    const newDoc = await addDoc(col("users"), {
+        username, email, dept, password, role: "user",
+        createdAt: serverTimestamp()
+    });
+    localStorage.setItem(SESSION_KEY, newDoc.id);
+    window.STATE.user = { id: newDoc.id, username, email, dept, role: "user" };
+    window.toast("Akun berhasil dibuat!", "success");
+    window.closeModal("modal-register");
+    window.enterApp();
+};
+
+window.doLogout = function () {
+    localStorage.removeItem(SESSION_KEY);
+    window.STATE.user = null;
+    document.getElementById("app-shell").classList.add("hide");
+    document.getElementById("auth-screen").classList.remove("hide");
+};
+
+window.tryRestoreSession = async function () {
+    const id = localStorage.getItem(SESSION_KEY);
+    if (!id) return false;
+    const { getDoc, ref } = window.LMS_DB;
+    try {
+        const d = await getDoc(ref("users", id));
+        if (!d.exists()) { localStorage.removeItem(SESSION_KEY); return false; }
+        window.STATE.user = { id: d.id, ...d.data() };
+        return true;
+    } catch (e) {
+        console.error(e);
+        return false;
+    }
+};
+
+window.enterApp = function () {
+    document.getElementById("auth-screen").classList.add("hide");
+    document.getElementById("app-shell").classList.remove("hide");
+    window.renderSidebar();
+    window.renderTopbar();
+    window.resolveRoute();
+};
+
+window.renderSidebar = function () {
+    const isAdmin = window.sel.isAdmin();
+    const nav = [
+        { key: "dashboard", icon: "fa-grid-2", label: "Dashboard" },
+        { key: "courses", icon: "fa-book-open", label: "Onboarding Training" },
+        { key: "trainings", icon: "fa-chalkboard-user", label: "Training By TNA" },
+        { key: "certificates", icon: "fa-award", label: "Sertifikat Saya" },
+    ];
+    const adminNav = [
+        { key: "admin/courses", icon: "fa-layer-group", label: "Kelola Onboarding" },
+        { key: "admin/trainings", icon: "fa-calendar-days", label: "Kelola Training TNA" },
+        { key: "admin/assignments", icon: "fa-file-signature", label: "Penilaian Tugas" },
+        { key: "admin/users", icon: "fa-users-gear", label: "Kelola Akun" },
+        { key: "admin/reports", icon: "fa-chart-simple", label: "Laporan" },
+    ];
+    const item = (n) => `
+        <a href="#/${n.key}" data-nav="${n.key}" class="nav-item">
+            <i class="fas ${n.icon} w-5 text-center"></i><span>${n.label}</span>
+        </a>`;
+    document.getElementById("sidebar-nav").innerHTML =
+        nav.map(item).join("") +
+        (isAdmin ? `<div class="px-4 pt-5 pb-2 text-[10px] font-black uppercase tracking-wider text-indigo-300/60">Admin</div>` + adminNav.map(item).join("") : "");
+};
+
+window.renderTopbar = function () {
+    const u = window.STATE.user;
+    document.getElementById("topbar-username").textContent = u.username;
+    document.getElementById("topbar-role").textContent = u.role === "superadmin" ? "Super Admin" : (u.role === "admin" ? "Admin" : "Peserta");
+    document.getElementById("topbar-avatar").textContent = (u.username || "?").slice(0, 1).toUpperCase();
+};
+
+
+// ================= DASHBOARD =================
+// Route "dashboard" bersifat role-aware: admin/superadmin melihat dashboard komprehensif
+// khusus admin (statistik seluruh sistem), sedangkan role user tetap melihat dashboard
+// personal seperti biasa (progres belajar mereka sendiri).
+window.ROUTES["dashboard"] = function () {
+    if (window.sel.isAdmin()) { renderAdminDashboard(); return; }
+    renderUserDashboard();
+};
+
+function renderUserDashboard() {
+    const u = window.STATE.user;
+    const myEnr = window.STATE.enrollments.filter(e => e.userId === u.id);
+    const completedCourses = myEnr.filter(e => e.status === "completed").length;
+    const myRegs = window.STATE.trainingRegs.filter(r => r.userId === u.id);
+    const myCerts = window.STATE.certificates.filter(c => c.userId === u.id);
+
+    const upcoming = window.STATE.trainings
+        .filter(t => myRegs.some(r => r.trainingId === t.id) && new Date(t.date).getTime() >= Date.now() - 86400000)
+        .sort((a, b) => new Date(a.date) - new Date(b.date)).slice(0, 3);
+
+    const inProgress = myEnr.filter(e => e.status !== "completed").slice(0, 4).map(e => {
+        const c = window.STATE.courses.find(x => x.id === e.courseId);
+        if (!c) return "";
+        const progress = window.sel.courseProgress(c.id);
+        return `
+        <a href="#/courses/${c.id}" class="flex items-center gap-3 p-3 rounded-2xl hover:bg-indigo-50/50 transition">
+            <div class="w-11 h-11 rounded-xl bg-cover bg-center shrink-0" style="${courseCoverStyleSafe(c)}"></div>
+            <div class="flex-1 min-w-0">
+                <p class="text-sm font-bold text-slate-700 truncate">${window.escapeHtml(c.title)}</p>
+                <div class="h-1.5 bg-slate-100 rounded-full overflow-hidden mt-1"><div class="h-full bg-indigo-500" style="width:${progress}%"></div></div>
+            </div>
+            <span class="text-xs font-black text-indigo-500">${progress}%</span>
+        </a>`;
+    }).join("");
+
+    const upcomingHtml = upcoming.map(t => `
+        <a href="#/trainings/${t.id}" class="flex items-center gap-3 p-3 rounded-2xl hover:bg-amber-50/50 transition">
+            <div class="w-11 h-11 rounded-xl bg-amber-50 text-amber-600 flex flex-col items-center justify-center shrink-0">
+                <span class="text-sm font-black leading-none">${new Date(t.date).getDate()}</span>
+                <span class="text-[9px] font-bold uppercase">${new Date(t.date).toLocaleDateString('id-ID',{month:'short'})}</span>
+            </div>
+            <div class="flex-1 min-w-0"><p class="text-sm font-bold text-slate-700 truncate">${window.escapeHtml(t.title)}</p><p class="text-xs text-slate-400">${window.escapeHtml(t.location||'-')}</p></div>
+        </a>`).join("");
+
+    window.setPage(`
+        <div class="mb-5">
+            <h1 class="text-xl font-black text-slate-800">Halo, ${window.escapeHtml(u.username)} 👋</h1>
+            <p class="text-sm text-slate-500">Ini ringkasan progres belajar kamu.</p>
+        </div>
+        <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+            ${statCard("fa-book-open", "indigo", myEnr.length, "Training Diikuti")}
+            ${statCard("fa-circle-check", "emerald", completedCourses, "Training Selesai")}
+            ${statCard("fa-chalkboard-user", "amber", myRegs.length, "Training Terdaftar")}
+            ${statCard("fa-award", "rose", myCerts.length, "Sertifikat")}
+        </div>
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-5">
+            <div class="bg-white rounded-3xl border border-slate-100 shadow-sm p-5">
+                <h3 class="font-black text-slate-700 text-sm mb-2"><i class="fas fa-spinner text-indigo-400 mr-1"></i> Lanjutkan Belajar</h3>
+                <div class="space-y-1">${inProgress || '<p class="text-sm text-slate-400 py-6 text-center">Belum ada Training berjalan. <a href="#/courses" class="text-indigo-500 font-bold">Jelajahi Training →</a></p>'}</div>
+            </div>
+            <div class="bg-white rounded-3xl border border-slate-100 shadow-sm p-5">
+                <h3 class="font-black text-slate-700 text-sm mb-2"><i class="fas fa-calendar-check text-amber-400 mr-1"></i> Training Mendatang</h3>
+                <div class="space-y-1">${upcomingHtml || '<p class="text-sm text-slate-400 py-6 text-center">Belum ada jadwal training. <a href="#/trainings" class="text-amber-500 font-bold">Lihat jadwal →</a></p>'}</div>
+            </div>
+        </div>
+    `);
+}
+
+// ================= ADMIN DASHBOARD (KOMPREHENSIF) =================
+// Hanya bisa diakses oleh role admin/superadmin (dijaga oleh window.sel.isAdmin() di router
+// "dashboard" di atas). Merangkum kondisi seluruh sistem: pengguna, training, sertifikat,
+// tugas yang perlu dinilai, aktivitas terbaru, dan training paling diminati.
+function tsMillis(ts) {
+    if (!ts) return 0;
+    if (ts.seconds) return ts.seconds * 1000;
+    const d = new Date(ts);
+    return isNaN(d.getTime()) ? 0 : d.getTime();
+}
+
+function renderAdminDashboard() {
+    const S = window.STATE;
+    const u = S.user;
+    const now = Date.now();
+
+    // ---- KPI utama ----
+    const totalUsers = S.users.length;
+    const totalCourses = S.courses.length;
+    const publishedCourses = S.courses.filter(c => c.published).length;
+    const totalTrainings = S.trainings.length;
+    const upcomingTrainings = S.trainings.filter(t => t.date && new Date(t.date).getTime() >= now - 86400000);
+    const totalCerts = S.certificates.length;
+    const totalEnrollments = S.enrollments.length;
+    const completedEnrollments = S.enrollments.filter(e => e.status === "completed").length;
+    const totalRegs = S.trainingRegs.filter(r => r.status !== "cancelled").length;
+    const pendingAssignments = S.assignmentSubmissions.filter(s => s.status !== "graded").length;
+
+    // ---- Training paling diminati (Onboarding) ----
+    const topCourses = [...S.courses].map(c => ({
+        c, count: S.enrollments.filter(e => e.courseId === c.id).length
+    })).sort((a, b) => b.count - a.count).slice(0, 5);
+    const maxTopCourseCount = Math.max(1, ...topCourses.map(x => x.count));
+
+    // ---- Training TNA mendatang ----
+    const nextTrainings = [...upcomingTrainings].sort((a, b) => new Date(a.date) - new Date(b.date)).slice(0, 5);
+    const nextTrainingsHtml = nextTrainings.map(t => {
+        const count = S.trainingRegs.filter(r => r.trainingId === t.id && r.status !== "cancelled").length;
+        const full = t.quota && count >= t.quota;
+        return `
+        <a href="#/admin/trainings/${t.id}" class="flex items-center gap-3 p-3 rounded-2xl hover:bg-amber-50/50 transition">
+            <div class="w-11 h-11 rounded-xl bg-amber-50 text-amber-600 flex flex-col items-center justify-center shrink-0">
+                <span class="text-sm font-black leading-none">${new Date(t.date).getDate()}</span>
+                <span class="text-[9px] font-bold uppercase">${new Date(t.date).toLocaleDateString('id-ID',{month:'short'})}</span>
+            </div>
+            <div class="flex-1 min-w-0">
+                <p class="text-sm font-bold text-slate-700 truncate">${window.escapeHtml(t.title)}</p>
+                <p class="text-xs text-slate-400">${window.escapeHtml(t.location||'-')}</p>
+            </div>
+            <span class="text-[10px] font-black px-2 py-1 rounded-full ${full ? 'bg-rose-50 text-rose-500' : 'bg-emerald-50 text-emerald-600'}">${count}${t.quota?'/'+t.quota:''}</span>
+        </a>`;
+    }).join("");
+
+    // ---- Tugas menunggu penilaian (terbaru) ----
+    const pendingSubs = S.assignmentSubmissions.filter(s => s.status !== "graded")
+        .sort((a, b) => tsMillis(b.submittedAt) - tsMillis(a.submittedAt)).slice(0, 5);
+    const pendingSubsHtml = pendingSubs.map(s => `
+        <a href="#/admin/assignments" class="flex items-center gap-3 p-3 rounded-2xl hover:bg-violet-50/50 transition">
+            <div class="w-9 h-9 rounded-xl bg-violet-50 text-violet-500 flex items-center justify-center shrink-0"><i class="fas fa-file-signature text-sm"></i></div>
+            <div class="flex-1 min-w-0">
+                <p class="text-sm font-bold text-slate-700 truncate">${window.escapeHtml(s.userName || '-')}</p>
+                <p class="text-xs text-slate-400 truncate">${window.escapeHtml(s.itemTitle || '-')}</p>
+            </div>
+            <span class="text-[10px] text-slate-400 font-semibold shrink-0">${window.fmtDate(s.submittedAt)}</span>
+        </a>`).join("");
+
+    // ---- Distribusi pengguna per departemen ----
+    const deptMap = {};
+    S.users.forEach(us => { const d = us.dept && us.dept.trim() ? us.dept.trim() : "Tanpa Departemen"; deptMap[d] = (deptMap[d]||0)+1; });
+    const deptList = Object.entries(deptMap).sort((a,b) => b[1]-a[1]).slice(0, 6);
+    const maxDept = Math.max(1, ...deptList.map(x => x[1]));
+    const deptHtml = deptList.map(([dept, count]) => `
+        <div>
+            <div class="flex items-center justify-between text-xs mb-1">
+                <span class="font-bold text-slate-600 truncate">${window.escapeHtml(dept)}</span>
+                <span class="text-slate-400 font-semibold">${count}</span>
+            </div>
+            <div class="h-2 bg-slate-100 rounded-full overflow-hidden"><div class="h-full bg-indigo-500 rounded-full" style="width:${Math.round(count/maxDept*100)}%"></div></div>
+        </div>`).join("") || '<p class="text-sm text-slate-400 text-center py-4">Belum ada data pengguna</p>';
+
+    // ---- Aktivitas terbaru (gabungan beberapa koleksi) ----
+    const activities = [];
+    S.enrollments.forEach(e => activities.push({ t: tsMillis(e.enrolledAt), icon: "fa-book-open", color: "text-indigo-500 bg-indigo-50", text: `${userName(e.userId)} mulai training "${itemTitleOf('course', e.courseId)}"` }));
+    S.trainingRegs.forEach(r => activities.push({ t: tsMillis(r.registeredAt), icon: "fa-chalkboard-user", color: "text-amber-500 bg-amber-50", text: `${userName(r.userId)} daftar training "${itemTitleOf('training', r.trainingId)}"` }));
+    S.assignmentSubmissions.forEach(s => activities.push({ t: tsMillis(s.submittedAt), icon: "fa-file-signature", color: "text-violet-500 bg-violet-50", text: `${window.escapeHtml(s.userName||'-')} mengumpulkan tugas "${window.escapeHtml(s.itemTitle||'-')}"` }));
+    S.certificates.forEach(c => activities.push({ t: tsMillis(c.issuedAt), icon: "fa-award", color: "text-rose-500 bg-rose-50", text: `Sertifikat terbit untuk ${window.escapeHtml(c.userName||'-')} — "${window.escapeHtml(c.title)}"` }));
+    S.users.forEach(us => activities.push({ t: tsMillis(us.createdAt), icon: "fa-user-plus", color: "text-emerald-500 bg-emerald-50", text: `${window.escapeHtml(us.username)} bergabung sebagai pengguna baru` }));
+    const recentActivities = activities.filter(a => a.t > 0).sort((a, b) => b.t - a.t).slice(0, 8);
+    const activitiesHtml = recentActivities.map(a => `
+        <div class="flex items-start gap-3 p-2.5">
+            <div class="w-8 h-8 rounded-xl ${a.color} flex items-center justify-center shrink-0 mt-0.5"><i class="fas ${a.icon} text-xs"></i></div>
+            <div class="flex-1 min-w-0">
+                <p class="text-xs text-slate-600 leading-snug">${a.text}</p>
+                <p class="text-[10px] text-slate-400 mt-0.5">${window.fmtDateTime({ seconds: a.t/1000 })}</p>
+            </div>
+        </div>`).join("") || '<p class="text-sm text-slate-400 text-center py-6">Belum ada aktivitas</p>';
+
+    window.setPage(`
+        <div class="flex flex-wrap items-center justify-between gap-3 mb-5">
+            <div>
+                <h1 class="text-xl font-black text-slate-800">Dashboard Admin</h1>
+                <p class="text-sm text-slate-500">Ringkasan menyeluruh kondisi NingratEdu LMS, ${window.escapeHtml(u.username)}.</p>
+            </div>
+            <div class="flex flex-wrap gap-2">
+                <a href="#/admin/courses/new" class="bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold px-3.5 py-2.5 rounded-2xl"><i class="fas fa-plus mr-1"></i> Onboarding Baru</a>
+                <a href="#/admin/trainings/new" class="bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold px-3.5 py-2.5 rounded-2xl"><i class="fas fa-plus mr-1"></i> Jadwal Training</a>
+                <a href="#/admin/assignments" class="bg-violet-500 hover:bg-violet-600 text-white text-xs font-bold px-3.5 py-2.5 rounded-2xl"><i class="fas fa-file-signature mr-1"></i> Nilai Tugas</a>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
+            ${statCard("fa-users", "emerald", totalUsers, "Total Pengguna")}
+            ${statCard("fa-book-open", "indigo", `${publishedCourses}/${totalCourses}`, "Onboarding Terbit")}
+            ${statCard("fa-chalkboard-user", "amber", totalTrainings, "Training TNA")}
+            ${statCard("fa-award", "rose", totalCerts, "Sertifikat Terbit")}
+        </div>
+        <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+            ${statCard("fa-user-check", "indigo", `${completedEnrollments}/${totalEnrollments}`, "Onboarding Selesai")}
+            ${statCard("fa-clipboard-check", "amber", totalRegs, "Pendaftar Training TNA")}
+            ${statCard("fa-hourglass-half", "violet", pendingAssignments, "Tugas Menunggu Nilai")}
+            ${statCard("fa-calendar-days", "emerald", upcomingTrainings.length, "Training Akan Datang")}
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-5 mb-5">
+            <div class="bg-white rounded-3xl border border-slate-100 shadow-sm p-5 lg:col-span-2">
+                <h3 class="font-black text-slate-700 text-sm mb-3"><i class="fas fa-fire text-rose-400 mr-1"></i> Training Terpopuler (Onboarding)</h3>
+                <div class="space-y-3">
+                    ${topCourses.length ? topCourses.map(({c,count}) => `
+                        <div>
+                            <div class="flex items-center justify-between text-xs mb-1">
+                                <span class="font-bold text-slate-600 truncate pr-2">${window.escapeHtml(c.title)}</span>
+                                <span class="text-indigo-500 font-black shrink-0">${count} peserta</span>
+                            </div>
+                            <div class="h-2 bg-slate-100 rounded-full overflow-hidden"><div class="h-full bg-gradient-to-r from-indigo-400 to-indigo-600 rounded-full" style="width:${Math.round(count/maxTopCourseCount*100)}%"></div></div>
+                        </div>`).join("") : '<p class="text-sm text-slate-400 text-center py-6">Belum ada data pendaftar</p>'}
+                </div>
+            </div>
+            <div class="bg-white rounded-3xl border border-slate-100 shadow-sm p-5">
+                <h3 class="font-black text-slate-700 text-sm mb-3"><i class="fas fa-sitemap text-indigo-400 mr-1"></i> Pengguna per Departemen</h3>
+                <div class="space-y-3">${deptHtml}</div>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-5">
+            <div class="bg-white rounded-3xl border border-slate-100 shadow-sm p-5">
+                <h3 class="font-black text-slate-700 text-sm mb-2"><i class="fas fa-calendar-check text-amber-400 mr-1"></i> Training TNA Mendatang</h3>
+                <div class="space-y-1">${nextTrainingsHtml || '<p class="text-sm text-slate-400 py-6 text-center">Belum ada jadwal training akan datang.</p>'}</div>
+            </div>
+            <div class="bg-white rounded-3xl border border-slate-100 shadow-sm p-5">
+                <h3 class="font-black text-slate-700 text-sm mb-2"><i class="fas fa-hourglass-half text-violet-400 mr-1"></i> Tugas Menunggu Nilai</h3>
+                <div class="space-y-1">${pendingSubsHtml || '<p class="text-sm text-slate-400 py-6 text-center">Tidak ada tugas yang menunggu penilaian. 🎉</p>'}</div>
+            </div>
+            <div class="bg-white rounded-3xl border border-slate-100 shadow-sm p-5">
+                <h3 class="font-black text-slate-700 text-sm mb-2"><i class="fas fa-clock-rotate-left text-emerald-400 mr-1"></i> Aktivitas Terbaru</h3>
+                <div class="space-y-0.5 max-h-72 overflow-y-auto">${activitiesHtml}</div>
+            </div>
+        </div>
+    `);
+}
+
+function userName(id) {
+    const us = window.STATE.users.find(x => x.id === id);
+    return window.escapeHtml(us ? us.username : "Pengguna");
+}
+function itemTitleOf(kind, refId) {
+    const item = kind === "training" ? window.STATE.trainings.find(x => x.id === refId) : window.STATE.courses.find(x => x.id === refId);
+    return window.escapeHtml(item ? item.title : "-");
+}
+
+function statCard(icon, color, value, label) {
+    const map = { indigo: "bg-indigo-50 text-indigo-600", emerald: "bg-emerald-50 text-emerald-600", amber: "bg-amber-50 text-amber-600", rose: "bg-rose-50 text-rose-600", violet: "bg-violet-50 text-violet-600" };
+    return `
+    <div class="bg-white rounded-3xl border border-slate-100 shadow-sm p-4 flex items-center gap-3">
+        <div class="w-11 h-11 rounded-2xl ${map[color]} flex items-center justify-center"><i class="fas ${icon}"></i></div>
+        <div><p class="text-xl font-black text-slate-800 leading-none">${value}</p><p class="text-[11px] text-slate-400 font-semibold mt-1">${label}</p></div>
+    </div>`;
+}
+function courseCoverStyleSafe(c) {
+    if (c.coverImage) return `background-image:url('${c.coverImage}')`;
+    return `background:linear-gradient(135deg,${c.accent1 || "#4f46e5"},${c.accent2 || "#818cf8"})`;
+}
+
+// ================= SERTIFIKAT SAYA =================
+window.ROUTES["certificates"] = function () {
+    const u = window.STATE.user;
+    const certs = window.STATE.certificates.filter(c => c.userId === u.id)
+        .sort((a, b) => (b.issuedAt?.seconds || 0) - (a.issuedAt?.seconds || 0));
+
+    const cards = certs.map(c => `
+        <div class="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden group">
+            <div class="h-28 relative flex items-center justify-center overflow-hidden" style="background:radial-gradient(circle at 30% 20%,#3b2f0f,#0b1120 70%);">
+                <div class="absolute inset-0 opacity-20" style="background-image:repeating-linear-gradient(135deg,rgba(191,155,74,.5) 0px,rgba(191,155,74,.5) 1px,transparent 1px,transparent 14px);"></div>
+                <div class="w-14 h-14 rounded-full flex items-center justify-center relative" style="background:radial-gradient(circle at 35% 30%,#f3e2ab,#bf9b4a 55%,#7a5c1f); box-shadow:0 4px 12px rgba(0,0,0,.35), inset 0 0 0 2px rgba(255,255,255,.35);">
+                    <i class="fas fa-award text-[#4a3403] text-xl"></i>
+                </div>
+                <span class="absolute top-3 right-3 bg-white/90 text-amber-700 text-[9px] font-black px-2 py-1 rounded-full uppercase tracking-wide">${c.type === 'training' ? 'Training TNA' : 'Onboarding'}</span>
+            </div>
+            <div class="p-4">
+                <p class="font-black text-slate-800 text-sm leading-snug">${window.escapeHtml(c.title)}</p>
+                <p class="text-[11px] text-slate-400 mt-1">Diterbitkan ${window.fmtDate(c.issuedAt)} • ${c.certId}</p>
+                <button onclick="printCertificate('${c.id}')" class="w-full mt-3 text-white text-xs font-bold py-2.5 rounded-xl transition" style="background:linear-gradient(120deg,#8a6b26,#bf9b4a);"><i class="fas fa-print mr-1"></i> Cetak / Simpan PDF</button>
+            </div>
+        </div>`).join("");
+
+    window.setPage(`
+        <div class="mb-5">
+            <h1 class="text-xl font-black text-slate-800">Sertifikat Saya</h1>
+            <p class="text-sm text-slate-500">Semua sertifikat dari Training & training yang sudah kamu selesaikan.</p>
+        </div>
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+            ${cards || `<div class="col-span-full text-center py-16 text-slate-400"><i class="fas fa-award text-3xl mb-2"></i><p class="font-bold">Belum ada sertifikat. Selesaikan training dulu ya!</p></div>`}
+        </div>
+    `);
+};
+
+window.printCertificate = function (certId) {
+    const c = window.STATE.certificates.find(x => x.id === certId);
+    if (!c) return;
+    const isTraining = c.type === "training";
+    const trainingRef = isTraining ? window.STATE.trainings.find(t => t.id === c.trainingId) : null;
+    const trainerName = trainingRef?.trainer || "";
+    const issuedDate = window.fmtDate(c.issuedAt);
+    const win = window.open("", "_blank");
+    win.document.write(`
+    <html><head><title>Sertifikat - ${window.escapeHtml(c.title)}</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600;700&family=Cinzel+Decorative:wght@700;900&family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;1,500&display=swap" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        * { box-sizing: border-box; }
+        html,body{ margin:0; padding:0; }
+        body{
+            font-family:'Cormorant Garamond', serif;
+            background: radial-gradient(circle at 50% 0%, #1c2541 0%, #0b1120 60%, #060a14 100%);
+            display:flex; align-items:center; justify-content:center; min-height:100vh; padding:32px;
+        }
+        .cert-wrap{ position:relative; width:1000px; max-width:96vw; }
+        .cert{
+            position:relative; background:#fbf6ea;
+            background-image:
+                radial-gradient(circle at 10% 10%, rgba(191,155,74,.10), transparent 40%),
+                radial-gradient(circle at 90% 90%, rgba(191,155,74,.10), transparent 40%);
+            padding:20px; border-radius:6px;
+            box-shadow: 0 30px 70px rgba(0,0,0,.55), 0 0 0 1px rgba(191,155,74,.35);
+        }
+        .cert-inner{
+            position:relative; border:2px solid #bf9b4a; border-radius:2px; padding:56px 64px 44px;
+            background:
+                repeating-linear-gradient(135deg, rgba(191,155,74,0.035) 0px, rgba(191,155,74,0.035) 2px, transparent 2px, transparent 26px);
+        }
+        .cert-inner:before{
+            content:''; position:absolute; inset:8px; border:1px solid rgba(191,155,74,.55); pointer-events:none;
+        }
+        .corner{ position:absolute; width:34px; height:34px; border:2px solid #bf9b4a; }
+        .corner.tl{ top:-2px; left:-2px; border-right:none; border-bottom:none; }
+        .corner.tr{ top:-2px; right:-2px; border-left:none; border-bottom:none; }
+        .corner.bl{ bottom:-2px; left:-2px; border-right:none; border-top:none; }
+        .corner.br{ bottom:-2px; right:-2px; border-left:none; border-top:none; }
+        .watermark{
+            position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
+            overflow:hidden; pointer-events:none; z-index:0;
+        }
+        .watermark span{
+            font-family:'Cinzel Decorative', serif; font-size:150px; font-weight:900; color:#bf9b4a;
+            opacity:.05; white-space:nowrap; transform:rotate(-18deg);
+        }
+        .cert-content{ position:relative; z-index:1; text-align:center; }
+        .emblem{ width:64px; height:64px; margin:0 auto 14px; border-radius:50%;
+            background:linear-gradient(145deg,#e9cf87,#bf9b4a 55%,#8a6b26);
+            display:flex; align-items:center; justify-content:center;
+            box-shadow: 0 6px 14px rgba(0,0,0,.25), inset 0 0 0 2px rgba(255,255,255,.35);
+        }
+        .emblem i{ color:#4a3403; font-size:24px; }
+        .kicker{ font-family:'Cinzel', serif; font-size:11px; letter-spacing:5px; color:#8a6b26; font-weight:600; margin-bottom:6px; }
+        .title-main{ font-family:'Cinzel Decorative', serif; font-weight:700; font-size:34px; letter-spacing:3px;
+            background:linear-gradient(120deg,#8a6b26,#e9cf87 35%,#bf9b4a 60%,#8a6b26);
+            -webkit-background-clip:text; background-clip:text; color:transparent; margin:4px 0 18px;
+        }
+        .divider{ display:flex; align-items:center; justify-content:center; gap:10px; margin:0 auto 26px; width:260px; }
+        .divider .line{ flex:1; height:1px; background:linear-gradient(90deg,transparent,#bf9b4a,transparent); }
+        .divider i{ color:#bf9b4a; font-size:10px; }
+        .lead{ font-style:italic; color:#5b5344; font-size:17px; margin:0 0 6px; }
+        .name{ font-family:'Cinzel Decorative', serif; font-size:44px; font-weight:700; color:#1f2937; margin:6px 0 4px;
+            letter-spacing:1px;
+        }
+        .name-underline{ width:340px; height:2px; margin:2px auto 22px; background:linear-gradient(90deg,transparent,#bf9b4a,transparent); }
+        .body-text{ color:#4b4536; font-size:17px; line-height:1.7; max-width:640px; margin:0 auto 6px; }
+        .course-title{ font-family:'Cinzel', serif; font-weight:600; font-size:23px; color:#6b4f14; margin:14px 0 26px; }
+        .course-title:before{ content:'"'; } .course-title:after{ content:'"'; }
+        .footer{ display:grid; grid-template-columns:1fr auto 1fr; align-items:end; gap:20px; margin-top:32px; padding-top:22px; border-top:1px solid rgba(191,155,74,.4); }
+        .footer .col{ text-align:center; }
+        .footer .val{ font-family:'Cinzel', serif; font-size:14px; color:#1f2937; font-weight:600; }
+        .footer .lbl{ font-size:11px; letter-spacing:2px; text-transform:uppercase; color:#8a6b26; margin-top:4px; }
+        .sig-line{ width:150px; height:1px; background:#8a6b26; margin:0 auto 6px; }
+        .seal{ width:74px; height:74px; border-radius:50%; margin:0 auto;
+            background:radial-gradient(circle at 35% 30%, #f3e2ab, #bf9b4a 55%, #7a5c1f);
+            display:flex; align-items:center; justify-content:center; position:relative;
+            box-shadow:0 4px 10px rgba(0,0,0,.3), inset 0 0 0 2px rgba(255,255,255,.4);
+        }
+        .seal:after{ content:''; position:absolute; inset:6px; border:1px dashed rgba(74,52,3,.5); border-radius:50%; }
+        .seal i{ color:#4a3403; font-size:22px; }
+        .certid{ text-align:center; margin-top:18px; font-size:11px; letter-spacing:2px; color:#8a6b26; }
+        .btnbar{ text-align:center; margin-top:18px; }
+        .btnbar button{ font-family:'Cormorant Garamond',serif; font-size:14px; font-weight:600; letter-spacing:1px; color:#0b1120;
+            background:linear-gradient(120deg,#e9cf87,#bf9b4a); border:none; padding:10px 26px; border-radius:999px; cursor:pointer; }
+        @media print{
+            body{ background:#fff; padding:0; }
+            .btnbar{ display:none; }
+            .cert{ box-shadow:none; }
+        }
+    </style></head>
+    <body>
+    <div class="cert-wrap">
+        <div class="cert">
+            <div class="cert-inner">
+                <div class="corner tl"></div><div class="corner tr"></div><div class="corner bl"></div><div class="corner br"></div>
+                <div class="watermark"><span>NINGRATEDU</span></div>
+                <div class="cert-content">
+                    <div class="emblem"><i class="fas fa-award"></i></div>
+                    <p class="kicker">NINGRATEDU &nbsp;•&nbsp; TRAINING &amp; DEVELOPMENT TRUSMI GROUP</p>
+                    <h1 class="title-main">SERTIFIKAT PENGHARGAAN</h1>
+                    <div class="divider"><span class="line"></span><i class="fas fa-gem"></i><span class="line"></span></div>
+                    <p class="lead">Dengan bangga diberikan kepada</p>
+                    <h2 class="name">${window.escapeHtml(c.userName)}</h2>
+                    <div class="name-underline"></div>
+                    <p class="body-text">atas dedikasi, partisipasi aktif, dan keberhasilannya menyelesaikan seluruh rangkaian ${isTraining ? "Training By TNA" : "Onboarding Training"} bertajuk</p>
+                    <p class="course-title">${window.escapeHtml(c.title)}</p>
+                    <div class="footer">
+                        <div class="col">
+                            <div class="val">${issuedDate}</div>
+                            <div class="sig-line" style="margin-top:8px;"></div>
+                            <div class="lbl">Tanggal Diterbitkan</div>
+                        </div>
+                        <div class="col">
+                            <div class="seal"><i class="fas fa-stamp"></i></div>
+                        </div>
+                        <div class="col">
+                            <div class="val">${trainerName ? window.escapeHtml(trainerName) : "Tim NingratEdu"}</div>
+                            <div class="sig-line" style="margin-top:8px;"></div>
+                            <div class="lbl">${trainerName ? "Trainer" : "Direktur Training &amp; Development"}</div>
+                        </div>
+                    </div>
+                    <p class="certid">ID SERTIFIKAT&nbsp;: ${window.escapeHtml(c.certId)} &nbsp;&middot;&nbsp; Terverifikasi oleh Sistem NingratEdu LMS</p>
+                </div>
+            </div>
+        </div>
+        <div class="btnbar"><button onclick="window.print()"><i class="fas fa-print" style="margin-right:6px;"></i>Cetak / Simpan sebagai PDF</button></div>
+    </div>
+    </body></html>`);
+    win.document.close();
+};
+
+
+// ================= Onboarding Training =================
+
+window.ROUTES["courses"] = function (id) {
+    if (id) renderCourseDetail(id); else renderCourseCatalog();
+};
+
+function courseCoverStyle(c) {
+    if (c.coverImage) return `background-image:url('${c.coverImage}')`;
+    return `background:linear-gradient(135deg,${c.accent1 || "#4f46e5"},${c.accent2 || "#818cf8"})`;
+}
+
+function renderCourseCatalog() {
+    const courses = window.STATE.courses.filter(c => c.published || window.sel.isAdmin());
+    const cards = courses.map(c => {
+        const progress = window.sel.courseProgress(c.id);
+        const enr = window.sel.myEnrollment(c.id);
+        return `
+        <a href="#/courses/${c.id}" class="group bg-white rounded-3xl overflow-hidden shadow-sm border border-slate-100 hover:shadow-xl transition flex flex-col">
+            <div class="h-36 bg-cover bg-center relative" style="${courseCoverStyle(c)}">
+                <div class="absolute inset-0 bg-black/10"></div>
+                ${!c.published ? '<span class="absolute top-3 left-3 bg-slate-900/80 text-white text-[10px] font-bold px-2 py-1 rounded-full">Draft</span>' : ""}
+                <span class="absolute top-3 right-3 bg-white/90 text-indigo-600 text-[10px] font-black px-2 py-1 rounded-full uppercase">${window.escapeHtml(c.level || "Umum")}</span>
+            </div>
+            <div class="p-5 flex flex-col gap-2 flex-1">
+                <p class="text-[11px] font-bold text-indigo-500 uppercase tracking-wide">${window.escapeHtml(c.category || "Training")}</p>
+                <h3 class="font-black text-slate-800 leading-snug group-hover:text-indigo-600 transition">${window.escapeHtml(c.title)}</h3>
+                <p class="text-xs text-slate-500 line-clamp-2 flex-1">${window.escapeHtml(c.description || "")}</p>
+                <div class="flex items-center justify-between text-[11px] text-slate-400 pt-2 border-t border-slate-50 mt-1">
+                    <span><i class="fas fa-layer-group mr-1"></i>${(c.modules||[]).length} modul</span>
+                    <span><i class="fas fa-user-tie mr-1"></i>${window.escapeHtml(c.instructor || "-")}</span>
+                </div>
+                ${enr ? `
+                <div class="mt-1">
+                    <div class="h-1.5 bg-slate-100 rounded-full overflow-hidden"><div class="h-full bg-indigo-500" style="width:${progress}%"></div></div>
+                    <p class="text-[10px] text-slate-400 mt-1 font-semibold">${progress}% selesai</p>
+                </div>` : ""}
+            </div>
+        </a>`;
+    }).join("");
+
+    window.setPage(`
+        <div class="flex items-center justify-between mb-5">
+            <div>
+                <h1 class="text-xl font-black text-slate-800">Onboarding Training</h1>
+                <p class="text-sm text-slate-500">Belajar mandiri lewat modul, video, dan kuis.</p>
+            </div>
+        </div>
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+            ${cards || `<div class="col-span-full text-center py-16 text-slate-400"><i class="fas fa-book-open text-3xl mb-2"></i><p class="font-bold">Belum ada training tersedia</p></div>`}
+        </div>
+    `);
+}
+
+function renderCourseDetail(id) {
+    const c = window.STATE.courses.find(x => x.id === id);
+    if (!c) { window.setPage(`<p class="text-center text-slate-400 py-20">Training tidak ditemukan.</p>`); return; }
+    const enr = window.sel.myEnrollment(id);
+    const progress = window.sel.courseProgress(id);
+    const totalLessons = (c.modules || []).reduce((s, m) => s + (m.lessons || []).length, 0);
+    const attempt = window.sel.myQuizAttempt(id);
+    const cert = window.sel.myCertForCourse(id);
+    const hasQuiz = c.quiz && (c.quiz.questions || []).length > 0;
+    const allLessonsDone = enr && (enr.completedLessonIds || []).length >= totalLessons && totalLessons > 0;
+    const hasAssignment = !!(c.assignment && c.assignment.enabled);
+    const assignmentSub = window.sel.myAssignmentSubmission("course", c.id);
+    const quizPassed = !hasQuiz || !!(attempt && attempt.passed);
+    const assignmentDone = !hasAssignment || !!assignmentSub;
+    const evalReady = allLessonsDone; // materi kelar, siap ke kuis/tugas
+    const allDone = allLessonsDone && quizPassed && assignmentDone;
+
+    const modulesHtml = (c.modules || []).map((m, mi) => `
+        <div class="border border-slate-100 rounded-2xl overflow-hidden">
+            <div class="bg-slate-50 px-4 py-3 font-bold text-sm text-slate-700 flex items-center gap-2">
+                <span class="w-6 h-6 rounded-full bg-indigo-100 text-indigo-600 text-[11px] flex items-center justify-center font-black">${mi + 1}</span>
+                ${window.escapeHtml(m.title)}
+            </div>
+            <div class="divide-y divide-slate-50">
+                ${(m.lessons || []).map(l => {
+                    const done = enr && (enr.completedLessonIds || []).includes(l.id);
+                    return `
+                    <button ${enr ? `onclick="openLesson('course','${c.id}','${l.id}')"` : `onclick="window.toast('Mulai training dulu ya','warn')"`}
+                        class="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-indigo-50/40 transition">
+                        <span class="flex items-center gap-3 text-sm text-slate-700">
+                            <i class="fas ${l.type === 'video' ? 'fa-circle-play' : (l.type === 'ppt' ? 'fa-file-powerpoint' : 'fa-file-lines')} text-indigo-400"></i>
+                            ${window.escapeHtml(l.title)}
+                        </span>
+                        <i class="fas ${done ? 'fa-circle-check text-emerald-500' : 'fa-chevron-right text-slate-300'} text-sm"></i>
+                    </button>`;
+                }).join("")}
+            </div>
+        </div>
+    `).join("");
+
+    let ctaBlock = "";
+    if (!enr) {
+        ctaBlock = `<button onclick="window.guardedClick(this, () => window.enrollCourse('${c.id}'))" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-2xl transition"><i class="fas fa-play mr-1"></i> Mulai Training</button>`;
+    } else if (cert) {
+        ctaBlock = `<button onclick="window.navigate('/certificates')" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 rounded-2xl transition"><i class="fas fa-award mr-1"></i> Lihat Sertifikat</button>`;
+    } else if (!evalReady) {
+        ctaBlock = `<div class="text-center text-sm text-slate-500 bg-slate-50 rounded-2xl py-3">Selesaikan semua materi untuk lanjut${(hasQuiz||hasAssignment) ? ' ke evaluasi' : ''}.</div>`;
+    } else {
+        const parts = [];
+        if (hasQuiz) {
+            parts.push(`<button onclick="openQuiz('course','${c.id}')" class="w-full ${quizPassed ? 'bg-slate-100 text-slate-500' : 'bg-amber-500 hover:bg-amber-600 text-white'} font-bold py-3 rounded-2xl transition"><i class="fas fa-clipboard-question mr-1"></i> ${attempt ? (quizPassed ? 'Lihat Ulang / Ulangi Kuis' : 'Ulangi Kuis') : 'Kerjakan Kuis'}</button>`);
+            if (attempt) parts.push(`<p class="text-center text-xs text-slate-400">Percobaan terakhir: skor ${attempt.score} (${attempt.passed ? 'Lulus' : 'Belum lulus'})</p>`);
+        }
+        if (hasAssignment) {
+            parts.push(`<button onclick="openAssignment('course','${c.id}')" class="w-full ${assignmentDone ? 'bg-slate-100 text-slate-500' : 'bg-violet-500 hover:bg-violet-600 text-white'} font-bold py-3 rounded-2xl transition"><i class="fas fa-file-signature mr-1"></i> ${assignmentSub ? 'Lihat Status Tugas' : 'Kerjakan Tugas'}</button>`);
+            if (assignmentSub) parts.push(`<p class="text-center text-xs text-slate-400">${assignmentSub.status === 'graded' ? `Dinilai: skor ${assignmentSub.score}` : 'Menunggu penilaian admin'}</p>`);
+        }
+        if (allDone) {
+            parts.push(`<button onclick="window.guardedClick(this, () => window.finishCourseFlow('${c.id}'))" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 rounded-2xl transition"><i class="fas fa-flag-checkered mr-1"></i> Selesaikan & Ambil Sertifikat</button>`);
+        }
+        ctaBlock = parts.join("");
+    }
+
+    window.setPage(`
+        <a href="#/courses" class="text-xs font-bold text-slate-400 hover:text-indigo-600"><i class="fas fa-arrow-left mr-1"></i> Kembali ke Katalog</a>
+        <div class="mt-3 rounded-3xl overflow-hidden h-44 bg-cover bg-center relative" style="${courseCoverStyle(c)}">
+            <div class="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent flex items-end p-6">
+                <div>
+                    <p class="text-indigo-200 text-[11px] font-bold uppercase">${window.escapeHtml(c.category || "Training")}</p>
+                    <h1 class="text-white text-2xl font-black">${window.escapeHtml(c.title)}</h1>
+                </div>
+            </div>
+        </div>
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mt-6">
+            <div class="lg:col-span-2 space-y-4">
+                <p class="text-sm text-slate-600 leading-relaxed">${window.escapeHtml(c.description || "")}</p>
+                <div class="space-y-3">${modulesHtml || '<p class="text-sm text-slate-400">Belum ada modul.</p>'}</div>
+            </div>
+            <div class="space-y-4">
+                <div class="bg-white border border-slate-100 rounded-3xl p-5 shadow-sm space-y-3">
+                    <div class="flex justify-between text-xs text-slate-500"><span>Instruktur</span><span class="font-bold text-slate-700">${window.escapeHtml(c.instructor || "-")}</span></div>
+                    <div class="flex justify-between text-xs text-slate-500"><span>Level</span><span class="font-bold text-slate-700">${window.escapeHtml(c.level || "Umum")}</span></div>
+                    <div class="flex justify-between text-xs text-slate-500"><span>Total Materi</span><span class="font-bold text-slate-700">${totalLessons} lesson</span></div>
+                    ${enr ? `<div><div class="h-2 bg-slate-100 rounded-full overflow-hidden"><div class="h-full bg-indigo-500" style="width:${progress}%"></div></div><p class="text-[11px] text-slate-400 mt-1 font-semibold">${progress}% selesai</p></div>` : ""}
+                    ${ctaBlock}
+                </div>
+            </div>
+        </div>
+    `);
+}
+
+window.enrollCourse = async function (courseId) {
+    const { col, addDoc, serverTimestamp } = window.LMS_DB;
+    await addDoc(col("enrollments"), {
+        courseId, userId: window.STATE.user.id, completedLessonIds: [],
+        status: "in-progress", enrolledAt: serverTimestamp()
+    });
+    window.toast("Berhasil daftar training!", "success");
+};
+
+// ================= HELPER GENERIK: MODUL/LESSON/KUIS UNTUK COURSE & TRAINING TNA =================
+// kind: 'course' (Onboarding Training) atau 'training' (Training By TNA)
+function getContentItem(kind, refId) {
+    return kind === "training" ? window.STATE.trainings.find(x => x.id === refId) : window.STATE.courses.find(x => x.id === refId);
+}
+function getProgressDoc(kind, refId) {
+    const u = window.STATE.user;
+    if (!u) return null;
+    if (kind === "training") return window.STATE.trainingRegs.find(r => r.trainingId === refId && r.userId === u.id) || null;
+    return window.STATE.enrollments.find(e => e.courseId === refId && e.userId === u.id) || null;
+}
+function progressCollectionName(kind) { return kind === "training" ? "trainingRegistrations" : "enrollments"; }
+function refIdField(kind) { return kind === "training" ? "trainingId" : "courseId"; }
+function totalLessonsOf(item) { return (item?.modules || []).reduce((s, m) => s + (m.lessons || []).length, 0); }
+
+window.sel.myQuizAttempt2 = function (kind, refId) {
+    const u = window.STATE.user;
+    if (!u) return null;
+    const field = refIdField(kind);
+    const attempts = window.STATE.quizAttempts.filter(a => a[field] === refId && a.userId === u.id);
+    if (!attempts.length) return null;
+    return attempts.sort((a, b) => (b.attemptAt?.seconds || 0) - (a.attemptAt?.seconds || 0))[0];
+};
+
+// Penugasan (assignment) submission milik user saat ini untuk course/training tertentu
+window.sel.myAssignmentSubmission = function (kind, refId) {
+    const u = window.STATE.user;
+    if (!u) return null;
+    const field = refIdField(kind);
+    const subs = window.STATE.assignmentSubmissions.filter(s => s[field] === refId && s.userId === u.id);
+    if (!subs.length) return null;
+    return subs.sort((a, b) => (b.submittedAt?.seconds || 0) - (a.submittedAt?.seconds || 0))[0];
+};
+
+window.openLesson = function (kind, refId, lessonId) {
+    const item = getContentItem(kind, refId);
+    let lesson = null, moduleTitle = "";
+    for (const m of (item.modules || [])) {
+        const l = (m.lessons || []).find(x => x.id === lessonId);
+        if (l) { lesson = l; moduleTitle = m.title; break; }
+    }
+    if (!lesson) return;
+    const prog = getProgressDoc(kind, refId);
+    const done = prog && (prog.completedLessonIds || []).includes(lessonId);
+
+    let body = "";
+    let requireFullWatch = false;
+
+    if (lesson.type === "video" && lesson.videoUrl) {
+        const embed = toEmbedUrl(lesson.videoUrl);
+        requireFullWatch = !done;
+        body = `<div class="aspect-video rounded-2xl overflow-hidden bg-black"><iframe id="lesson-video-frame" class="w-full h-full" src="${embed}?enablejsapi=1" allowfullscreen></iframe></div>
+        ${requireFullWatch ? `<p id="lesson-video-hint" class="text-xs text-amber-600 font-semibold mt-2"><i class="fas fa-circle-info mr-1"></i> Tonton video sampai selesai untuk mengaktifkan tombol "Tandai Selesai".</p>` : ""}`;
+    } else if (lesson.type === "ppt" && lesson.pptUrl) {
+        requireFullWatch = !done;
+        const totalSlides = lesson.slideCount || 1;
+        body = `
+        <div id="ppt-viewer" data-total="${totalSlides}" data-current="1">
+            <div class="aspect-video rounded-2xl overflow-hidden bg-slate-900 relative">
+                <iframe class="w-full h-full" src="https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(lesson.pptUrl)}" allowfullscreen></iframe>
+            </div>
+            <div class="flex items-center justify-between mt-3 bg-slate-50 rounded-xl px-3 py-2">
+                <button onclick="pptNav(-1)" class="text-xs font-bold text-slate-500 hover:text-indigo-600"><i class="fas fa-chevron-left mr-1"></i> Sebelumnya</button>
+                <span class="text-xs font-bold text-slate-600">Slide <span id="ppt-current">1</span> / ${totalSlides}</span>
+                <button onclick="pptNav(1)" class="text-xs font-bold text-indigo-600 hover:text-indigo-800">Selanjutnya <i class="fas fa-chevron-right ml-1"></i></button>
+            </div>
+            <p id="lesson-ppt-hint" class="text-xs text-amber-600 font-semibold mt-2"><i class="fas fa-circle-info mr-1"></i> Buka sampai slide terakhir untuk mengaktifkan tombol "Tandai Selesai".</p>
+        </div>`;
+    }
+    body += `<div class="prose prose-sm max-w-none mt-4 text-slate-600 whitespace-pre-wrap">${window.escapeHtml(lesson.content || "")}</div>`;
+
+    document.getElementById("lesson-modal-title").textContent = lesson.title;
+    document.getElementById("lesson-modal-sub").textContent = moduleTitle;
+    document.getElementById("lesson-modal-body").innerHTML = body;
+    const btn = document.getElementById("lesson-modal-complete-btn");
+    btn.innerHTML = done ? '<i class="fas fa-circle-check mr-1"></i> Sudah Selesai' : '<i class="fas fa-check mr-1"></i> Tandai Selesai';
+    btn.disabled = !!done || requireFullWatch;
+    btn.onclick = () => window.guardedClick(btn, () => markLessonComplete(kind, refId, lessonId));
+    window.openModal("modal-lesson");
+
+    if (lesson.type === "video" && requireFullWatch) {
+        setTimeout(() => attachVideoEndWatcher(lesson.videoUrl, () => enableCompleteBtn()), 300);
+    }
+    if (lesson.type === "ppt" && requireFullWatch) {
+        window._pptState = { current: 1, total: totalSlidesSafe(lesson) };
+    }
+};
+
+function totalSlidesSafe(lesson) { return lesson.slideCount || 1; }
+
+window.pptNav = function (dir) {
+    if (!window._pptState) return;
+    const st = window._pptState;
+    st.current = Math.max(1, Math.min(st.total, st.current + dir));
+    const el = document.getElementById("ppt-current");
+    if (el) el.textContent = st.current;
+    if (st.current >= st.total) enableCompleteBtn();
+};
+
+function enableCompleteBtn() {
+    const btn = document.getElementById("lesson-modal-complete-btn");
+    if (btn) btn.disabled = false;
+    const vidHint = document.getElementById("lesson-video-hint");
+    if (vidHint) vidHint.innerHTML = '<i class="fas fa-circle-check mr-1 text-emerald-500"></i> Video selesai ditonton, kamu bisa menandai materi ini selesai.';
+    const pptHint = document.getElementById("lesson-ppt-hint");
+    if (pptHint) pptHint.innerHTML = '<i class="fas fa-circle-check mr-1 text-emerald-500"></i> Sudah sampai slide terakhir, kamu bisa menandai materi ini selesai.';
+}
+
+// Deteksi video YouTube selesai ditonton via YouTube IFrame API (fallback: timer estimasi durasi)
+function attachVideoEndWatcher(videoUrl) {
+    const frame = document.getElementById("lesson-video-frame");
+    if (!frame) return;
+    if (!window.YT || !window.YT.Player) {
+        const tag = document.createElement("script");
+        tag.src = "https://www.youtube.com/iframe_api";
+        document.body.appendChild(tag);
+        window.onYouTubeIframeAPIReady = () => bindYtPlayer(frame);
+    } else {
+        bindYtPlayer(frame);
+    }
+}
+function bindYtPlayer(frame) {
+    try {
+        new YT.Player(frame, {
+            events: {
+                onStateChange: (e) => { if (e.data === YT.PlayerState.ENDED) enableCompleteBtn(); }
+            }
+        });
+    } catch (e) { console.error(e); }
+}
+
+function toEmbedUrl(url) {
+    const yt = url.match(/(?:youtu\.be\/|youtube\.com\/watch\?v=|youtube\.com\/embed\/)([\w-]+)/);
+    if (yt) return `https://www.youtube.com/embed/${yt[1]}`;
+    return url;
+}
+
+async function markLessonComplete(kind, refId, lessonId) {
+    const { ref, updateDoc } = window.LMS_DB;
+    const prog = getProgressDoc(kind, refId);
+    if (!prog) return;
+    const ids = new Set(prog.completedLessonIds || []);
+    ids.add(lessonId);
+    await updateDoc(ref(progressCollectionName(kind), prog.id), { completedLessonIds: Array.from(ids) });
+    window.toast("Materi ditandai selesai", "success");
+    window.closeModal("modal-lesson");
+    if (kind === "training") renderTrainingDetail(refId); else renderCourseDetail(refId);
+}
+
+// ================= KUIS =================
+window.openQuiz = function (kind, refId) {
+    const item = getContentItem(kind, refId);
+    const qs = item.quiz.questions || [];
+    document.getElementById("quiz-modal-title").textContent = "Kuis: " + item.title;
+    document.getElementById("quiz-modal-body").innerHTML = qs.map((q, qi) => `
+        <div class="border border-slate-100 rounded-2xl p-4">
+            <p class="text-sm font-bold text-slate-700 mb-2">${qi + 1}. ${window.escapeHtml(q.question)}</p>
+            <div class="space-y-2">
+                ${(q.options || []).map((opt, oi) => `
+                    <label class="flex items-center gap-2 text-sm text-slate-600 cursor-pointer">
+                        <input type="radio" name="quiz-q-${qi}" value="${oi}" class="accent-indigo-600">
+                        ${window.escapeHtml(opt)}
+                    </label>`).join("")}
+            </div>
+        </div>
+    `).join("");
+    const btn = document.getElementById("quiz-submit-btn");
+    btn.onclick = () => window.guardedClick(btn, () => submitQuiz(kind, refId));
+    window.openModal("modal-quiz");
+};
+
+async function submitQuiz(kind, refId) {
+    const item = getContentItem(kind, refId);
+    const qs = item.quiz.questions || [];
+    let correct = 0;
+    const answers = [];
+    qs.forEach((q, qi) => {
+        const checked = document.querySelector(`input[name="quiz-q-${qi}"]:checked`);
+        const val = checked ? parseInt(checked.value) : -1;
+        answers.push(val);
+        if (val === q.correctIndex) correct++;
+    });
+    const score = Math.round((correct / qs.length) * 100);
+    const passingScore = item.quiz.passingScore || 70;
+    const passed = score >= passingScore;
+
+    const { col, addDoc, serverTimestamp } = window.LMS_DB;
+    const payload = { userId: window.STATE.user.id, score, passed, answers, attemptAt: serverTimestamp() };
+    payload[refIdField(kind)] = refId;
+    await addDoc(col("quizAttempts"), payload);
+    // Sertifikat baru diterbitkan lewat tombol "Selesaikan & Ambil Sertifikat" setelah SEMUA
+    // syarat (materi + kuis lulus + penugasan terkumpul, jika ada) terpenuhi. Lihat finishCourseFlow / submitEvaluation.
+
+    window.closeModal("modal-quiz");
+    window.toast(passed ? `Lulus! Skor kamu ${score}` : `Belum lulus, skor ${score}. Coba lagi ya.`, passed ? "success" : "warn");
+    if (kind === "training") renderTrainingDetail(refId); else renderCourseDetail(refId);
+}
+
+// Menyelesaikan Onboarding Training & menerbitkan sertifikat setelah semua syarat evaluasi terpenuhi
+// (materi selesai, kuis lulus jika ada, penugasan terkumpul jika ada).
+window.finishCourseFlow = async function (courseId) {
+    const c = window.STATE.courses.find(x => x.id === courseId);
+    await issueCertificate(courseId, c.title);
+    const enr = window.sel.myEnrollment(courseId);
+    if (enr) await window.LMS_DB.updateDoc(window.LMS_DB.ref("enrollments", enr.id), { status: "completed" });
+    window.toast("Training selesai! Sertifikat diterbitkan.", "success");
+    renderCourseDetail(courseId);
+};
+// alias lama, biar kalau ada pemanggilan sisa dari cache lama tetap jalan
+window.finishCourseNoQuiz = window.finishCourseFlow;
+
+async function issueCertificate(refId, title, type = "course") {
+    const existing = type === "course" ? window.sel.myCertForCourse(refId) : window.STATE.certificates.find(c => c.trainingId === refId && c.userId === window.STATE.user.id);
+    if (existing) return existing;
+    const { col, addDoc, serverTimestamp } = window.LMS_DB;
+    const certId = "CERT-" + Date.now().toString(36).toUpperCase();
+    const payload = {
+        userId: window.STATE.user.id, userName: window.STATE.user.username,
+        title, certId, issuedAt: serverTimestamp(), type
+    };
+    payload[type === "course" ? "courseId" : "trainingId"] = refId;
+    await addDoc(col("certificates"), payload);
+}
+window.issueCertificate = issueCertificate;
+
+
+// ================= TRAINING BY TNA (INTERNAL) =================
+
+window.ROUTES["trainings"] = function (id) {
+    if (id) renderTrainingDetail(id); else renderTrainingCatalog();
+};
+
+function regCount(trainingId) {
+    return window.STATE.trainingRegs.filter(r => r.trainingId === trainingId && r.status !== "cancelled").length;
+}
+
+function renderTrainingCatalog() {
+    const now = Date.now();
+    const list = [...window.STATE.trainings].sort((a, b) => new Date(a.date) - new Date(b.date));
+    const cards = list.map(t => {
+        const reg = window.sel.myRegForTraining(t.id);
+        const isPast = new Date(t.date).getTime() < now - 86400000;
+        const count = regCount(t.id);
+        const full = t.quota && count >= t.quota;
+        return `
+        <a href="#/trainings/${t.id}" class="bg-white rounded-3xl border border-slate-100 shadow-sm hover:shadow-xl transition p-5 flex gap-4">
+            <div class="w-16 shrink-0 rounded-2xl bg-amber-50 text-amber-600 flex flex-col items-center justify-center py-2">
+                <span class="text-lg font-black leading-none">${new Date(t.date).getDate()}</span>
+                <span class="text-[10px] font-bold uppercase">${new Date(t.date).toLocaleDateString('id-ID',{month:'short'})}</span>
+            </div>
+            <div class="flex-1 min-w-0">
+                <p class="text-[11px] font-bold text-amber-500 uppercase">${window.escapeHtml(t.category || "Training")}</p>
+                <h3 class="font-black text-slate-800 truncate">${window.escapeHtml(t.title)}</h3>
+                <p class="text-xs text-slate-500 mt-1"><i class="fas fa-location-dot mr-1"></i>${window.escapeHtml(t.location || "-")} &nbsp;•&nbsp; ${window.escapeHtml(t.startTime||'')}-${window.escapeHtml(t.endTime||'')}</p>
+                <p class="text-xs text-slate-500 mt-0.5"><i class="fas fa-user-tie mr-1 text-amber-400"></i>${window.escapeHtml(t.trainer || "Trainer belum ditentukan")}</p>
+                <div class="flex items-center gap-2 mt-2">
+                    ${reg ? '<span class="text-[10px] font-bold bg-indigo-50 text-indigo-600 px-2 py-1 rounded-full">Terdaftar</span>' : ''}
+                    ${isPast ? '<span class="text-[10px] font-bold bg-slate-100 text-slate-500 px-2 py-1 rounded-full">Selesai</span>' : (full ? '<span class="text-[10px] font-bold bg-rose-50 text-rose-500 px-2 py-1 rounded-full">Kuota Penuh</span>' : '')}
+                    <span class="text-[10px] text-slate-400 font-semibold">${count}${t.quota ? '/'+t.quota : ''} peserta</span>
+                </div>
+            </div>
+        </a>`;
+    }).join("");
+
+    window.setPage(`
+        <div class="mb-5">
+            <h1 class="text-xl font-black text-slate-800">Training By TNA</h1>
+            <p class="text-sm text-slate-500">Daftar, hadir, dan isi evaluasi untuk training tatap muka / online.</p>
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            ${cards || `<div class="col-span-full text-center py-16 text-slate-400"><i class="fas fa-chalkboard-user text-3xl mb-2"></i><p class="font-bold">Belum ada jadwal training</p></div>`}
+        </div>
+    `);
+}
+
+function renderTrainingDetail(id) {
+    const t = window.STATE.trainings.find(x => x.id === id);
+    if (!t) { window.setPage(`<p class="text-center text-slate-400 py-20">Training tidak ditemukan.</p>`); return; }
+    const reg = window.sel.myRegForTraining(id);
+    const att = window.sel.myAttendance(id);
+    const evalDone = window.STATE.evaluations.find(e => e.trainingId === id && e.userId === window.STATE.user.id);
+    const count = regCount(id);
+    const full = t.quota && count >= t.quota;
+
+    const totalLessons = totalLessonsOf(t);
+    const hasMateri = totalLessons > 0;
+    const hasQuiz = t.quiz && (t.quiz.questions || []).length > 0;
+    const completedLessonIds = (reg && reg.completedLessonIds) || [];
+    const allLessonsDone = hasMateri ? completedLessonIds.length >= totalLessons : true;
+    const quizAttempt = window.sel.myQuizAttempt2("training", t.id);
+    const quizPassed = hasQuiz ? !!(quizAttempt && quizAttempt.passed) : true;
+    const hasAssignment = !!(t.assignment && t.assignment.enabled);
+    const assignmentSub = window.sel.myAssignmentSubmission("training", t.id);
+    const assignmentDone = !hasAssignment || !!assignmentSub;
+    const materiComplete = allLessonsDone && quizPassed && assignmentDone;
+
+    const modulesHtml = (t.modules || []).map((m, mi) => `
+        <div class="border border-slate-100 rounded-2xl overflow-hidden">
+            <div class="bg-slate-50 px-4 py-3 font-bold text-sm text-slate-700 flex items-center gap-2">
+                <span class="w-6 h-6 rounded-full bg-amber-100 text-amber-600 text-[11px] flex items-center justify-center font-black">${mi + 1}</span>
+                ${window.escapeHtml(m.title)}
+            </div>
+            <div class="divide-y divide-slate-50">
+                ${(m.lessons || []).map(l => {
+                    const done = completedLessonIds.includes(l.id);
+                    return `
+                    <button onclick="openLesson('training','${t.id}','${l.id}')"
+                        class="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-amber-50/40 transition">
+                        <span class="flex items-center gap-3 text-sm text-slate-700">
+                            <i class="fas ${l.type === 'video' ? 'fa-circle-play' : (l.type === 'ppt' ? 'fa-file-powerpoint' : 'fa-file-lines')} text-amber-400"></i>
+                            ${window.escapeHtml(l.title)}
+                        </span>
+                        <i class="fas ${done ? 'fa-circle-check text-emerald-500' : 'fa-chevron-right text-slate-300'} text-sm"></i>
+                    </button>`;
+                }).join("")}
+            </div>
+        </div>
+    `).join("");
+
+    const materiSection = (hasMateri || hasQuiz || hasAssignment) ? `
+        <div class="mt-5 space-y-3">
+            <h3 class="font-black text-sm text-slate-700"><i class="fas fa-book-open text-amber-400 mr-1"></i> Materi Training</h3>
+            ${modulesHtml || '<p class="text-xs text-slate-400">Belum ada modul materi untuk sesi ini.</p>'}
+            ${hasQuiz ? `
+            <div class="bg-white border border-slate-100 rounded-2xl p-4 flex items-center justify-between">
+                <div>
+                    <p class="text-sm font-bold text-slate-700">Kuis Training</p>
+                    <p class="text-[11px] text-slate-400">${quizAttempt ? `Skor terakhir: ${quizAttempt.score} (${quizAttempt.passed ? 'Lulus' : 'Belum lulus'})` : 'Belum dikerjakan'}</p>
+                </div>
+                <button ${!allLessonsDone ? 'disabled' : ''} onclick="openQuiz('training','${t.id}')" class="bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold px-4 py-2.5 rounded-xl transition"><i class="fas fa-clipboard-question mr-1"></i> ${quizAttempt ? 'Ulangi Kuis' : 'Kerjakan Kuis'}</button>
+            </div>` : ""}
+            ${hasAssignment ? `
+            <div class="bg-white border border-slate-100 rounded-2xl p-4 flex items-center justify-between">
+                <div>
+                    <p class="text-sm font-bold text-slate-700"><i class="fas fa-file-signature text-violet-500 mr-1"></i> Penugasan</p>
+                    <p class="text-[11px] text-slate-400">${assignmentSub ? (assignmentSub.status === 'graded' ? `Dinilai: skor ${assignmentSub.score}` : 'Sudah dikumpulkan, menunggu penilaian') : 'Belum dikumpulkan'}</p>
+                </div>
+                <button ${!allLessonsDone ? 'disabled' : ''} onclick="openAssignment('training','${t.id}')" class="bg-violet-500 hover:bg-violet-600 text-white text-xs font-bold px-4 py-2.5 rounded-xl transition"><i class="fas fa-upload mr-1"></i> ${assignmentSub ? 'Lihat Status' : 'Kumpulkan Tugas'}</button>
+            </div>` : ""}
+        </div>` : "";
+
+    let ctaBlock = "";
+    if (!reg) {
+        ctaBlock = full
+            ? `<div class="text-center text-sm text-rose-500 bg-rose-50 rounded-2xl py-3 font-semibold">Kuota sudah penuh</div>`
+            : `<button onclick="window.guardedClick(this, () => window.registerTraining('${t.id}'))" class="w-full bg-amber-500 hover:bg-amber-600 text-white font-bold py-3 rounded-2xl transition"><i class="fas fa-clipboard-check mr-1"></i> Daftar Training</button>`;
+    } else if (!att) {
+        ctaBlock = `
+            <div class="space-y-2">
+                <p class="text-xs text-slate-500 font-semibold">Masukkan kode presensi yang diberikan trainer saat sesi berlangsung:</p>
+                <div class="flex gap-2">
+                    <input id="attendance-code-input" placeholder="Kode presensi" class="flex-1 border border-slate-200 rounded-xl px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-amber-400 uppercase">
+                    <button onclick="window.guardedClick(this, () => window.checkInTraining('${t.id}'))" class="bg-amber-500 hover:bg-amber-600 text-white font-bold px-4 rounded-xl text-sm">Hadir</button>
+                </div>
+            </div>`;
+    } else if ((hasMateri || hasQuiz || hasAssignment) && !materiComplete) {
+        ctaBlock = `<div class="text-center text-sm text-slate-500 bg-slate-50 rounded-2xl py-3">Selesaikan materi${hasQuiz ? ', lulus kuis' : ''}${hasAssignment ? ', & kumpulkan tugas' : ''} di bawah untuk lanjut ke evaluasi.</div>`;
+    } else if (!evalDone) {
+        ctaBlock = `<button onclick="openEvaluation('${t.id}')" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-2xl transition"><i class="fas fa-star mr-1"></i> Isi Evaluasi</button>`;
+    } else {
+        ctaBlock = `<button onclick="window.navigate('/certificates')" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 rounded-2xl transition"><i class="fas fa-award mr-1"></i> Lihat Sertifikat</button>`;
+    }
+
+    window.setPage(`
+        <a href="#/trainings" class="text-xs font-bold text-slate-400 hover:text-indigo-600"><i class="fas fa-arrow-left mr-1"></i> Kembali ke Jadwal</a>
+        <div class="bg-white rounded-3xl border border-slate-100 shadow-sm p-6 mt-3 grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div class="lg:col-span-2 space-y-3">
+                <p class="text-[11px] font-bold text-amber-500 uppercase">${window.escapeHtml(t.category || "Training")}</p>
+                <h1 class="text-2xl font-black text-slate-800">${window.escapeHtml(t.title)}</h1>
+                <p class="text-sm text-slate-600 leading-relaxed">${window.escapeHtml(t.description || "")}</p>
+                <div class="grid grid-cols-2 gap-3 pt-3">
+                    <div class="bg-slate-50 rounded-2xl p-3"><p class="text-[10px] text-slate-400 font-bold uppercase">Tanggal</p><p class="text-sm font-bold text-slate-700">${window.fmtDate(t.date)}</p></div>
+                    <div class="bg-slate-50 rounded-2xl p-3"><p class="text-[10px] text-slate-400 font-bold uppercase">Waktu</p><p class="text-sm font-bold text-slate-700">${window.escapeHtml(t.startTime||'-')} - ${window.escapeHtml(t.endTime||'-')}</p></div>
+                    <div class="bg-slate-50 rounded-2xl p-3"><p class="text-[10px] text-slate-400 font-bold uppercase">Lokasi</p><p class="text-sm font-bold text-slate-700">${window.escapeHtml(t.location||'-')}</p></div>
+                    <div class="bg-slate-50 rounded-2xl p-3"><p class="text-[10px] text-slate-400 font-bold uppercase">Trainer</p><p class="text-sm font-bold text-slate-700"><i class="fas fa-user-tie text-amber-400 mr-1"></i>${window.escapeHtml(t.trainer||'-')}</p></div>
+                </div>
+                ${reg ? materiSection : ""}
+            </div>
+            <div class="space-y-3">
+                <div class="bg-slate-50 rounded-2xl p-4 text-center">
+                    <p class="text-2xl font-black text-slate-800">${count}${t.quota ? '/'+t.quota : ''}</p>
+                    <p class="text-[10px] font-bold text-slate-400 uppercase">Peserta Terdaftar</p>
+                </div>
+                ${ctaBlock}
+            </div>
+        </div>
+    `);
+}
+
+window.registerTraining = async function (trainingId) {
+    const { col, addDoc, serverTimestamp } = window.LMS_DB;
+    await addDoc(col("trainingRegistrations"), {
+        trainingId, userId: window.STATE.user.id, status: "registered", completedLessonIds: [], registeredAt: serverTimestamp()
+    });
+    window.toast("Berhasil daftar training!", "success");
+};
+
+window.checkInTraining = async function (trainingId) {
+    const t = window.STATE.trainings.find(x => x.id === trainingId);
+    const code = document.getElementById("attendance-code-input").value.trim();
+    if (!code) { window.toast("Masukkan kode presensi", "warn"); return; }
+    if ((t.attendanceCode || "").toUpperCase() !== code.toUpperCase()) {
+        window.toast("Kode presensi salah", "error"); return;
+    }
+    const { col, addDoc, serverTimestamp } = window.LMS_DB;
+    await addDoc(col("attendance"), {
+        trainingId, userId: window.STATE.user.id, checkedInAt: serverTimestamp()
+    });
+    window.toast("Presensi berhasil!", "success");
+    renderTrainingDetail(trainingId);
+};
+
+window.openEvaluation = function (trainingId) {
+    document.getElementById("eval-training-id").value = trainingId;
+    document.getElementById("eval-rating-materi").value = "5";
+    document.getElementById("eval-rating-trainer").value = "5";
+    document.getElementById("eval-rating-fasilitas").value = "5";
+    document.getElementById("eval-comment").value = "";
+    window.openModal("modal-evaluation");
+};
+
+window.submitEvaluation = async function () {
+    const trainingId = document.getElementById("eval-training-id").value;
+    const t = window.STATE.trainings.find(x => x.id === trainingId);
+    const { col, addDoc, serverTimestamp } = window.LMS_DB;
+    await addDoc(col("evaluations"), {
+        trainingId, userId: window.STATE.user.id,
+        ratings: {
+            materi: parseInt(document.getElementById("eval-rating-materi").value),
+            trainer: parseInt(document.getElementById("eval-rating-trainer").value),
+            fasilitas: parseInt(document.getElementById("eval-rating-fasilitas").value),
+        },
+        comment: document.getElementById("eval-comment").value.trim(),
+        submittedAt: serverTimestamp()
+    });
+    await window.issueCertificate(trainingId, t.title, "training");
+    window.closeModal("modal-evaluation");
+    window.toast("Evaluasi terkirim, sertifikat diterbitkan!", "success");
+    renderTrainingDetail(trainingId);
+};
+
+// ================= PENUGASAN (ASSIGNMENT): kumpul file/link dengan deadline, dinilai admin =================
+window.openAssignment = function (kind, refId) {
+    const item = getContentItem(kind, refId);
+    const a = item.assignment || {};
+    const sub = window.sel.myAssignmentSubmission(kind, refId);
+    const deadlineDate = a.deadline ? new Date(a.deadline) : null;
+    const isLate = deadlineDate && Date.now() > deadlineDate.getTime();
+
+    document.getElementById("assignment-modal-title").innerHTML = `<i class="fas fa-file-signature mr-1"></i> ${window.escapeHtml(a.title || item.title)}`;
+    document.getElementById("assignment-modal-deadline").textContent = deadlineDate
+        ? `Batas waktu pengumpulan: ${deadlineDate.toLocaleString('id-ID', { day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' })}`
+        : "Tidak ada batas waktu";
+
+    let body = `<p class="text-sm text-slate-600 whitespace-pre-wrap">${window.escapeHtml(a.description || "")}</p>`;
+
+    if (sub) {
+        body += `
+        <div class="bg-slate-50 rounded-2xl p-4 space-y-2 mt-2">
+            <p class="text-xs font-bold text-slate-500 uppercase">Status Pengumpulan</p>
+            <p class="text-sm text-slate-700">Dikumpulkan pada ${window.fmtDateTime(sub.submittedAt)}</p>
+            ${sub.fileUrl ? `<a href="${sub.fileUrl}" target="_blank" class="text-xs font-bold text-indigo-600 hover:underline"><i class="fas fa-paperclip mr-1"></i> Lihat file yang dikumpulkan</a>` : ""}
+            ${sub.link ? `<a href="${sub.link}" target="_blank" class="text-xs font-bold text-indigo-600 hover:underline block"><i class="fas fa-link mr-1"></i> ${window.escapeHtml(sub.link)}</a>` : ""}
+            <div class="pt-2 border-t border-slate-200">
+                ${sub.status === 'graded'
+                    ? `<p class="text-sm font-bold text-emerald-600">Nilai: ${sub.score}</p><p class="text-xs text-slate-500 mt-1">${window.escapeHtml(sub.feedback || 'Tidak ada catatan tambahan.')}</p>`
+                    : `<p class="text-xs text-amber-600 font-semibold"><i class="fas fa-hourglass-half mr-1"></i> Menunggu penilaian dari admin training.</p>`}
+            </div>
+        </div>
+        ${(!deadlineDate || !isLate) ? `<button onclick="window.guardedClick(this, () => window.openAssignmentForm('${kind}','${refId}'))" class="w-full mt-2 text-xs font-bold text-violet-600 hover:text-violet-800">Kumpulkan ulang / ganti jawaban</button>` : ""}`;
+        document.getElementById("assignment-modal-body").innerHTML = body;
+    } else {
+        window.renderAssignmentForm(kind, refId, isLate);
+    }
+    window.openModal("modal-assignment");
+};
+
+window.openAssignmentForm = function (kind, refId) {
+    const item = getContentItem(kind, refId);
+    const a = item.assignment || {};
+    const deadlineDate = a.deadline ? new Date(a.deadline) : null;
+    const isLate = deadlineDate && Date.now() > deadlineDate.getTime();
+    window.renderAssignmentForm(kind, refId, isLate);
+};
+
+window.renderAssignmentForm = function (kind, refId, isLate) {
+    const item = getContentItem(kind, refId);
+    const body = `
+        <p class="text-sm text-slate-600 whitespace-pre-wrap">${window.escapeHtml((item.assignment || {}).description || "")}</p>
+        ${isLate ? `<div class="bg-rose-50 text-rose-600 text-xs font-bold rounded-xl p-3"><i class="fas fa-triangle-exclamation mr-1"></i> Batas waktu pengumpulan sudah lewat. Hubungi admin training jika ingin mengumpulkan tetap.</div>` : ""}
+        <div class="space-y-2">
+            <label class="text-[10px] font-bold uppercase text-slate-400">Upload File Tugas (opsional jika mengisi link)</label>
+            <input id="assignment-file-input" type="file" class="w-full border border-slate-200 rounded-xl px-3 py-2 text-xs">
+        </div>
+        <div class="space-y-2">
+            <label class="text-[10px] font-bold uppercase text-slate-400">Atau Link Google Drive / lainnya</label>
+            <input id="assignment-link-input" type="url" placeholder="https://..." class="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm">
+        </div>
+        <button id="assignment-submit-btn" onclick="window.guardedClick(this, () => window.submitAssignment('${kind}','${refId}'))" class="w-full bg-violet-500 hover:bg-violet-600 text-white font-bold py-3 rounded-2xl transition"><i class="fas fa-paper-plane mr-1"></i> Kumpulkan Tugas</button>
+    `;
+    document.getElementById("assignment-modal-body").innerHTML = body;
+};
+
+window.submitAssignment = async function (kind, refId) {
+    const item = getContentItem(kind, refId);
+    const a = item.assignment || {};
+    const deadlineDate = a.deadline ? new Date(a.deadline) : null;
+    if (deadlineDate && Date.now() > deadlineDate.getTime()) {
+        window.toast("Batas waktu pengumpulan sudah lewat", "error");
+        return;
+    }
+    const fileInput = document.getElementById("assignment-file-input");
+    const linkInput = document.getElementById("assignment-link-input");
+    const file = fileInput && fileInput.files[0];
+    const link = linkInput ? linkInput.value.trim() : "";
+    if (!file && !link) { window.toast("Upload file atau isi link tugas dulu ya", "warn"); return; }
+
+    let fileUrl = "";
+    if (file) {
+        window.toast("Mengupload file tugas...", "info");
+        fileUrl = await window.LMS_DB.uploadFile(file, `assignments/${kind}/${refId}`);
+    }
+
+    const { col, addDoc, serverTimestamp } = window.LMS_DB;
+    const payload = {
+        userId: window.STATE.user.id, userName: window.STATE.user.username,
+        fileUrl: fileUrl || "", link: link || "", status: "submitted",
+        score: null, feedback: null, submittedAt: serverTimestamp()
+    };
+    payload[refIdField(kind)] = refId;
+    payload.itemTitle = item.title;
+    await addDoc(col("assignmentSubmissions"), payload);
+
+    window.closeModal("modal-assignment");
+    window.toast("Tugas berhasil dikumpulkan!", "success");
+    if (kind === "training") renderTrainingDetail(refId); else renderCourseDetail(refId);
+};
+
+
+// ================= UPLOAD SOAL KUIS VIA EXCEL (ONBOARDING & TNA) =================
+function parseQuizWorkbook(file, callback) {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+        try {
+            const data = new Uint8Array(e.target.result);
+            const wb = XLSX.read(data, { type: "array" });
+            const sheet = wb.Sheets[wb.SheetNames[0]];
+            const rows = XLSX.utils.sheet_to_json(sheet, { defval: "" });
+            const letterMap = { A: 0, B: 1, C: 2, D: 3 };
+            const questions = rows.map((r, i) => {
+                const question = String(r["Pertanyaan"] ?? r["pertanyaan"] ?? "").trim();
+                const options = [r["Opsi A"], r["Opsi B"], r["Opsi C"], r["Opsi D"]].map(o => String(o ?? "").trim());
+                const rawAns = String(r["Jawaban Benar"] ?? r["Jawaban Benar (A/B/C/D)"] ?? r["jawaban benar"] ?? "A").trim().toUpperCase();
+                const correctIndex = letterMap[rawAns] ?? 0;
+                if (!question) return null;
+                return { id: "q" + Date.now() + "_" + i, question, options, correctIndex };
+            }).filter(Boolean);
+            callback(questions);
+        } catch (err) {
+            console.error(err);
+            window.toast("Gagal membaca file Excel. Pastikan formatnya sesuai template.", "error");
+        }
+    };
+    reader.readAsArrayBuffer(file);
+}
+
+window.uploadQuizExcel = function (kind) {
+    if (typeof XLSX === "undefined") { window.toast("Modul Excel belum siap, coba lagi sesaat.", "warn"); return; }
+    let input = document.getElementById("quiz-excel-file-input");
+    if (!input) {
+        input = document.createElement("input");
+        input.type = "file";
+        input.accept = ".xlsx,.xls";
+        input.id = "quiz-excel-file-input";
+        input.className = "hide";
+        document.body.appendChild(input);
+    }
+    input.value = "";
+    input.onchange = () => {
+        const file = input.files[0];
+        if (!file) return;
+        parseQuizWorkbook(file, (questions) => {
+            if (!questions.length) { window.toast("Tidak ada soal valid yang terbaca dari file ini.", "warn"); return; }
+            const draft = kind === "training" ? trainingDraft : courseDraft;
+            if (!draft) return;
+            draft.quiz.questions = (draft.quiz.questions || []).concat(questions);
+            if (kind === "training") window.rerenderTrainingBuilder(); else window.rerenderBuilder();
+            window.toast(`${questions.length} soal berhasil diimpor dari Excel`, "success");
+        });
+    };
+    input.click();
+};
+
+window.downloadQuizTemplate = function () {
+    if (typeof XLSX === "undefined") { window.toast("Modul Excel belum siap, coba lagi sesaat.", "warn"); return; }
+    const wsData = [
+        ["Pertanyaan", "Opsi A", "Opsi B", "Opsi C", "Opsi D", "Jawaban Benar (A/B/C/D)"],
+        ["Apa kepanjangan dari TNA?", "Training Need Analysis", "Total Nilai Akhir", "Tim Nilai Absensi", "Target Nilai Anggaran", "A"],
+        ["Warna bendera Indonesia adalah...", "Merah Putih", "Merah Biru", "Kuning Hijau", "Hitam Putih", "A"],
+    ];
+    const ws = XLSX.utils.aoa_to_sheet(wsData);
+    ws["!cols"] = [{ wch: 42 }, { wch: 22 }, { wch: 22 }, { wch: 22 }, { wch: 22 }, { wch: 24 }];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Template Soal Kuis");
+    XLSX.writeFile(wb, "Template_Soal_Kuis_NingratEdu.xlsx");
+};
+
+window.openQuizExcelInfo = function () { window.openModal("modal-quiz-excel-info"); };
+
+// ================= UPLOAD FILE PPT (MODUL PPT COURSE/TRAINING) =================
+window.uploadPptFile = async function (inputEl, draftName, mi, li) {
+    const file = inputEl.files[0];
+    if (!file) return;
+    if (!/\.(ppt|pptx)$/i.test(file.name)) { window.toast("File harus format .ppt atau .pptx", "warn"); return; }
+    inputEl.disabled = true;
+    window.toast("Mengupload file PPT...", "info");
+    try {
+        const url = await window.LMS_DB.uploadFile(file, "ppt");
+        const draft = draftName === "trainingDraft" ? trainingDraft : courseDraft;
+        draft.modules[mi].lessons[li].pptUrl = url;
+        draft.modules[mi].lessons[li].pptFileName = file.name;
+        window.toast(`File "${file.name}" berhasil diupload`, "success");
+        if (draftName === "trainingDraft") window.rerenderTrainingBuilder(); else window.rerenderBuilder();
+    } catch (e) {
+        console.error(e);
+        window.toast("Gagal upload file PPT: " + (e.message || e), "error");
+        inputEl.disabled = false;
+    }
+};
+
+// ================= UPLOAD GAMBAR COVER (ONBOARDING TRAINING) =================
+window.uploadCoverImage = async function (inputEl) {
+    const file = inputEl.files[0];
+    if (!file) return;
+    if (!file.type.startsWith("image/")) { window.toast("File harus berupa gambar", "warn"); return; }
+    inputEl.disabled = true;
+    window.toast("Mengupload gambar cover...", "info");
+    try {
+        const url = await window.LMS_DB.uploadFile(file, "cover");
+        courseDraft.coverImage = url;
+        window.toast(`Gambar "${file.name}" berhasil diupload`, "success");
+        window.rerenderBuilder();
+    } catch (e) {
+        console.error(e);
+        window.toast("Gagal upload gambar: " + (e.message || e), "error");
+        inputEl.disabled = false;
+    }
+};
+
+
+// ================= ADMIN GUARD =================
+function requireAdmin(renderFn) {
+    return function (id) {
+        if (!window.sel.isAdmin()) { window.setPage(`<p class="text-center text-rose-400 py-20 font-bold">Akses ditolak. Halaman ini khusus admin.</p>`); return; }
+        renderFn(id);
+    };
+}
+
+// ================= ADMIN: KELOLA ONBOARDING =================
+window.ROUTES["admin/courses"] = requireAdmin(function (id) {
+    if (id === "new" || (id && window.STATE.courses.some(c => c.id === id))) { renderCourseBuilder(id === "new" ? null : id); return; }
+    renderCourseAdminList();
+});
+
+function renderCourseAdminList() {
+    const rows = window.STATE.courses.map(c => `
+        <tr class="border-b border-slate-50 hover:bg-slate-50/60">
+            <td class="px-3 py-3">
+                <p class="font-bold text-slate-700 text-sm">${window.escapeHtml(c.title)}</p>
+                <p class="text-[11px] text-slate-400">${(c.modules||[]).length} modul • ${window.escapeHtml(c.category||'-')}</p>
+            </td>
+            <td class="px-3 py-3 text-center">
+                <span class="text-[10px] font-black px-2 py-1 rounded-full ${c.published ? 'bg-emerald-50 text-emerald-600' : 'bg-slate-100 text-slate-500'}">${c.published ? 'Terbit' : 'Draft'}</span>
+            </td>
+            <td class="px-3 py-3 text-center text-sm text-slate-500">${window.STATE.enrollments.filter(e=>e.courseId===c.id).length}</td>
+            <td class="px-3 py-3 text-right space-x-2">
+                <a href="#/admin/courses/${c.id}" class="text-indigo-500 hover:text-indigo-700"><i class="fas fa-pen"></i></a>
+                <button onclick="window.guardedClick(this, () => window.deleteCourse('${c.id}'))" class="text-rose-400 hover:text-rose-600"><i class="fas fa-trash"></i></button>
+            </td>
+        </tr>`).join("");
+
+    window.setPage(`
+        <div class="flex items-center justify-between mb-5">
+            <h1 class="text-xl font-black text-slate-800">Kelola Onboarding</h1>
+            <a href="#/admin/courses/new" class="bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold px-4 py-2.5 rounded-2xl"><i class="fas fa-plus mr-1"></i> Training Baru</a>
+        </div>
+        <div class="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-x-auto">
+            <table class="w-full text-left">
+                <thead class="bg-slate-50 text-[10px] font-black uppercase text-slate-400">
+                    <tr><th class="px-3 py-3">Training</th><th class="px-3 py-3 text-center">Status</th><th class="px-3 py-3 text-center">Peserta</th><th class="px-3 py-3 text-right">Aksi</th></tr>
+                </thead>
+                <tbody>${rows || `<tr><td colspan="4" class="text-center py-10 text-slate-400">Belum ada training</td></tr>`}</tbody>
+            </table>
+        </div>
+    `);
+}
+
+window.deleteCourse = async function (id) {
+    if (!confirm("Hapus training ini? Data progress peserta terkait tidak ikut terhapus otomatis.")) return;
+    await window.LMS_DB.deleteDoc(window.LMS_DB.ref("courses", id));
+    window.toast("Training dihapus", "success");
+    window.navigate("/admin/courses");
+};
+
+let courseDraft = null;
+function renderCourseBuilder(id) {
+    if (!courseDraft || courseDraft._loadedId !== (id || "new")) {
+        const existing = id ? window.STATE.courses.find(c => c.id === id) : null;
+        courseDraft = existing ? JSON.parse(JSON.stringify(existing)) : {
+            title: "", description: "", category: "", instructor: "", level: "Umum",
+            coverImage: "", published: false, modules: [], quiz: { passingScore: 70, questions: [] },
+            assignment: { enabled: false, title: "", description: "", deadline: "" }
+        };
+        if (!courseDraft.assignment) courseDraft.assignment = { enabled: false, title: "", description: "", deadline: "" };
+        if (!Array.isArray(courseDraft.modules)) courseDraft.modules = [];
+        courseDraft.modules.forEach(m => { if (!Array.isArray(m.lessons)) m.lessons = []; });
+        if (!courseDraft.quiz) courseDraft.quiz = { passingScore: 70, questions: [] };
+        if (!Array.isArray(courseDraft.quiz.questions)) courseDraft.quiz.questions = [];
+        courseDraft._loadedId = id || "new";
+        courseDraft._id = id;
+    }
+    const d = courseDraft;
+
+    const modulesHtml = d.modules.map((m, mi) => `
+        <div class="border border-slate-100 rounded-2xl p-4 space-y-3">
+            <div class="flex items-center gap-2">
+                <input value="${window.escapeHtml(m.title)}" oninput="courseDraft.modules[${mi}].title=this.value" placeholder="Judul modul" class="flex-1 border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-400">
+                <button onclick="courseDraft.modules.splice(${mi},1); rerenderBuilder()" class="text-rose-400 hover:text-rose-600 px-2"><i class="fas fa-trash"></i></button>
+            </div>
+            <div class="space-y-2 pl-3 border-l-2 border-indigo-50">
+                ${(m.lessons||[]).map((l, li) => `
+                    <div class="flex items-center gap-2 flex-wrap bg-slate-50 rounded-xl p-2">
+                        <select onchange="courseDraft.modules[${mi}].lessons[${li}].type=this.value; rerenderBuilder()" class="border border-slate-200 rounded-lg px-2 py-1.5 text-xs">
+                            <option value="video" ${l.type==='video'?'selected':''}>Video (YouTube)</option>
+                            <option value="ppt" ${l.type==='ppt'?'selected':''}>PPT / Slide</option>
+                            <option value="text" ${l.type==='text'?'selected':''}>Teks</option>
+                        </select>
+                        <input value="${window.escapeHtml(l.title)}" oninput="courseDraft.modules[${mi}].lessons[${li}].title=this.value" placeholder="Judul lesson" class="flex-1 min-w-[140px] border border-slate-200 rounded-lg px-2 py-1.5 text-xs">
+                        ${l.type==='video' ? `<input value="${window.escapeHtml(l.videoUrl||'')}" oninput="courseDraft.modules[${mi}].lessons[${li}].videoUrl=this.value" placeholder="URL video (YouTube)" class="flex-1 min-w-[140px] border border-slate-200 rounded-lg px-2 py-1.5 text-xs">` : ""}
+                        ${l.type==='ppt' ? `
+                            <div class="flex items-center gap-2 flex-1 min-w-[220px]">
+                                <input id="ppt-url-c-${mi}-${li}" value="${window.escapeHtml(l.pptUrl||'')}" oninput="courseDraft.modules[${mi}].lessons[${li}].pptUrl=this.value" placeholder="URL file .pptx (link publik) atau upload di samping" class="flex-1 min-w-[140px] border border-slate-200 rounded-lg px-2 py-1.5 text-xs">
+                                <label class="shrink-0 text-[11px] font-bold text-indigo-500 hover:text-indigo-700 bg-indigo-50 px-2 py-1.5 rounded-lg cursor-pointer whitespace-nowrap">
+                                    <i class="fas fa-upload mr-1"></i> Upload
+                                    <input type="file" accept=".ppt,.pptx" class="hidden" onchange="window.uploadPptFile(this, 'courseDraft', ${mi}, ${li})">
+                                </label>
+                            </div>
+                            <input type="number" min="1" value="${l.slideCount||1}" oninput="courseDraft.modules[${mi}].lessons[${li}].slideCount=parseInt(this.value)||1" placeholder="Jml slide" class="w-24 border border-slate-200 rounded-lg px-2 py-1.5 text-xs">
+                            ${l.pptUrl ? `<div class="w-full flex items-center gap-2 text-[11px] font-bold text-emerald-600 bg-emerald-50 rounded-lg px-2 py-1.5"><i class="fas fa-circle-check"></i> ${l.pptFileName ? `File "${window.escapeHtml(l.pptFileName)}" berhasil diupload` : 'File PPT terpasang'} <a href="${l.pptUrl}" target="_blank" class="ml-auto underline text-emerald-700 hover:text-emerald-900">Lihat</a></div>` : ""}
+                        ` : ""}
+                        <button onclick="courseDraft.modules[${mi}].lessons.splice(${li},1); rerenderBuilder()" class="text-rose-400 hover:text-rose-600 text-xs px-1"><i class="fas fa-xmark"></i></button>
+                        <textarea oninput="courseDraft.modules[${mi}].lessons[${li}].content=this.value" placeholder="Isi materi / catatan teks..." rows="2" class="w-full border border-slate-200 rounded-lg px-2 py-1.5 text-xs">${window.escapeHtml(l.content||'')}</textarea>
+                    </div>
+                `).join("")}
+                <button onclick="courseDraft.modules[${mi}].lessons=courseDraft.modules[${mi}].lessons||[]; courseDraft.modules[${mi}].lessons.push({id:'l'+Date.now(),title:'',type:'video',videoUrl:'',content:''}); rerenderBuilder()" class="text-[11px] font-bold text-indigo-500 hover:text-indigo-700"><i class="fas fa-plus mr-1"></i> Tambah Lesson</button>
+            </div>
+        </div>
+    `).join("");
+
+    const questionsHtml = (d.quiz.questions || []).map((q, qi) => `
+        <div class="border border-slate-100 rounded-2xl p-4 space-y-2">
+            <div class="flex items-center gap-2">
+                <input value="${window.escapeHtml(q.question)}" oninput="courseDraft.quiz.questions[${qi}].question=this.value" placeholder="Pertanyaan" class="flex-1 border border-slate-200 rounded-xl px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-amber-400">
+                <button onclick="courseDraft.quiz.questions.splice(${qi},1); rerenderBuilder()" class="text-rose-400 hover:text-rose-600 px-2"><i class="fas fa-trash"></i></button>
+            </div>
+            ${(q.options||[]).map((opt, oi) => `
+                <div class="flex items-center gap-2">
+                    <input type="radio" name="correct-${qi}" ${q.correctIndex===oi?'checked':''} onchange="courseDraft.quiz.questions[${qi}].correctIndex=${oi}" class="accent-emerald-600">
+                    <input value="${window.escapeHtml(opt)}" oninput="courseDraft.quiz.questions[${qi}].options[${oi}]=this.value" placeholder="Opsi ${oi+1}" class="flex-1 border border-slate-200 rounded-lg px-2 py-1.5 text-xs">
+                </div>
+            `).join("")}
+        </div>
+    `).join("");
+
+    window.setPage(`
+        <a href="#/admin/courses" class="text-xs font-bold text-slate-400 hover:text-indigo-600"><i class="fas fa-arrow-left mr-1"></i> Kembali</a>
+        <h1 class="text-xl font-black text-slate-800 mt-2 mb-5">${d._id ? 'Edit Training' : 'Training Baru'}</h1>
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-5">
+            <div class="lg:col-span-2 space-y-5">
+                <div class="bg-white rounded-3xl border border-slate-100 shadow-sm p-5 space-y-3">
+                    <h3 class="font-black text-sm text-slate-700">Info Training</h3>
+                    <input value="${window.escapeHtml(d.title)}" oninput="courseDraft.title=this.value" placeholder="Judul training" class="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm">
+                    <textarea oninput="courseDraft.description=this.value" placeholder="Deskripsi" rows="3" class="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm">${window.escapeHtml(d.description)}</textarea>
+                    <div class="grid grid-cols-2 gap-3">
+                        <input value="${window.escapeHtml(d.category)}" oninput="courseDraft.category=this.value" placeholder="Kategori" class="border border-slate-200 rounded-xl px-3 py-2 text-sm">
+                        <input value="${window.escapeHtml(d.instructor)}" oninput="courseDraft.instructor=this.value" placeholder="Instruktur" class="border border-slate-200 rounded-xl px-3 py-2 text-sm">
+                        <select onchange="courseDraft.level=this.value" class="border border-slate-200 rounded-xl px-3 py-2 text-sm">
+                            ${["Umum","Pemula","Menengah","Lanjutan"].map(lv=>`<option ${d.level===lv?'selected':''}>${lv}</option>`).join("")}
+                        </select>
+                        <div class="flex items-center gap-2">
+                            <input value="${window.escapeHtml(d.coverImage)}" oninput="courseDraft.coverImage=this.value" placeholder="URL gambar cover (opsional)" class="flex-1 border border-slate-200 rounded-xl px-3 py-2 text-sm">
+                            <label class="shrink-0 text-[11px] font-bold text-indigo-500 hover:text-indigo-700 bg-indigo-50 px-3 py-2.5 rounded-xl cursor-pointer whitespace-nowrap">
+                                <i class="fas fa-upload mr-1"></i> Upload
+                                <input type="file" accept="image/*" class="hidden" onchange="window.uploadCoverImage(this)">
+                            </label>
+                        </div>
+                    </div>
+                    ${d.coverImage ? `
+                    <div class="flex items-center gap-2 text-[11px] font-bold text-emerald-600 bg-emerald-50 rounded-xl px-3 py-2">
+                        <i class="fas fa-circle-check"></i> Gambar cover terpasang
+                        <img src="${d.coverImage}" class="w-10 h-10 rounded-lg object-cover ml-auto border border-emerald-200" onerror="this.style.display='none'">
+                    </div>` : ""}
+                </div>
+
+                <div class="bg-white rounded-3xl border border-slate-100 shadow-sm p-5 space-y-3">
+                    <div class="flex items-center justify-between">
+                        <h3 class="font-black text-sm text-slate-700">Modul & Lesson</h3>
+                        <button onclick="courseDraft.modules.push({id:'m'+Date.now(),title:'',lessons:[]}); rerenderBuilder()" class="text-[11px] font-bold text-indigo-500 hover:text-indigo-700"><i class="fas fa-plus mr-1"></i> Tambah Modul</button>
+                    </div>
+                    <div class="space-y-3">${modulesHtml || '<p class="text-xs text-slate-400">Belum ada modul.</p>'}</div>
+                </div>
+
+                <div class="bg-white rounded-3xl border border-slate-100 shadow-sm p-5 space-y-3">
+                    <div class="flex items-center justify-between flex-wrap gap-2">
+                        <h3 class="font-black text-sm text-slate-700 flex items-center gap-1.5">Kuis (opsional)
+                            <button onclick="window.openQuizExcelInfo()" title="Format upload Excel" class="text-slate-300 hover:text-indigo-500"><i class="fas fa-circle-info"></i></button>
+                        </h3>
+                        <div class="flex items-center gap-2">
+                            <button onclick="window.uploadQuizExcel('course')" class="text-[11px] font-bold text-emerald-600 hover:text-emerald-800 bg-emerald-50 px-2.5 py-1.5 rounded-lg transition"><i class="fas fa-file-excel mr-1"></i> Upload Excel</button>
+                            <button onclick="courseDraft.quiz.questions.push({id:'q'+Date.now(),question:'',options:['','','',''],correctIndex:0}); rerenderBuilder()" class="text-[11px] font-bold text-amber-500 hover:text-amber-700"><i class="fas fa-plus mr-1"></i> Tambah Soal</button>
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <label class="text-xs text-slate-500 font-semibold">Nilai kelulusan (%)</label>
+                        <input type="number" min="0" max="100" value="${d.quiz.passingScore}" oninput="courseDraft.quiz.passingScore=parseInt(this.value)||0" class="w-20 border border-slate-200 rounded-lg px-2 py-1 text-sm">
+                    </div>
+                    <div class="space-y-3">${questionsHtml || '<p class="text-xs text-slate-400">Belum ada soal. Kalau tanpa kuis, training otomatis selesai setelah semua lesson ditandai.</p>'}</div>
+                </div>
+
+                <div class="bg-white rounded-3xl border border-slate-100 shadow-sm p-5 space-y-3">
+                    <label class="flex items-center justify-between">
+                        <h3 class="font-black text-sm text-slate-700"><i class="fas fa-file-signature text-violet-500 mr-1"></i> Penugasan / Tugas (opsional)</h3>
+                        <input type="checkbox" ${d.assignment.enabled?'checked':''} onchange="courseDraft.assignment.enabled=this.checked; rerenderBuilder()" class="w-5 h-5 accent-violet-600">
+                    </label>
+                    <p class="text-xs text-slate-400">Selain/tambahan dari kuis: peserta wajib mengumpulkan file atau link sebagai bukti penyelesaian tugas, sebelum batas waktu yang kamu tentukan. Hasilnya akan dinilai & diberi feedback lewat menu "Penilaian Tugas".</p>
+                    ${d.assignment.enabled ? `
+                    <div class="space-y-2 pt-1">
+                        <input value="${window.escapeHtml(d.assignment.title)}" oninput="courseDraft.assignment.title=this.value" placeholder="Judul tugas" class="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm">
+                        <textarea oninput="courseDraft.assignment.description=this.value" placeholder="Instruksi / deskripsi tugas untuk peserta..." rows="3" class="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm">${window.escapeHtml(d.assignment.description)}</textarea>
+                        <div>
+                            <label class="text-[10px] font-bold uppercase text-slate-400">Batas Waktu Pengumpulan</label>
+                            <input type="datetime-local" value="${window.escapeHtml(d.assignment.deadline)}" oninput="courseDraft.assignment.deadline=this.value" class="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm mt-1">
+                        </div>
+                    </div>` : ""}
+                </div>
+            </div>
+            <div class="space-y-4">
+                <div class="bg-white rounded-3xl border border-slate-100 shadow-sm p-5 space-y-3">
+                    <label class="flex items-center justify-between">
+                        <span class="text-sm font-bold text-slate-700">Terbitkan Training</span>
+                        <input type="checkbox" ${d.published?'checked':''} onchange="courseDraft.published=this.checked" class="w-5 h-5 accent-indigo-600">
+                    </label>
+                    <button onclick="window.guardedClick(this, () => window.saveCourseDraft())" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-2xl transition"><i class="fas fa-save mr-1"></i> Simpan Training</button>
+                </div>
+            </div>
+        </div>
+    `);
+}
+window.rerenderBuilder = function () { renderCourseBuilder(courseDraft._id); };
+
+window.saveCourseDraft = async function () {
+    const d = courseDraft;
+    if (!d.title.trim()) { window.toast("Judul training wajib diisi", "warn"); return; }
+    const { col, ref, addDoc, setDoc, serverTimestamp } = window.LMS_DB;
+    const payload = {
+        title: d.title, description: d.description, category: d.category, instructor: d.instructor,
+        level: d.level, coverImage: d.coverImage, published: !!d.published,
+        modules: d.modules, quiz: d.quiz, assignment: d.assignment, updatedAt: serverTimestamp()
+    };
+    if (d._id) {
+        await setDoc(ref("courses", d._id), payload, { merge: true });
+    } else {
+        payload.createdAt = serverTimestamp();
+        payload.createdBy = window.STATE.user.id;
+        await addDoc(col("courses"), payload);
+    }
+    courseDraft = null;
+    window.toast("Training tersimpan", "success");
+    window.navigate("/admin/courses");
+};
+
+// ================= ADMIN: KELOLA TRAINING TNA=================
+window.ROUTES["admin/trainings"] = requireAdmin(function (id) {
+    if (id === "new" || (id && window.STATE.trainings.some(t => t.id === id))) { renderTrainingBuilder(id === "new" ? null : id); return; }
+    renderTrainingAdminList();
+});
+
+function renderTrainingAdminList() {
+    const rows = [...window.STATE.trainings].sort((a,b)=>new Date(b.date)-new Date(a.date)).map(t => `
+        <tr class="border-b border-slate-50 hover:bg-slate-50/60">
+            <td class="px-3 py-3"><p class="font-bold text-slate-700 text-sm">${window.escapeHtml(t.title)}</p><p class="text-[11px] text-slate-400">${window.fmtDate(t.date)} • ${window.escapeHtml(t.location||'-')} • <i class="fas fa-user-tie"></i> ${window.escapeHtml(t.trainer||'-')} • ${(t.modules||[]).length} modul</p></td>
+            <td class="px-3 py-3 text-center text-sm text-slate-500">${regCountSafe(t.id)}${t.quota?'/'+t.quota:''}</td>
+            <td class="px-3 py-3 text-center text-sm text-slate-500">${window.STATE.attendance.filter(a=>a.trainingId===t.id).length}</td>
+            <td class="px-3 py-3 text-center"><span class="font-mono text-xs bg-amber-50 text-amber-600 px-2 py-1 rounded-lg font-bold">${window.escapeHtml(t.attendanceCode||'-')}</span></td>
+            <td class="px-3 py-3 text-right space-x-2">
+                <a href="#/admin/trainings/${t.id}" class="text-indigo-500 hover:text-indigo-700"><i class="fas fa-pen"></i></a>
+                <button onclick="window.guardedClick(this, () => window.deleteTraining('${t.id}'))" class="text-rose-400 hover:text-rose-600"><i class="fas fa-trash"></i></button>
+            </td>
+        </tr>`).join("");
+
+    window.setPage(`
+        <div class="flex items-center justify-between mb-5">
+            <h1 class="text-xl font-black text-slate-800">Kelola Training TNA</h1>
+            <a href="#/admin/trainings/new" class="bg-amber-500 hover:bg-amber-600 text-white text-sm font-bold px-4 py-2.5 rounded-2xl"><i class="fas fa-plus mr-1"></i> Jadwal Baru</a>
+        </div>
+        <div class="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-x-auto">
+            <table class="w-full text-left">
+                <thead class="bg-slate-50 text-[10px] font-black uppercase text-slate-400">
+                    <tr><th class="px-3 py-3">Training</th><th class="px-3 py-3 text-center">Peserta</th><th class="px-3 py-3 text-center">Hadir</th><th class="px-3 py-3 text-center">Kode</th><th class="px-3 py-3 text-right">Aksi</th></tr>
+                </thead>
+                <tbody>${rows || `<tr><td colspan="5" class="text-center py-10 text-slate-400">Belum ada jadwal training</td></tr>`}</tbody>
+            </table>
+        </div>
+    `);
+}
+function regCountSafe(id){ return window.STATE.trainingRegs.filter(r=>r.trainingId===id && r.status!=='cancelled').length; }
+function genCode() { return Math.random().toString(36).slice(2, 7).toUpperCase(); }
+
+window.deleteTraining = async function (id) {
+    if (!confirm("Hapus jadwal training ini?")) return;
+    await window.LMS_DB.deleteDoc(window.LMS_DB.ref("trainings", id));
+    window.toast("Training dihapus", "success");
+    window.navigate("/admin/trainings");
+};
+
+// ---- Training Builder (mirror Onboarding Builder): info + modul/lesson + kuis ----
+let trainingDraft = null;
+function renderTrainingBuilder(id) {
+    if (!trainingDraft || trainingDraft._loadedId !== (id || "new")) {
+        const existing = id ? window.STATE.trainings.find(t => t.id === id) : null;
+        trainingDraft = existing ? JSON.parse(JSON.stringify(existing)) : {
+            title: "", description: "", category: "", trainer: "", location: "",
+            date: "", startTime: "", endTime: "", quota: "", attendanceCode: genCode(),
+            modules: [], quiz: { passingScore: 70, questions: [] },
+            assignment: { enabled: false, title: "", description: "", deadline: "" }
+        };
+        if (!trainingDraft.assignment) trainingDraft.assignment = { enabled: false, title: "", description: "", deadline: "" };
+        if (!Array.isArray(trainingDraft.modules)) trainingDraft.modules = [];
+        trainingDraft.modules.forEach(m => { if (!Array.isArray(m.lessons)) m.lessons = []; });
+        if (!trainingDraft.quiz) trainingDraft.quiz = { passingScore: 70, questions: [] };
+        if (!Array.isArray(trainingDraft.quiz.questions)) trainingDraft.quiz.questions = [];
+        trainingDraft._loadedId = id || "new";
+        trainingDraft._id = id;
+    }
+    const d = trainingDraft;
+
+    const modulesHtml = d.modules.map((m, mi) => `
+        <div class="border border-slate-100 rounded-2xl p-4 space-y-3">
+            <div class="flex items-center gap-2">
+                <input value="${window.escapeHtml(m.title)}" oninput="trainingDraft.modules[${mi}].title=this.value" placeholder="Judul modul" class="flex-1 border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold outline-none focus:ring-2 focus:ring-amber-400">
+                <button onclick="trainingDraft.modules.splice(${mi},1); rerenderTrainingBuilder()" class="text-rose-400 hover:text-rose-600 px-2"><i class="fas fa-trash"></i></button>
+            </div>
+            <div class="space-y-2 pl-3 border-l-2 border-amber-50">
+                ${(m.lessons||[]).map((l, li) => `
+                    <div class="flex items-center gap-2 flex-wrap bg-slate-50 rounded-xl p-2">
+                        <select onchange="trainingDraft.modules[${mi}].lessons[${li}].type=this.value; rerenderTrainingBuilder()" class="border border-slate-200 rounded-lg px-2 py-1.5 text-xs">
+                            <option value="video" ${l.type==='video'?'selected':''}>Video (YouTube)</option>
+                            <option value="ppt" ${l.type==='ppt'?'selected':''}>PPT / Slide</option>
+                            <option value="text" ${l.type==='text'?'selected':''}>Teks</option>
+                        </select>
+                        <input value="${window.escapeHtml(l.title)}" oninput="trainingDraft.modules[${mi}].lessons[${li}].title=this.value" placeholder="Judul lesson" class="flex-1 min-w-[140px] border border-slate-200 rounded-lg px-2 py-1.5 text-xs">
+                        ${l.type==='video' ? `<input value="${window.escapeHtml(l.videoUrl||'')}" oninput="trainingDraft.modules[${mi}].lessons[${li}].videoUrl=this.value" placeholder="URL video (YouTube)" class="flex-1 min-w-[140px] border border-slate-200 rounded-lg px-2 py-1.5 text-xs">` : ""}
+                        ${l.type==='ppt' ? `
+                            <div class="flex items-center gap-2 flex-1 min-w-[220px]">
+                                <input value="${window.escapeHtml(l.pptUrl||'')}" oninput="trainingDraft.modules[${mi}].lessons[${li}].pptUrl=this.value" placeholder="URL file .pptx (link publik) atau upload di samping" class="flex-1 min-w-[140px] border border-slate-200 rounded-lg px-2 py-1.5 text-xs">
+                                <label class="shrink-0 text-[11px] font-bold text-amber-600 hover:text-amber-800 bg-amber-50 px-2 py-1.5 rounded-lg cursor-pointer whitespace-nowrap">
+                                    <i class="fas fa-upload mr-1"></i> Upload
+                                    <input type="file" accept=".ppt,.pptx" class="hidden" onchange="window.uploadPptFile(this, 'trainingDraft', ${mi}, ${li})">
+                                </label>
+                            </div>
+                            <input type="number" min="1" value="${l.slideCount||1}" oninput="trainingDraft.modules[${mi}].lessons[${li}].slideCount=parseInt(this.value)||1" placeholder="Jml slide" class="w-24 border border-slate-200 rounded-lg px-2 py-1.5 text-xs">
+                            ${l.pptUrl ? `<div class="w-full flex items-center gap-2 text-[11px] font-bold text-emerald-600 bg-emerald-50 rounded-lg px-2 py-1.5"><i class="fas fa-circle-check"></i> ${l.pptFileName ? `File "${window.escapeHtml(l.pptFileName)}" berhasil diupload` : 'File PPT terpasang'} <a href="${l.pptUrl}" target="_blank" class="ml-auto underline text-emerald-700 hover:text-emerald-900">Lihat</a></div>` : ""}
+                        ` : ""}
+                        <button onclick="trainingDraft.modules[${mi}].lessons.splice(${li},1); rerenderTrainingBuilder()" class="text-rose-400 hover:text-rose-600 text-xs px-1"><i class="fas fa-xmark"></i></button>
+                        <textarea oninput="trainingDraft.modules[${mi}].lessons[${li}].content=this.value" placeholder="Isi materi / catatan teks..." rows="2" class="w-full border border-slate-200 rounded-lg px-2 py-1.5 text-xs">${window.escapeHtml(l.content||'')}</textarea>
+                    </div>
+                `).join("")}
+                <button onclick="trainingDraft.modules[${mi}].lessons=trainingDraft.modules[${mi}].lessons||[]; trainingDraft.modules[${mi}].lessons.push({id:'l'+Date.now(),title:'',type:'video',videoUrl:'',content:''}); rerenderTrainingBuilder()" class="text-[11px] font-bold text-amber-500 hover:text-amber-700"><i class="fas fa-plus mr-1"></i> Tambah Lesson</button>
+            </div>
+        </div>
+    `).join("");
+
+    const questionsHtml = (d.quiz.questions || []).map((q, qi) => `
+        <div class="border border-slate-100 rounded-2xl p-4 space-y-2">
+            <div class="flex items-center gap-2">
+                <input value="${window.escapeHtml(q.question)}" oninput="trainingDraft.quiz.questions[${qi}].question=this.value" placeholder="Pertanyaan" class="flex-1 border border-slate-200 rounded-xl px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-amber-400">
+                <button onclick="trainingDraft.quiz.questions.splice(${qi},1); rerenderTrainingBuilder()" class="text-rose-400 hover:text-rose-600 px-2"><i class="fas fa-trash"></i></button>
+            </div>
+            ${(q.options||[]).map((opt, oi) => `
+                <div class="flex items-center gap-2">
+                    <input type="radio" name="t-correct-${qi}" ${q.correctIndex===oi?'checked':''} onchange="trainingDraft.quiz.questions[${qi}].correctIndex=${oi}" class="accent-emerald-600">
+                    <input value="${window.escapeHtml(opt)}" oninput="trainingDraft.quiz.questions[${qi}].options[${oi}]=this.value" placeholder="Opsi ${oi+1}" class="flex-1 border border-slate-200 rounded-lg px-2 py-1.5 text-xs">
+                </div>
+            `).join("")}
+        </div>
+    `).join("");
+
+    window.setPage(`
+        <a href="#/admin/trainings" class="text-xs font-bold text-slate-400 hover:text-amber-600"><i class="fas fa-arrow-left mr-1"></i> Kembali</a>
+        <h1 class="text-xl font-black text-slate-800 mt-2 mb-5">${d._id ? 'Edit Training TNA' : 'Jadwal Training TNA Baru'}</h1>
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-5">
+            <div class="lg:col-span-2 space-y-5">
+                <div class="bg-white rounded-3xl border border-slate-100 shadow-sm p-5 space-y-3">
+                    <h3 class="font-black text-sm text-slate-700">Info Training</h3>
+                    <input value="${window.escapeHtml(d.title)}" oninput="trainingDraft.title=this.value" placeholder="Judul training" class="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm">
+                    <textarea oninput="trainingDraft.description=this.value" placeholder="Deskripsi" rows="3" class="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm">${window.escapeHtml(d.description)}</textarea>
+                    <div class="grid grid-cols-2 gap-3">
+                        <input value="${window.escapeHtml(d.category)}" oninput="trainingDraft.category=this.value" placeholder="Kategori" class="border border-slate-200 rounded-xl px-3 py-2 text-sm">
+                        <input value="${window.escapeHtml(d.trainer)}" oninput="trainingDraft.trainer=this.value" placeholder="Nama Trainer" class="border border-slate-200 rounded-xl px-3 py-2 text-sm">
+                    </div>
+                    <input value="${window.escapeHtml(d.location)}" oninput="trainingDraft.location=this.value" placeholder="Lokasi / link online" class="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm">
+                    <div class="grid grid-cols-3 gap-2">
+                        <input type="date" value="${window.escapeHtml(d.date)}" oninput="trainingDraft.date=this.value" class="border border-slate-200 rounded-xl px-3 py-2 text-sm">
+                        <input type="time" value="${window.escapeHtml(d.startTime)}" oninput="trainingDraft.startTime=this.value" class="border border-slate-200 rounded-xl px-3 py-2 text-sm">
+                        <input type="time" value="${window.escapeHtml(d.endTime)}" oninput="trainingDraft.endTime=this.value" class="border border-slate-200 rounded-xl px-3 py-2 text-sm">
+                    </div>
+                    <div class="grid grid-cols-2 gap-2">
+                        <input type="number" value="${window.escapeHtml(d.quota)}" oninput="trainingDraft.quota=this.value" placeholder="Kuota (opsional)" class="border border-slate-200 rounded-xl px-3 py-2 text-sm">
+                        <input value="${window.escapeHtml(d.attendanceCode)}" oninput="trainingDraft.attendanceCode=this.value.toUpperCase()" placeholder="Kode presensi" class="border border-slate-200 rounded-xl px-3 py-2 text-sm font-mono uppercase">
+                    </div>
+                </div>
+
+                <div class="bg-white rounded-3xl border border-slate-100 shadow-sm p-5 space-y-3">
+                    <div class="flex items-center justify-between">
+                        <h3 class="font-black text-sm text-slate-700">Modul & Lesson (opsional)</h3>
+                        <button onclick="trainingDraft.modules.push({id:'m'+Date.now(),title:'',lessons:[]}); rerenderTrainingBuilder()" class="text-[11px] font-bold text-amber-500 hover:text-amber-700"><i class="fas fa-plus mr-1"></i> Tambah Modul</button>
+                    </div>
+                    <p class="text-xs text-slate-400">Materi tambahan yang wajib dipelajari peserta secara mandiri (video/PPT/teks), selain sesi tatap muka/online.</p>
+                    <div class="space-y-3">${modulesHtml || '<p class="text-xs text-slate-400">Belum ada modul.</p>'}</div>
+                </div>
+
+                <div class="bg-white rounded-3xl border border-slate-100 shadow-sm p-5 space-y-3">
+                    <div class="flex items-center justify-between flex-wrap gap-2">
+                        <h3 class="font-black text-sm text-slate-700 flex items-center gap-1.5">Kuis (opsional)
+                            <button onclick="window.openQuizExcelInfo()" title="Format upload Excel" class="text-slate-300 hover:text-indigo-500"><i class="fas fa-circle-info"></i></button>
+                        </h3>
+                        <div class="flex items-center gap-2">
+                            <button onclick="window.uploadQuizExcel('training')" class="text-[11px] font-bold text-emerald-600 hover:text-emerald-800 bg-emerald-50 px-2.5 py-1.5 rounded-lg transition"><i class="fas fa-file-excel mr-1"></i> Upload Excel</button>
+                            <button onclick="trainingDraft.quiz.questions.push({id:'q'+Date.now(),question:'',options:['','','',''],correctIndex:0}); rerenderTrainingBuilder()" class="text-[11px] font-bold text-amber-500 hover:text-amber-700"><i class="fas fa-plus mr-1"></i> Tambah Soal</button>
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <label class="text-xs text-slate-500 font-semibold">Nilai kelulusan (%)</label>
+                        <input type="number" min="0" max="100" value="${d.quiz.passingScore}" oninput="trainingDraft.quiz.passingScore=parseInt(this.value)||0" class="w-20 border border-slate-200 rounded-lg px-2 py-1 text-sm">
+                    </div>
+                    <div class="space-y-3">${questionsHtml || '<p class="text-xs text-slate-400">Belum ada soal.</p>'}</div>
+                </div>
+
+                <div class="bg-white rounded-3xl border border-slate-100 shadow-sm p-5 space-y-3">
+                    <label class="flex items-center justify-between">
+                        <h3 class="font-black text-sm text-slate-700"><i class="fas fa-file-signature text-violet-500 mr-1"></i> Penugasan / Tugas (opsional)</h3>
+                        <input type="checkbox" ${d.assignment.enabled?'checked':''} onchange="trainingDraft.assignment.enabled=this.checked; rerenderTrainingBuilder()" class="w-5 h-5 accent-violet-600">
+                    </label>
+                    <p class="text-xs text-slate-400">Selain/tambahan dari kuis: peserta wajib mengumpulkan file atau link sebagai bukti penyelesaian tugas, sebelum batas waktu yang kamu tentukan. Hasilnya akan dinilai & diberi feedback lewat menu "Penilaian Tugas".</p>
+                    ${d.assignment.enabled ? `
+                    <div class="space-y-2 pt-1">
+                        <input value="${window.escapeHtml(d.assignment.title)}" oninput="trainingDraft.assignment.title=this.value" placeholder="Judul tugas" class="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm">
+                        <textarea oninput="trainingDraft.assignment.description=this.value" placeholder="Instruksi / deskripsi tugas untuk peserta..." rows="3" class="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm">${window.escapeHtml(d.assignment.description)}</textarea>
+                        <div>
+                            <label class="text-[10px] font-bold uppercase text-slate-400">Batas Waktu Pengumpulan</label>
+                            <input type="datetime-local" value="${window.escapeHtml(d.assignment.deadline)}" oninput="trainingDraft.assignment.deadline=this.value" class="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm mt-1">
+                        </div>
+                    </div>` : ""}
+                </div>
+            </div>
+            <div class="space-y-4">
+                <div class="bg-white rounded-3xl border border-slate-100 shadow-sm p-5 space-y-3">
+                    <button onclick="window.guardedClick(this, () => window.saveTrainingDraft())" class="w-full bg-amber-500 hover:bg-amber-600 text-white font-bold py-3 rounded-2xl transition"><i class="fas fa-save mr-1"></i> Simpan Training</button>
+                </div>
+            </div>
+        </div>
+    `);
+}
+window.rerenderTrainingBuilder = function () { renderTrainingBuilder(trainingDraft._id); };
+
+window.saveTrainingDraft = async function () {
+    const d = trainingDraft;
+    if (!d.title.trim() || !d.date) { window.toast("Judul & tanggal wajib diisi", "warn"); return; }
+    const { col, ref, addDoc, setDoc, serverTimestamp } = window.LMS_DB;
+    const payload = {
+        title: d.title, description: d.description, category: d.category, trainer: d.trainer,
+        location: d.location, date: d.date, startTime: d.startTime, endTime: d.endTime,
+        quota: parseInt(d.quota) || null, attendanceCode: (d.attendanceCode || genCode()).toUpperCase(),
+        modules: d.modules, quiz: d.quiz, assignment: d.assignment, updatedAt: serverTimestamp()
+    };
+    if (d._id) {
+        await setDoc(ref("trainings", d._id), payload, { merge: true });
+    } else {
+        payload.createdAt = serverTimestamp();
+        payload.createdBy = window.STATE.user.id;
+        await addDoc(col("trainings"), payload);
+    }
+    trainingDraft = null;
+    window.toast("Training tersimpan", "success");
+    window.navigate("/admin/trainings");
+};
+
+// ================= ADMIN: PENILAIAN TUGAS (PENUGASAN) =================
+window.ROUTES["admin/assignments"] = requireAdmin(function () {
+    renderAdminAssignments();
+});
+
+let adminAssignmentFilter = "pending"; // pending | graded | all
+
+function renderAdminAssignments() {
+    const subs = [...window.STATE.assignmentSubmissions].sort((a, b) => (b.submittedAt?.seconds || 0) - (a.submittedAt?.seconds || 0));
+    const filtered = subs.filter(s => {
+        if (adminAssignmentFilter === "pending") return s.status !== "graded";
+        if (adminAssignmentFilter === "graded") return s.status === "graded";
+        return true;
+    });
+
+    const rows = filtered.map(s => {
+        const kind = s.trainingId ? "training" : "course";
+        const item = getContentItem(kind, s.trainingId || s.courseId);
+        const deadline = item && item.assignment ? item.assignment.deadline : null;
+        const late = deadline && s.submittedAt && s.submittedAt.seconds && (s.submittedAt.seconds * 1000) > new Date(deadline).getTime();
+        return `
+        <tr class="border-b border-slate-50 hover:bg-slate-50/60 align-top">
+            <td class="px-3 py-3">
+                <p class="font-bold text-slate-700 text-sm">${window.escapeHtml(s.userName || "-")}</p>
+                <p class="text-[11px] text-slate-400">${window.escapeHtml(s.itemTitle || (item ? item.title : "-"))} <span class="uppercase font-bold">(${kind === "training" ? "Training TNA" : "Onboarding"})</span></p>
+            </td>
+            <td class="px-3 py-3 text-xs text-slate-500">
+                ${window.fmtDateTime(s.submittedAt)}
+                ${late ? '<span class="block text-[10px] font-bold text-rose-500 mt-0.5"><i class="fas fa-triangle-exclamation mr-1"></i>Terlambat</span>' : ''}
+            </td>
+            <td class="px-3 py-3 text-xs">
+                ${s.fileUrl ? `<a href="${s.fileUrl}" target="_blank" class="block text-indigo-600 font-bold hover:underline mb-1"><i class="fas fa-paperclip mr-1"></i>File</a>` : ""}
+                ${s.link ? `<a href="${s.link}" target="_blank" class="block text-indigo-600 font-bold hover:underline break-all">${window.escapeHtml(s.link)}</a>` : ""}
+                ${(!s.fileUrl && !s.link) ? '<span class="text-slate-300">-</span>' : ""}
+            </td>
+            <td class="px-3 py-3">
+                <div class="flex items-center gap-2">
+                    <input id="score-${s.id}" type="number" min="0" max="100" value="${s.score ?? ''}" placeholder="Nilai" class="w-20 border border-slate-200 rounded-lg px-2 py-1.5 text-xs">
+                </div>
+                <textarea id="feedback-${s.id}" placeholder="Feedback untuk peserta..." rows="2" class="w-full mt-1 border border-slate-200 rounded-lg px-2 py-1.5 text-xs">${window.escapeHtml(s.feedback || "")}</textarea>
+            </td>
+            <td class="px-3 py-3 text-right">
+                <span class="block text-[10px] font-black px-2 py-1 rounded-full mb-2 ${s.status === 'graded' ? 'bg-emerald-50 text-emerald-600' : 'bg-amber-50 text-amber-600'}">${s.status === 'graded' ? 'Sudah Dinilai' : 'Menunggu'}</span>
+                <button onclick="window.guardedClick(this, () => window.gradeAssignment('${s.id}'))" class="bg-violet-500 hover:bg-violet-600 text-white text-xs font-bold px-3 py-2 rounded-xl transition"><i class="fas fa-save mr-1"></i> Simpan Nilai</button>
+            </td>
+        </tr>`;
+    }).join("");
+
+    window.setPage(`
+        <div class="flex items-center justify-between flex-wrap gap-2 mb-5">
+            <h1 class="text-xl font-black text-slate-800">Penilaian Tugas</h1>
+            <div class="flex gap-2">
+                ${[["pending","Menunggu"],["graded","Sudah Dinilai"],["all","Semua"]].map(([k,l]) => `
+                    <button onclick="adminAssignmentFilter='${k}'; renderAdminAssignments()" class="text-xs font-bold px-3 py-1.5 rounded-xl transition ${adminAssignmentFilter===k ? 'bg-violet-600 text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}">${l}</button>
+                `).join("")}
+            </div>
+        </div>
+        <div class="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-x-auto">
+            <table class="w-full text-left">
+                <thead class="bg-slate-50 text-[10px] font-black uppercase text-slate-400">
+                    <tr>
+                        <th class="px-3 py-3">Peserta / Tugas</th>
+                        <th class="px-3 py-3">Dikumpulkan</th>
+                        <th class="px-3 py-3">Lampiran</th>
+                        <th class="px-3 py-3">Nilai & Feedback</th>
+                        <th class="px-3 py-3 text-right">Aksi</th>
+                    </tr>
+                </thead>
+                <tbody>${rows || `<tr><td colspan="5" class="text-center py-10 text-slate-400">Belum ada tugas yang dikumpulkan</td></tr>`}</tbody>
+            </table>
+        </div>
+    `);
+}
+
+window.gradeAssignment = async function (subId) {
+    const scoreEl = document.getElementById(`score-${subId}`);
+    const feedbackEl = document.getElementById(`feedback-${subId}`);
+    const score = scoreEl.value === "" ? null : Math.max(0, Math.min(100, parseInt(scoreEl.value) || 0));
+    const feedback = feedbackEl.value.trim();
+    const { ref, updateDoc, serverTimestamp } = window.LMS_DB;
+    await updateDoc(ref("assignmentSubmissions", subId), {
+        score, feedback, status: "graded",
+        gradedAt: serverTimestamp(), gradedBy: window.STATE.user.id
+    });
+    window.toast("Nilai tugas tersimpan", "success");
+    renderAdminAssignments();
+};
+
+// ================= ADMIN: KELOLA AKUN =================
+window.ROUTES["admin/users"] = requireAdmin(function () {
+    const rows = window.STATE.users.map(u => `
+        <tr class="border-b border-slate-50 hover:bg-slate-50/60">
+            <td class="px-3 py-3"><p class="font-bold text-slate-700 text-sm">${window.escapeHtml(u.username)}</p><p class="text-[11px] text-slate-400">${window.escapeHtml(u.email||'-')} • ${window.escapeHtml(u.dept||'-')}</p></td>
+            <td class="px-3 py-3 text-center">
+                <select onchange="window.guardedClick(this, () => window.changeUserRole('${u.id}', this.value))" ${!window.sel.isSuperAdmin() ? 'disabled' : ''} class="border border-slate-200 rounded-lg px-2 py-1 text-xs">
+                    <option value="user" ${u.role==='user'?'selected':''}>User</option>
+                    <option value="admin" ${u.role==='admin'?'selected':''}>Admin</option>
+                    <option value="superadmin" ${u.role==='superadmin'?'selected':''}>Super Admin</option>
+                </select>
+            </td>
+            <td class="px-3 py-3 text-right">
+                ${window.sel.isSuperAdmin() ? `<button onclick="window.guardedClick(this, () => window.deleteUser('${u.id}'))" class="text-rose-400 hover:text-rose-600"><i class="fas fa-trash"></i></button>` : ''}
+            </td>
+        </tr>`).join("");
+
+    window.setPage(`
+        <h1 class="text-xl font-black text-slate-800 mb-5">Kelola Akun</h1>
+        <div class="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-x-auto">
+            <table class="w-full text-left">
+                <thead class="bg-slate-50 text-[10px] font-black uppercase text-slate-400">
+                    <tr><th class="px-3 py-3">Pengguna</th><th class="px-3 py-3 text-center">Role</th><th class="px-3 py-3 text-right">Aksi</th></tr>
+                </thead>
+                <tbody>${rows}</tbody>
+            </table>
+        </div>
+    `);
+});
+
+window.changeUserRole = async function (id, role) {
+    await window.LMS_DB.updateDoc(window.LMS_DB.ref("users", id), { role });
+    window.toast("Role diperbarui", "success");
+};
+window.deleteUser = async function (id) {
+    if (!confirm("Hapus akun ini?")) return;
+    await window.LMS_DB.deleteDoc(window.LMS_DB.ref("users", id));
+    window.toast("Akun dihapus", "success");
+};
+
+// ================= ADMIN: LAPORAN =================
+window.ROUTES["admin/reports"] = requireAdmin(function () {
+    const totalCourses = window.STATE.courses.length;
+    const totalTrainings = window.STATE.trainings.length;
+    const totalCerts = window.STATE.certificates.length;
+    const totalUsers = window.STATE.users.length;
+    const totalAssignments = window.STATE.assignmentSubmissions.length;
+    const pendingAssignments = window.STATE.assignmentSubmissions.filter(s => s.status !== "graded").length;
+
+    const topCourses = [...window.STATE.courses].map(c => ({
+        c, count: window.STATE.enrollments.filter(e => e.courseId === c.id).length
+    })).sort((a, b) => b.count - a.count).slice(0, 6);
+
+    window.setPage(`
+        <h1 class="text-xl font-black text-slate-800 mb-5">Laporan</h1>
+        <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+            ${statCard("fa-book-open", "indigo", totalCourses, "Total Onboarding")}
+            ${statCard("fa-chalkboard-user", "amber", totalTrainings, "Total Training TNA")}
+            ${statCard("fa-award", "rose", totalCerts, "Sertifikat Terbit")}
+            ${statCard("fa-users", "emerald", totalUsers, "Total Pengguna")}
+        </div>
+        <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+            ${statCard("fa-file-signature", "violet", totalAssignments, "Tugas Dikumpulkan")}
+            ${statCard("fa-hourglass-half", "amber", pendingAssignments, "Tugas Menunggu Nilai")}
+        </div>
+        <div class="bg-white rounded-3xl border border-slate-100 shadow-sm p-5">
+            <h3 class="font-black text-sm text-slate-700 mb-3">Training Terpopuler</h3>
+            <div class="space-y-2">
+                ${topCourses.map(({c,count}) => `
+                    <div class="flex items-center justify-between">
+                        <span class="text-sm text-slate-600">${window.escapeHtml(c.title)}</span>
+                        <span class="text-xs font-black text-indigo-500">${count} peserta</span>
+                    </div>`).join("") || '<p class="text-sm text-slate-400">Belum ada data</p>'}
+            </div>
+        </div>
+    `);
+});
+
+
+window.addEventListener("lms-firebase-ready", async () => {
+    window.startLiveListeners();
+
+    const restored = await window.tryRestoreSession();
+    hideBootLoader();
+
+    if (restored) {
+        window.enterApp();
+    } else {
+        document.getElementById("auth-screen").classList.remove("hide");
+    }
+
+    // Re-render current page tiap ada perubahan data live, KECUALI sedang di course builder
+    // (supaya input yang lagi diketik admin gak ke-reset tiap ada snapshot baru).
+    window.addEventListener("lms-state-changed", () => {
+        if (!window.STATE.user) return;
+        const hash = location.hash.replace(/^#/, "");
+        if (hash.startsWith("/admin/courses/") && hash !== "/admin/courses/new") return;
+        window.resolveRoute();
+        if (document.getElementById("app-shell") && !document.getElementById("app-shell").classList.contains("hide")) {
+            window.renderSidebar();
+        }
+    });
+});
+
+function hideBootLoader() {
+    const el = document.getElementById("boot-loader");
+    if (!el) return;
+    el.classList.add("boot-loader-hide");
+    setTimeout(() => el.remove(), 400);
+}
+
+// Safety: kalau firebase gagal load dalam 8 detik, tetap sembunyikan boot loader & kasih pesan
+setTimeout(() => {
+    const el = document.getElementById("boot-loader");
+    if (el && !el.classList.contains("boot-loader-hide")) {
+        hideBootLoader();
+        window.toast && window.toast("Gagal terhubung ke server, cek koneksi internet kamu", "error");
+    }
+}, 8000);
+
+</script>
+
+<script>
+if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+        navigator.serviceWorker.register('service-worker.js')
+            .then(() => console.log('✅ Service Worker aktif'))
+            .catch(err => console.error('❌ SW gagal daftar:', err));
+    });
+}
+</script>
+
+</body>
+</html>
