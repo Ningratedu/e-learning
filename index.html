@@ -140,7 +140,7 @@ button:disabled, input[type="submit"]:disabled {
 
 <!-- ================= MODAL: DETAIL CARD DASHBOARD USER ================= -->
 <div id="modal-dashboard-detail" class="fixed inset-0 z-[10000] hide modal-overlay flex items-center justify-center p-4">
-    <div class="bg-white w-full max-w-lg rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[85vh]">
+    <div class="bg-white w-full max-w-xl rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[85vh]">
         <div class="p-5 border-b flex justify-between items-center bg-indigo-50 shrink-0">
             <h3 id="dashboard-detail-title" class="text-sm font-black text-indigo-600"><i class="fas fa-list-check mr-1"></i> Detail</h3>
             <button onclick="window.closeModal('modal-dashboard-detail')" class="text-slate-400 hover:text-slate-700"><i class="fas fa-times"></i></button>
@@ -283,6 +283,20 @@ button:disabled, input[type="submit"]:disabled {
             </ul>
             <button onclick="window.downloadQuizTemplate()" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 rounded-2xl transition"><i class="fas fa-download mr-1"></i> Download Template Excel</button>
         </div>
+    </div>
+</div>
+
+<!-- ================= MODAL: KIRIM UNDANGAN TRAINING TNA ================= -->
+<div id="modal-training-invite" class="fixed inset-0 z-[10000] hide modal-overlay flex items-center justify-center p-4">
+    <div class="bg-white w-full max-w-lg rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[85vh]">
+        <div class="p-5 border-b flex justify-between items-center bg-amber-50 shrink-0">
+            <div>
+                <h3 class="text-sm font-black text-amber-600"><i class="fas fa-paper-plane mr-1"></i> Kirim Undangan Training</h3>
+                <p id="training-invite-sub" class="text-[11px] text-slate-400 font-semibold mt-0.5"></p>
+            </div>
+            <button onclick="window.closeModal('modal-training-invite')" class="text-slate-400 hover:text-slate-700"><i class="fas fa-times"></i></button>
+        </div>
+        <div id="training-invite-body" class="p-5 overflow-y-auto space-y-2"></div>
     </div>
 </div>
 
@@ -1551,10 +1565,15 @@ function renderCourseDetail(id) {
     } else {
         const parts = [];
         if (hasQuiz) {
-            if (quizLocked) {
+            // Sudah lulus -> gak boleh ulangi lagi, tombolnya diganti preview biar peserta bisa
+            // lihat soal mana yang benar/salah dari percobaan terakhir. Belum lulus -> tetap
+            // tombol ulangi/kerjakan seperti biasa (dibatasi MAX_POSTTEST_ATTEMPTS).
+            if (quizPassed) {
+                parts.push(`<button onclick="previewPostTest('course','${c.id}')" class="w-full bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold py-3 rounded-2xl transition"><i class="fas fa-eye mr-1"></i> Lihat Preview Post-test</button>`);
+            } else if (quizLocked) {
                 parts.push(`<div class="w-full bg-rose-50 text-rose-500 font-bold text-xs text-center py-3 rounded-2xl"><i class="fas fa-lock mr-1"></i> Sudah ${MAX_POSTTEST_ATTEMPTS}x percobaan Post-test. Hubungi admin untuk membuka kesempatan lagi.</div>`);
             } else {
-                parts.push(`<button onclick="openQuiz('course','${c.id}','posttest')" class="w-full ${quizPassed ? 'bg-slate-100 text-slate-500' : 'bg-amber-500 hover:bg-amber-600 text-white'} font-bold py-3 rounded-2xl transition"><i class="fas fa-clipboard-question mr-1"></i> ${attempt ? (quizPassed ? 'Lihat Ulang / Ulangi Post-test' : 'Ulangi Post-test') : 'Kerjakan Post-test'}</button>`);
+                parts.push(`<button onclick="openQuiz('course','${c.id}','posttest')" class="w-full bg-amber-500 hover:bg-amber-600 text-white font-bold py-3 rounded-2xl transition"><i class="fas fa-clipboard-question mr-1"></i> ${attempt ? 'Ulangi Post-test' : 'Kerjakan Post-test'}</button>`);
             }
             if (attempt) parts.push(`<p class="text-center text-xs text-slate-400">Percobaan ke-${attemptsCount}/${MAX_POSTTEST_ATTEMPTS}: skor ${attempt.score} (${attempt.passed ? 'Lulus' : 'Belum lulus'})</p>`);
         }
@@ -2011,6 +2030,49 @@ async function submitQuiz() {
     if (kind === "training") renderTrainingDetail(refId); else renderCourseDetail(refId);
 }
 
+// Preview (review) percobaan Post-test TERAKHIR peserta — read-only, gak bisa dikerjakan ulang.
+// Dipakai begitu peserta sudah LULUS Post-test, biar tahu soal mana yang dijawab benar/salah
+// tanpa perlu (dan gak boleh) mengulang kuisnya lagi. Pakai modal kuis yang sama, tombol
+// "Kumpulkan" diganti jadi "Tutup".
+window.previewPostTest = function (kind, refId) {
+    const item = getContentItem(kind, refId);
+    if (!item || !item.quiz) { window.toast("Data kuis tidak ditemukan", "error"); return; }
+    const bank = item.quiz.questions || [];
+    const attempts = window.sel.myPostTestAttempts(kind, refId);
+    const attempt = attempts[0]; // terbaru duluan
+    if (!attempt) { window.toast("Belum ada percobaan Post-test untuk ditampilkan", "warn"); return; }
+
+    document.getElementById("quiz-modal-title").textContent = "Preview Post-test: " + item.title;
+    document.getElementById("quiz-modal-body").innerHTML = `
+        <div class="bg-emerald-50 text-emerald-700 text-xs font-bold rounded-2xl px-4 py-3 flex items-center gap-2">
+            <i class="fas fa-circle-check"></i> Skor kamu ${attempt.score} — Lulus. Ini review jawabanmu, hijau = jawaban benar, merah = jawaban kamu yang salah.
+        </div>
+        ${(attempt.answers || []).map((a, ai) => {
+            const q = bank.find(x => x.id === a.questionId);
+            if (!q) return "";
+            const opts = q.options || [];
+            const optsHtml = opts.map((opt, oi) => {
+                const isCorrect = oi === q.correctIndex;
+                const isSelected = oi === a.selected;
+                let cls = "border-slate-100 text-slate-500";
+                let icon = "";
+                if (isCorrect) { cls = "border-emerald-300 bg-emerald-50 text-emerald-700 font-bold"; icon = '<i class="fas fa-check text-emerald-500"></i>'; }
+                else if (isSelected) { cls = "border-rose-300 bg-rose-50 text-rose-600 font-bold"; icon = '<i class="fas fa-xmark text-rose-500"></i>'; }
+                return `<div class="flex items-center gap-2 text-sm border rounded-xl px-3 py-2 ${cls}"><span class="flex-1">${window.escapeHtml(opt)}</span>${icon}</div>`;
+            }).join("");
+            return `
+            <div class="border border-slate-100 rounded-2xl p-4">
+                <p class="text-sm font-bold text-slate-700 mb-2">${ai + 1}. ${window.escapeHtml(q.question)}</p>
+                <div class="space-y-2">${optsHtml}</div>
+            </div>`;
+        }).join("")}
+    `;
+    const btn = document.getElementById("quiz-submit-btn");
+    btn.innerHTML = '<i class="fas fa-xmark mr-1"></i> Tutup';
+    btn.onclick = () => window.closeModal("modal-quiz");
+    window.openModal("modal-quiz");
+};
+
 
 // Menyelesaikan Onboarding Training & menerbitkan sertifikat setelah semua syarat evaluasi terpenuhi
 // (materi selesai, kuis lulus jika ada, penugasan terkumpul jika ada).
@@ -2140,9 +2202,11 @@ function renderTrainingDetail(id) {
                     <p class="text-sm font-bold text-slate-700">Post-test Training</p>
                     <p class="text-[11px] text-slate-400">${quizAttempt ? `Percobaan ke-${attemptsCount}/${MAX_POSTTEST_ATTEMPTS}: skor ${quizAttempt.score} (${quizAttempt.passed ? 'Lulus' : 'Belum lulus'})` : `Belum dikerjakan (maks. ${MAX_POSTTEST_ATTEMPTS}x percobaan)`}</p>
                 </div>
-                ${quizLocked
-                    ? `<span class="bg-rose-50 text-rose-500 text-xs font-bold px-4 py-2.5 rounded-xl"><i class="fas fa-lock mr-1"></i> Terkunci, hubungi admin</span>`
-                    : `<button ${!allLessonsDone ? 'disabled' : ''} onclick="openQuiz('training','${t.id}','posttest')" class="bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold px-4 py-2.5 rounded-xl transition disabled:opacity-40 disabled:cursor-not-allowed"><i class="fas fa-clipboard-question mr-1"></i> ${quizAttempt ? 'Ulangi Post-test' : 'Kerjakan Post-test'}</button>`}
+                ${quizPassed
+                    ? `<button onclick="previewPostTest('training','${t.id}')" class="bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-bold px-4 py-2.5 rounded-xl transition"><i class="fas fa-eye mr-1"></i> Lihat Preview Post-test</button>`
+                    : (quizLocked
+                        ? `<span class="bg-rose-50 text-rose-500 text-xs font-bold px-4 py-2.5 rounded-xl"><i class="fas fa-lock mr-1"></i> Terkunci, hubungi admin</span>`
+                        : `<button ${!allLessonsDone ? 'disabled' : ''} onclick="openQuiz('training','${t.id}','posttest')" class="bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold px-4 py-2.5 rounded-xl transition disabled:opacity-40 disabled:cursor-not-allowed"><i class="fas fa-clipboard-question mr-1"></i> ${quizAttempt ? 'Ulangi Post-test' : 'Kerjakan Post-test'}</button>`)}
             </div>` : ""}
             ${hasAssignment ? `
             <div class="bg-white border border-slate-100 rounded-2xl p-4 flex items-center justify-between flex-wrap gap-2">
@@ -2852,6 +2916,7 @@ function renderTrainingAdminList() {
             <td class="px-3 py-3 text-center text-sm text-slate-500">${window.STATE.attendance.filter(a=>a.trainingId===t.id).length}</td>
             <td class="px-3 py-3 text-center"><span class="font-mono text-xs bg-amber-50 text-amber-600 px-2 py-1 rounded-lg font-bold">${window.escapeHtml(t.attendanceCode||'-')}</span></td>
             <td class="px-3 py-3 text-right space-x-2">
+                <button onclick="window.openTrainingInvite('${t.id}')" title="Kirim Undangan" class="text-amber-500 hover:text-amber-700"><i class="fas fa-paper-plane"></i></button>
                 <a href="#/admin/training-report/${t.id}" title="Laporan Keterlaksanaan" class="text-emerald-500 hover:text-emerald-700"><i class="fas fa-chart-simple"></i></a>
                 <a href="#/admin/trainings/${t.id}" class="text-indigo-500 hover:text-indigo-700"><i class="fas fa-pen"></i></a>
                 <button onclick="window.guardedClick(this, () => window.deleteTraining('${t.id}'))" class="text-rose-400 hover:text-rose-600"><i class="fas fa-trash"></i></button>
@@ -2881,6 +2946,72 @@ window.deleteTraining = async function (id) {
     await window.LMS_DB.deleteDoc(window.LMS_DB.ref("trainings", id));
     window.toast("Training dihapus", "success");
     window.navigate("/admin/trainings");
+};
+
+// ================= KIRIM UNDANGAN TRAINING TNA (VIA WHATSAPP) =================
+// Menampilkan daftar karyawan yang termasuk target peserta training (sesuai scope-nya:
+// semua/departemen/posisi/manual — lihat window.trainingTargetEmployees), lengkap dengan
+// tombol kirim undangan WhatsApp per karyawan (mirip pola "Kirim Reminder" di Detail Karyawan).
+window.openTrainingInvite = function (id) {
+    const t = window.STATE.trainings.find(x => x.id === id);
+    if (!t) { window.toast("Training tidak ditemukan", "error"); return; }
+
+    const usersByUsername = {};
+    window.STATE.users.forEach(u => { usersByUsername[normalizeUsername(u.username)] = u; });
+    const registeredUserIds = new Set(
+        window.STATE.trainingRegs.filter(r => r.trainingId === id && r.status !== "cancelled").map(r => r.userId)
+    );
+
+    const targets = [...window.trainingTargetEmployees(t)].sort((a, b) => String(a.nama||"").localeCompare(String(b.nama||"")));
+
+    document.getElementById("training-invite-sub").textContent = `${t.title} • ${window.fmtDate(t.date)}`;
+
+    const rows = targets.map(e => {
+        const user = usersByUsername[normalizeUsername(e.username)];
+        const registered = !!(user && registeredUserIds.has(user.id));
+        const phoneDigits = String(e.kontak || "").replace(/[^\d]/g, "");
+        return `
+        <div class="flex items-center gap-3 p-3 rounded-2xl border border-slate-100">
+            <div class="w-10 h-10 rounded-full bg-amber-50 text-amber-600 flex items-center justify-center font-black text-xs shrink-0">${window.escapeHtml((e.nama || "?").slice(0, 1).toUpperCase())}</div>
+            <div class="flex-1 min-w-0">
+                <p class="text-sm font-bold text-slate-700 truncate">${window.escapeHtml(e.nama || e.username || "-")}</p>
+                <p class="text-[11px] text-slate-400 truncate">${window.escapeHtml(e.dept || "-")}${registered ? ' <span class="text-emerald-500 font-bold"><i class="fas fa-circle-check ml-1 mr-0.5"></i>Sudah daftar</span>' : ''}</p>
+            </div>
+            ${phoneDigits
+                ? `<button onclick="window.guardedClick(this, () => window.sendTrainingInvite('${t.id}','${e.id}'))" class="shrink-0 bg-amber-500 hover:bg-amber-600 text-white text-[11px] font-black px-3 py-2 rounded-xl transition"><i class="fab fa-whatsapp mr-1"></i> Kirim</button>`
+                : `<span class="shrink-0 text-[10px] text-slate-300 font-bold text-right">No. HP<br>kosong</span>`}
+        </div>`;
+    }).join("");
+
+    document.getElementById("training-invite-body").innerHTML = targets.length ? `
+        <p class="text-xs text-slate-400 mb-1"><i class="fas fa-users mr-1"></i>${targets.length} karyawan termasuk target peserta training ini (${window.escapeHtml(window.trainingScopeLabel(t))}). Klik "Kirim" untuk membuka WhatsApp berisi undangan ke masing-masing karyawan.</p>
+        ${rows}
+    ` : `<div class="text-center py-10 text-slate-400"><i class="fas fa-user-slash text-3xl mb-2"></i><p class="font-bold text-sm">Belum ada karyawan yang cocok dengan target peserta training ini.</p></div>`;
+
+    window.openModal("modal-training-invite");
+};
+
+window.sendTrainingInvite = function (trainingId, empId) {
+    const t = window.STATE.trainings.find(x => x.id === trainingId);
+    const e = window.STATE.employees.find(x => x.id === empId);
+    if (!t || !e) { window.toast("Data tidak lengkap, undangan gagal dibuat.", "error"); return; }
+
+    const phoneDigits = String(e.kontak || "").replace(/[^\d]/g, "");
+    if (!phoneDigits) { window.toast("Nomor kontak karyawan ini belum tersedia di data karyawan.", "warn"); return; }
+    let phone = phoneDigits;
+    if (phone.startsWith("0")) phone = "62" + phone.slice(1);
+    else if (!phone.startsWith("62")) phone = "62" + phone;
+
+    const link = `${location.origin}${location.pathname}#/trainings/${t.id}`;
+    const jadwal = `${window.fmtDate(t.date)}${t.startTime ? ` • ${t.startTime}${t.endTime ? '-' + t.endTime : ''}` : ''}`;
+    const text = `Halo ${e.nama}, kamu diundang mengikuti Training TNA berikut 👋\n\n`
+        + `📘 *${t.title}*\n`
+        + `🗓️ ${jadwal}\n`
+        + `📍 ${t.location || '-'}\n\n`
+        + `Yuk daftar & lihat detail lengkapnya di sini:\n${link}\n\nTerima kasih!`;
+
+    window.open(`https://wa.me/${phone}?text=${encodeURIComponent(text)}`, "_blank");
+    window.toast(`Undangan WhatsApp untuk ${e.nama} berhasil dibuka.`, "success");
 };
 
 // ---- Training Builder (mirror Onboarding Builder): info + modul/lesson + kuis ----
@@ -4137,29 +4268,155 @@ window.ROUTES["admin/reports"] = requireAdmin(function () {
     })).sort((a, b) => b.count - a.count).slice(0, 6);
 
     window.setPage(`
-        <h1 class="text-xl font-black text-slate-800 mb-5">Laporan</h1>
+        <h1 class="text-xl font-black text-slate-800 mb-1">Laporan</h1>
+        <p class="text-xs text-slate-400 mb-5">Klik kartu di bawah untuk lihat rincian lengkapnya, termasuk laporan keterlaksanaan & kelulusan per training.</p>
         <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-            ${statCard("fa-book-open", "indigo", totalCourses, "Total Onboarding")}
-            ${statCard("fa-chalkboard-user", "amber", totalTrainings, "Total Training TNA")}
-            ${statCard("fa-award", "rose", totalCerts, "Sertifikat Terbit")}
-            ${statCard("fa-users", "emerald", totalUsers, "Total Pengguna")}
+            ${clickableStatCard("fa-book-open", "indigo", totalCourses, "Total Onboarding", "window.openReportDetail('onboarding')")}
+            ${clickableStatCard("fa-chalkboard-user", "amber", totalTrainings, "Total Training TNA", "window.openReportDetail('tna')")}
+            ${clickableStatCard("fa-award", "rose", totalCerts, "Sertifikat Terbit", "window.openReportDetail('certificates')")}
+            ${clickableStatCard("fa-users", "emerald", totalUsers, "Total Pengguna", "window.openReportDetail('users')")}
         </div>
         <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-            ${statCard("fa-file-signature", "violet", totalAssignments, "Tugas Dikumpulkan")}
-            ${statCard("fa-hourglass-half", "amber", pendingAssignments, "Tugas Menunggu Nilai")}
+            ${clickableStatCard("fa-file-signature", "violet", totalAssignments, "Tugas Dikumpulkan", "window.openReportDetail('assignments')")}
+            ${clickableStatCard("fa-hourglass-half", "amber", pendingAssignments, "Tugas Menunggu Nilai", "window.openReportDetail('assignments-pending')")}
         </div>
         <div class="bg-white rounded-3xl border border-slate-100 shadow-sm p-5">
             <h3 class="font-black text-sm text-slate-700 mb-3">Training Terpopuler</h3>
             <div class="space-y-2">
                 ${topCourses.map(({c,count}) => `
-                    <div class="flex items-center justify-between">
+                    <button onclick="window.closeModal('modal-dashboard-detail'); window.navigate('/admin/courses/${c.id}')" class="w-full flex items-center justify-between text-left hover:bg-indigo-50/50 rounded-xl px-2 py-1.5 -mx-2 transition">
                         <span class="text-sm text-slate-600">${window.escapeHtml(c.title)}</span>
                         <span class="text-xs font-black text-indigo-500">${count} peserta</span>
-                    </div>`).join("") || '<p class="text-sm text-slate-400">Belum ada data</p>'}
+                    </button>`).join("") || '<p class="text-sm text-slate-400">Belum ada data</p>'}
             </div>
         </div>
     `);
 });
+
+// Mengisi & membuka modal detail (reuse "modal-dashboard-detail") untuk tiap kartu di halaman
+// Laporan admin. Menampilkan rincian per item termasuk laporan keterlaksanaan (persentase
+// kehadiran/penyelesaian) dan kelulusan (persentase lulus post-test/sertifikat) — bukan cuma
+// angka total di kartunya saja.
+window.openReportDetail = function (type) {
+    const titleEl = document.getElementById("dashboard-detail-title");
+    const bodyEl = document.getElementById("dashboard-detail-body");
+    if (!titleEl || !bodyEl) return;
+
+    if (type === "onboarding") {
+        titleEl.innerHTML = `<i class="fas fa-book-open mr-1"></i> Semua Onboarding Training`;
+        const rows = [...window.STATE.courses].map(c => {
+            const enrs = window.STATE.enrollments.filter(e => e.courseId === c.id);
+            const completed = enrs.filter(e => e.status === "completed").length;
+            const keterlaksanaan = enrs.length ? Math.round((completed / enrs.length) * 100) : 0;
+            const hasQuiz = !!(c.quiz && (c.quiz.questions || []).length);
+            let kelulusanLabel = "-";
+            if (hasQuiz) {
+                const userIds = [...new Set(enrs.map(e => e.userId))];
+                let passed = 0, attempted = 0;
+                userIds.forEach(uid => {
+                    const posts = postTestAttemptsOfUser(c.id, uid);
+                    if (posts.length) { attempted++; if (posts[0].passed) passed++; }
+                });
+                kelulusanLabel = attempted ? `${passed}/${attempted} (${Math.round((passed / attempted) * 100)}%)` : "Belum ada yg kuis";
+            }
+            return `
+            <div class="p-3 rounded-2xl border border-slate-100 hover:bg-indigo-50/40 transition">
+                <div class="flex items-center justify-between gap-2">
+                    <p class="text-sm font-bold text-slate-700 truncate flex-1">${window.escapeHtml(c.title)}</p>
+                    <span class="shrink-0 text-[10px] font-black px-2 py-0.5 rounded-full ${c.published ? "bg-emerald-50 text-emerald-600" : "bg-slate-100 text-slate-400"}">${c.published ? "Terbit" : "Draft"}</span>
+                </div>
+                <div class="grid grid-cols-3 gap-2 mt-2 text-center">
+                    <div class="bg-slate-50 rounded-lg py-1.5"><p class="text-[8px] text-slate-400 font-black uppercase">Peserta</p><p class="text-xs font-black text-slate-700">${enrs.length}</p></div>
+                    <div class="bg-slate-50 rounded-lg py-1.5"><p class="text-[8px] text-slate-400 font-black uppercase">Keterlaksanaan</p><p class="text-xs font-black text-slate-700">${keterlaksanaan}%</p></div>
+                    <div class="bg-slate-50 rounded-lg py-1.5"><p class="text-[8px] text-slate-400 font-black uppercase">Kelulusan</p><p class="text-xs font-black text-slate-700">${kelulusanLabel}</p></div>
+                </div>
+                <button onclick="window.closeModal('modal-dashboard-detail'); window.navigate('/admin/courses/${c.id}')" class="mt-2 text-[11px] font-black text-indigo-500 hover:underline"><i class="fas fa-pen mr-1"></i>Kelola Onboarding Ini</button>
+            </div>`;
+        }).join("");
+        bodyEl.innerHTML = rows || dashboardEmptyState("fa-book-open", "Belum ada training onboarding.", "/admin/courses", "Kelola Onboarding");
+    }
+
+    else if (type === "tna") {
+        titleEl.innerHTML = `<i class="fas fa-chalkboard-user mr-1"></i> Semua Training TNA`;
+        const rows = [...window.STATE.trainings].sort((a, b) => new Date(b.date) - new Date(a.date)).map(t => {
+            const hasScope = !!(t.participants && t.participants.mode && t.participants.mode !== "all");
+            const targetEmployees = window.trainingTargetEmployees(t);
+            const regs = window.STATE.trainingRegs.filter(r => r.trainingId === t.id && r.status !== "cancelled");
+            const targetCount = hasScope ? targetEmployees.length : regs.length;
+            const attendedCount = window.STATE.attendance.filter(a => a.trainingId === t.id).length;
+            const attendancePct = targetCount ? Math.round((attendedCount / targetCount) * 100) : 0;
+            const passCount = window.STATE.certificates.filter(c => c.trainingId === t.id).length;
+            const passPct = targetCount ? Math.round((passCount / targetCount) * 100) : 0;
+            return `
+            <div class="p-3 rounded-2xl border border-slate-100 hover:bg-amber-50/40 transition">
+                <p class="text-sm font-bold text-slate-700 truncate">${window.escapeHtml(t.title)}</p>
+                <p class="text-[11px] text-slate-400">${window.fmtDate(t.date)} • ${window.escapeHtml(t.location || "-")}</p>
+                <div class="grid grid-cols-3 gap-2 mt-2 text-center">
+                    <div class="bg-slate-50 rounded-lg py-1.5"><p class="text-[8px] text-slate-400 font-black uppercase">Target</p><p class="text-xs font-black text-slate-700">${targetCount}</p></div>
+                    <div class="bg-slate-50 rounded-lg py-1.5"><p class="text-[8px] text-slate-400 font-black uppercase">Hadir</p><p class="text-xs font-black text-slate-700">${attendedCount} (${attendancePct}%)</p></div>
+                    <div class="bg-slate-50 rounded-lg py-1.5"><p class="text-[8px] text-slate-400 font-black uppercase">Lulus</p><p class="text-xs font-black text-slate-700">${passCount} (${passPct}%)</p></div>
+                </div>
+                <div class="flex items-center gap-3 mt-2">
+                    <button onclick="window.closeModal('modal-dashboard-detail'); window.navigate('/admin/training-report/${t.id}')" class="text-[11px] font-black text-amber-600 hover:underline"><i class="fas fa-chart-simple mr-1"></i>Laporan Keterlaksanaan</button>
+                    <button onclick="window.closeModal('modal-dashboard-detail'); window.openTrainingInvite('${t.id}')" class="text-[11px] font-black text-indigo-500 hover:underline"><i class="fas fa-paper-plane mr-1"></i>Kirim Undangan</button>
+                </div>
+            </div>`;
+        }).join("");
+        bodyEl.innerHTML = rows || dashboardEmptyState("fa-chalkboard-user", "Belum ada jadwal Training TNA.", "/admin/trainings", "Kelola Training TNA");
+    }
+
+    else if (type === "certificates") {
+        titleEl.innerHTML = `<i class="fas fa-award mr-1"></i> Sertifikat Terbit`;
+        const certs = [...window.STATE.certificates].sort((a, b) => (b.issuedAt?.seconds || 0) - (a.issuedAt?.seconds || 0));
+        bodyEl.innerHTML = certs.length ? certs.map(c => `
+            <div class="flex items-center gap-3 p-3 rounded-2xl border border-slate-100 hover:bg-rose-50/40 transition">
+                <div class="w-10 h-10 rounded-xl flex items-center justify-center shrink-0" style="background:radial-gradient(circle at 35% 30%,#f3e2ab,#bf9b4a 55%,#7a5c1f);"><i class="fas fa-award text-[#4a3403] text-sm"></i></div>
+                <div class="flex-1 min-w-0">
+                    <p class="text-sm font-bold text-slate-700 truncate">${window.escapeHtml(c.userName || "-")}</p>
+                    <p class="text-[11px] text-slate-400 truncate">${window.escapeHtml(c.title)} • ${c.type === "training" ? "Training TNA" : "Onboarding"} • ${window.fmtDate(c.issuedAt)}</p>
+                </div>
+            </div>`).join("") : dashboardEmptyState("fa-award", "Belum ada sertifikat terbit.", "/admin/reports", "Kembali");
+    }
+
+    else if (type === "users") {
+        titleEl.innerHTML = `<i class="fas fa-users mr-1"></i> Semua Pengguna`;
+        const roleLabel = { user: "User", admin: "Admin", superadmin: "Super Admin" };
+        const roleColor = { user: "bg-slate-100 text-slate-500", admin: "bg-indigo-50 text-indigo-600", superadmin: "bg-violet-50 text-violet-600" };
+        const users = [...window.STATE.users].sort((a, b) => String(a.name || a.username || "").localeCompare(String(b.name || b.username || "")));
+        bodyEl.innerHTML = (users.length ? users.map(u => `
+            <div class="flex items-center justify-between gap-3 p-3 rounded-2xl border border-slate-100 hover:bg-emerald-50/40 transition">
+                <div class="min-w-0">
+                    <p class="text-sm font-bold text-slate-700 truncate">${window.escapeHtml(u.name || u.username)}</p>
+                    <p class="text-[11px] text-slate-400 truncate">@${window.escapeHtml(u.username)} • ${window.escapeHtml(u.dept || "-")}</p>
+                </div>
+                <span class="shrink-0 text-[10px] font-black px-2 py-1 rounded-full ${roleColor[u.role] || roleColor.user}">${roleLabel[u.role] || u.role}</span>
+            </div>`).join("") : dashboardEmptyState("fa-users", "Belum ada pengguna terdaftar.", "/admin/users", "Kelola Akun"))
+            + (users.length ? `<a href="#/admin/users" onclick="window.closeModal('modal-dashboard-detail')" class="block text-center text-indigo-500 font-bold text-sm pt-3">Kelola Akun →</a>` : "");
+    }
+
+    else if (type === "assignments" || type === "assignments-pending") {
+        const isPending = type === "assignments-pending";
+        titleEl.innerHTML = isPending ? `<i class="fas fa-hourglass-half mr-1"></i> Tugas Menunggu Nilai` : `<i class="fas fa-file-signature mr-1"></i> Semua Tugas Dikumpulkan`;
+        const subs = [...window.STATE.assignmentSubmissions]
+            .filter(s => !isPending || s.status !== "graded")
+            .sort((a, b) => (b.submittedAt?.seconds || 0) - (a.submittedAt?.seconds || 0));
+        bodyEl.innerHTML = (subs.length ? subs.map(s => {
+            const kind = s.trainingId ? "training" : "course";
+            const item = getContentItem(kind, s.trainingId || s.courseId);
+            return `
+            <div class="flex items-center justify-between gap-3 p-3 rounded-2xl border border-slate-100 hover:bg-violet-50/40 transition">
+                <div class="min-w-0">
+                    <p class="text-sm font-bold text-slate-700 truncate">${window.escapeHtml(s.userName || "-")}</p>
+                    <p class="text-[11px] text-slate-400 truncate">${window.escapeHtml(s.itemTitle || (item ? item.title : "-"))} • ${window.fmtDateTime(s.submittedAt)}</p>
+                </div>
+                <span class="shrink-0 text-[10px] font-black px-2 py-1 rounded-full ${s.status === "graded" ? "bg-emerald-50 text-emerald-600" : "bg-amber-50 text-amber-600"}">${s.status === "graded" ? `Nilai ${s.score ?? "-"}` : "Menunggu"}</span>
+            </div>`;
+        }).join("") : dashboardEmptyState("fa-file-signature", isPending ? "Semua tugas sudah dinilai." : "Belum ada tugas yang dikumpulkan.", "/admin/assignments", "Kelola Penugasan"))
+            + (subs.length ? `<a href="#/admin/assignments" onclick="window.closeModal('modal-dashboard-detail')" class="block text-center text-violet-500 font-bold text-sm pt-3">${isPending ? "Nilai Sekarang" : "Kelola Penilaian Tugas"} →</a>` : "");
+    }
+
+    window.openModal("modal-dashboard-detail");
+};
 
 
 window.addEventListener("lms-firebase-ready", async () => {
