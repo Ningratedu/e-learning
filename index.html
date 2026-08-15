@@ -224,31 +224,39 @@ button:disabled, input[type="submit"]:disabled {
 
 <!-- ================= MODAL: EVALUASI TRAINING ================= -->
 <div id="modal-evaluation" class="fixed inset-0 z-[10000] hide modal-overlay flex items-center justify-center p-4">
-    <div class="bg-white w-full max-w-md rounded-3xl shadow-2xl overflow-hidden">
-        <div class="p-5 border-b flex justify-between items-center bg-indigo-50">
+    <div class="bg-white w-full max-w-md rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+        <div class="p-5 border-b flex justify-between items-center bg-indigo-50 shrink-0">
             <h3 class="text-lg font-black text-indigo-600"><i class="fas fa-star mr-1"></i> Evaluasi Training</h3>
             <button onclick="window.closeModal('modal-evaluation')" class="text-slate-400 hover:text-slate-700"><i class="fas fa-times"></i></button>
         </div>
-        <div class="p-5 space-y-4">
+        <div class="p-5 space-y-5 overflow-y-auto">
             <input type="hidden" id="eval-training-id">
+            <input type="hidden" id="eval-rating-materi" value="5">
+            <input type="hidden" id="eval-rating-trainer" value="5">
+            <input type="hidden" id="eval-rating-fasilitas" value="5">
             <div>
-                <label class="text-[10px] font-bold uppercase text-slate-400">Kualitas Materi (1-5)</label>
-                <input id="eval-rating-materi" type="range" min="1" max="5" value="5" class="w-full accent-indigo-600">
+                <label class="text-[10px] font-bold uppercase text-slate-400">Kualitas Materi</label>
+                <div id="eval-stars-materi" class="flex items-center gap-1.5 my-1.5">
+                    ${[1,2,3,4,5].map(n => `<button type="button" onclick="window.setEvalStar('materi',${n})" class="eval-star text-2xl leading-none transition hover:scale-110" data-val="${n}"><i class="fas fa-star"></i></button>`).join("")}
+                </div>
+                <textarea id="eval-feedback-materi" rows="2" placeholder="Feedback tentang materi training..." class="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-400"></textarea>
             </div>
             <div>
-                <label class="text-[10px] font-bold uppercase text-slate-400">Kualitas Trainer (1-5)</label>
-                <input id="eval-rating-trainer" type="range" min="1" max="5" value="5" class="w-full accent-indigo-600">
+                <label class="text-[10px] font-bold uppercase text-slate-400">Kualitas Trainer</label>
+                <div id="eval-stars-trainer" class="flex items-center gap-1.5 my-1.5">
+                    ${[1,2,3,4,5].map(n => `<button type="button" onclick="window.setEvalStar('trainer',${n})" class="eval-star text-2xl leading-none transition hover:scale-110" data-val="${n}"><i class="fas fa-star"></i></button>`).join("")}
+                </div>
+                <textarea id="eval-feedback-trainer" rows="2" placeholder="Feedback tentang trainer..." class="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-400"></textarea>
             </div>
             <div>
-                <label class="text-[10px] font-bold uppercase text-slate-400">Fasilitas (1-5)</label>
-                <input id="eval-rating-fasilitas" type="range" min="1" max="5" value="5" class="w-full accent-indigo-600">
+                <label class="text-[10px] font-bold uppercase text-slate-400">Fasilitas</label>
+                <div id="eval-stars-fasilitas" class="flex items-center gap-1.5 my-1.5">
+                    ${[1,2,3,4,5].map(n => `<button type="button" onclick="window.setEvalStar('fasilitas',${n})" class="eval-star text-2xl leading-none transition hover:scale-110" data-val="${n}"><i class="fas fa-star"></i></button>`).join("")}
+                </div>
+                <textarea id="eval-feedback-fasilitas" rows="2" placeholder="Feedback tentang fasilitas..." class="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-400"></textarea>
             </div>
-            <div>
-                <label class="text-[10px] font-bold uppercase text-slate-400">Komentar / Saran</label>
-                <textarea id="eval-comment" rows="3" class="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm mt-1 outline-none focus:ring-2 focus:ring-indigo-400"></textarea>
-            </div>
-            <button onclick="window.guardedClick(this, () => window.submitEvaluation())" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-2xl transition">Kirim Evaluasi & Ambil Sertifikat</button>
         </div>
+        <div class="p-4 border-t shrink-0"><button onclick="window.guardedClick(this, () => window.submitEvaluation())" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-2xl transition">Kirim Evaluasi & Ambil Sertifikat</button></div>
     </div>
 </div>
 
@@ -2318,11 +2326,25 @@ window.checkInTraining = async function (trainingId) {
 
 window.openEvaluation = function (trainingId) {
     document.getElementById("eval-training-id").value = trainingId;
-    document.getElementById("eval-rating-materi").value = "5";
-    document.getElementById("eval-rating-trainer").value = "5";
-    document.getElementById("eval-rating-fasilitas").value = "5";
-    document.getElementById("eval-comment").value = "";
+    ["materi", "trainer", "fasilitas"].forEach(cat => {
+        document.getElementById(`eval-feedback-${cat}`).value = "";
+        window.setEvalStar(cat, 5);
+    });
     window.openModal("modal-evaluation");
+};
+
+// Widget rating bintang (1-5) per poin evaluasi (materi/trainer/fasilitas). Klik bintang ke-N
+// akan mengisi bintang 1..N dengan warna kuning, sisanya abu-abu, dan menyimpan nilainya ke
+// input hidden #eval-rating-{category} yang dibaca saat submit.
+window.setEvalStar = function (category, value) {
+    const hidden = document.getElementById(`eval-rating-${category}`);
+    if (hidden) hidden.value = value;
+    const stars = document.querySelectorAll(`#eval-stars-${category} .eval-star`);
+    stars.forEach(btn => {
+        const v = parseInt(btn.dataset.val, 10);
+        btn.classList.toggle("text-amber-400", v <= value);
+        btn.classList.toggle("text-slate-200", v > value);
+    });
 };
 
 window.submitEvaluation = async function () {
@@ -2331,12 +2353,17 @@ window.submitEvaluation = async function () {
     const { col, addDoc, serverTimestamp } = window.LMS_DB;
     await addDoc(col("evaluations"), {
         trainingId, userId: window.STATE.user.id,
+        userName: window.STATE.user.name || window.STATE.user.username,
         ratings: {
             materi: parseInt(document.getElementById("eval-rating-materi").value),
             trainer: parseInt(document.getElementById("eval-rating-trainer").value),
             fasilitas: parseInt(document.getElementById("eval-rating-fasilitas").value),
         },
-        comment: document.getElementById("eval-comment").value.trim(),
+        feedbacks: {
+            materi: document.getElementById("eval-feedback-materi").value.trim(),
+            trainer: document.getElementById("eval-feedback-trainer").value.trim(),
+            fasilitas: document.getElementById("eval-feedback-fasilitas").value.trim(),
+        },
         submittedAt: serverTimestamp()
     });
     await window.issueCertificate(trainingId, t.title, "training");
@@ -3343,7 +3370,8 @@ function renderTrainingReport(id) {
     const avgPre = preAttempts.length ? Math.round(preAttempts.reduce((s, a) => s + (a.score || 0), 0) / preAttempts.length) : null;
     const avgPost = latestPostList.length ? Math.round(latestPostList.reduce((s, a) => s + (a.score || 0), 0) / latestPostList.length) : null;
 
-    // ---- Rata-rata rating feedback evaluasi (materi, trainer, fasilitas dirata-rata jadi 1 angka) ----
+    // ---- Rata-rata rating feedback evaluasi (materi, trainer, fasilitas dirata-rata jadi 1 angka,
+    // plus rata-rata per poin masing-masing buat ditampilkan terpisah) ----
     const evals = window.STATE.evaluations.filter(e => e.trainingId === id);
     let avgRating = null;
     if (evals.length) {
@@ -3355,6 +3383,40 @@ function renderTrainingReport(id) {
         }, 0);
         avgRating = Math.round((sumAll / evals.length) * 10) / 10;
     }
+    function avgRatingOf(key) {
+        const vals = evals.map(e => e.ratings && e.ratings[key]).filter(v => typeof v === "number");
+        return vals.length ? Math.round((vals.reduce((a, b) => a + b, 0) / vals.length) * 10) / 10 : null;
+    }
+    const avgMateri = avgRatingOf("materi");
+    const avgTrainer = avgRatingOf("trainer");
+    const avgFasilitas = avgRatingOf("fasilitas");
+    function starRow(val) {
+        const v = Math.round(val || 0);
+        return [1, 2, 3, 4, 5].map(n => `<i class="fas fa-star text-[11px] ${n <= v ? "text-amber-400" : "text-slate-200"}"></i>`).join("");
+    }
+
+    // ---- Rincian feedback evaluasi per peserta (rating bintang & feedback teks per poin) ----
+    const feedbackCards = evals.length ? evals.map(e => {
+        const r = e.ratings || {};
+        const fb = e.feedbacks || {};
+        const legacyComment = (!fb.materi && !fb.trainer && !fb.fasilitas) ? e.comment : null; // data lama sebelum feedback per-poin
+        const rows = [["Materi", r.materi, fb.materi], ["Trainer", r.trainer, fb.trainer], ["Fasilitas", r.fasilitas, fb.fasilitas]];
+        return `
+        <div class="border border-slate-100 rounded-2xl p-4">
+            <p class="text-sm font-bold text-slate-700 mb-2">${window.escapeHtml(e.userName || userName(e.userId))}</p>
+            <div class="space-y-2">
+                ${rows.map(([label, rating, feedback]) => `
+                    <div class="bg-slate-50 rounded-xl px-3 py-2">
+                        <div class="flex items-center justify-between gap-2">
+                            <span class="text-xs font-bold text-slate-600">${label}</span>
+                            <span>${starRow(rating)}</span>
+                        </div>
+                        ${feedback ? `<p class="text-xs text-slate-500 mt-1">${window.escapeHtml(feedback)}</p>` : ""}
+                    </div>`).join("")}
+                ${legacyComment ? `<div class="bg-slate-50 rounded-xl px-3 py-2"><span class="text-xs font-bold text-slate-600">Komentar</span><p class="text-xs text-slate-500 mt-1">${window.escapeHtml(legacyComment)}</p></div>` : ""}
+            </div>
+        </div>`;
+    }).join("") : `<p class="text-sm text-slate-400 text-center py-6">Belum ada evaluasi yang diisi peserta.</p>`;
 
     // ---- Rincian per peserta terdaftar ----
     const detailRows = regs.map(r => {
@@ -3392,12 +3454,17 @@ function renderTrainingReport(id) {
             ${statCard("fa-graduation-cap", "amber", `${passCount} (${passPct}%)`, "Kelulusan (Jumlah & %)")}
             ${statCard("fa-star", "rose", avgRating !== null ? avgRating + "/5" : "-", "Rata-rata Rating Feedback")}
         </div>
-        <div class="grid grid-cols-2 gap-4 mb-6">
+        <div class="grid grid-cols-2 gap-4 mb-4">
             ${statCard("fa-list-check", "violet", avgPre !== null ? avgPre : "-", "Rata-rata Nilai Pre-test")}
             ${statCard("fa-clipboard-question", "violet", avgPost !== null ? avgPost : "-", "Rata-rata Nilai Post-test")}
         </div>
+        <div class="grid grid-cols-3 gap-4 mb-6">
+            ${statCard("fa-book-open", "indigo", avgMateri !== null ? avgMateri + "/5" : "-", "Rating Materi")}
+            ${statCard("fa-chalkboard-user", "amber", avgTrainer !== null ? avgTrainer + "/5" : "-", "Rating Trainer")}
+            ${statCard("fa-building", "emerald", avgFasilitas !== null ? avgFasilitas + "/5" : "-", "Rating Fasilitas")}
+        </div>
 
-        <div class="bg-white rounded-3xl border border-slate-100 shadow-sm p-5">
+        <div class="bg-white rounded-3xl border border-slate-100 shadow-sm p-5 mb-6">
             <h3 class="font-black text-sm text-slate-700 mb-3">Rincian per Peserta Terdaftar</h3>
             <div class="overflow-x-auto">
                 <table class="w-full text-left">
@@ -3415,6 +3482,11 @@ function renderTrainingReport(id) {
                     <tbody>${detailRows}</tbody>
                 </table>
             </div>
+        </div>
+
+        <div class="bg-white rounded-3xl border border-slate-100 shadow-sm p-5">
+            <h3 class="font-black text-sm text-slate-700 mb-3"><i class="fas fa-comment-dots text-amber-400 mr-1"></i> Rincian Feedback Evaluasi Peserta</h3>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">${feedbackCards}</div>
         </div>
     `);
 }
