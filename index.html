@@ -1598,13 +1598,14 @@ window.avatarInnerHTML = function (u) {
 
 window.renderTopbar = function () {
     const u = window.STATE.user;
-    // Keterangan di bawah nama (topbar & dropdown profil) sekarang nampilin JABATAN/DESIGNATION
-    // dari Data Karyawan (dicocokkan lewat username), bukan lagi label role (Admin/Peserta/dst).
-    // Kalau usernya tidak ketemu di Data Karyawan (mis. akun admin yang belum diimpor sebagai
-    // karyawan), tetap fallback ke label role supaya baris ini tidak kosong.
+    // Keterangan di bawah nama (topbar & dropdown profil) nampilin DESIGNATION saja
+    // dari Data Karyawan (dicocokkan lewat username) — bukan Jabatan/Posisi, karena field
+    // itu masing-masing sudah punya kolomnya sendiri, dan bukan juga label role (Admin/Peserta/dst).
+    // Kalau usernya tidak ketemu di Data Karyawan atau designation-nya kosong (mis. akun admin
+    // yang belum diimpor sebagai karyawan), tetap fallback ke label role supaya baris ini tidak kosong.
     const roleLabel = u.role === "superadmin" ? "Super Admin" : (u.role === "admin" ? "Admin" : "Peserta");
     const emp = window.sel.employeeOfUser(u);
-    const designationLabel = (emp && (emp.posisi || emp.designation) && String(emp.posisi || emp.designation).trim()) || roleLabel;
+    const designationLabel = (emp && emp.designation && String(emp.designation).trim()) || roleLabel;
     document.getElementById("topbar-username").textContent = u.name || u.username;
     document.getElementById("topbar-role").textContent = designationLabel;
     document.getElementById("topbar-avatar").innerHTML = window.avatarInnerHTML(u);
@@ -5601,7 +5602,7 @@ function renderEmployeeAdminList() {
         <tr class="border-b border-slate-50 hover:bg-slate-50/60">
             <td class="px-3 py-3">
                 <p class="font-bold text-slate-700 text-sm">${window.escapeHtml(e.nama)}</p>
-                <p class="text-[11px] text-slate-400">@${window.escapeHtml(e.username)} • ${window.escapeHtml(e.posisi||e.designation||'-')}</p>
+                <p class="text-[11px] text-slate-400">@${window.escapeHtml(e.username)} • ${window.escapeHtml(e.designation||'-')}</p>
             </td>
             <td class="px-3 py-3 text-xs text-slate-500">${window.escapeHtml(e.dept||'-')}</td>
             <td class="px-3 py-3 text-xs text-slate-500">${window.escapeHtml(e.kontak||'-')}</td>
