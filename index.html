@@ -498,6 +498,7 @@ window.STATE = {
     attendance: [],
     evaluations: [],
     assignmentSubmissions: [],
+    settings: [],
     ready: false
 };
 
@@ -520,6 +521,7 @@ function startLiveListeners() {
     bind("attendance", "attendance");
     bind("evaluations", "evaluations");
     bind("assignmentSubmissions", "assignmentSubmissions");
+    bind("settings", "settings");
 }
 window.startLiveListeners = startLiveListeners;
 
@@ -1017,6 +1019,7 @@ window.renderSidebar = function () {
     ];
     const adminNav = [
         { key: "admin/courses", icon: "fa-layer-group", label: "Kelola Onboarding" },
+        { key: "admin/onboarding-schedule", icon: "fa-calendar-week", label: "Penjadwalan Onboarding" },
         { key: "admin/trainings", icon: "fa-calendar-days", label: "Kelola Training TNA" },
         { key: "admin/assignments", icon: "fa-file-signature", label: "Penilaian Tugas" },
         { key: "admin/quiz-attempts", icon: "fa-rotate-left", label: "Percobaan Kuis" },
@@ -4686,6 +4689,201 @@ function orderedPublishedCoursesForDept(deptName) {
         return String(a.id).localeCompare(String(b.id));
     });
 }
+
+// ================= PENJADWALAN ONBOARDING (BATCH BY DEPARTEMEN & TANGGAL JOIN) =================
+// Aturan bisnis (dari admin):
+// - Departemen Sales & Marketing: 1 siklus/minggu, Selasa-Sabtu. Peserta wajib menyelesaikan
+//   SEMUA training onboarding dalam rentang itu. Kalau tanggal join JATUH SETELAH hari Selasa
+//   (yakni Rabu s/d Selasa minggu depan), peserta itu masuk target batch MINGGU DEPAN, bukan
+//   batch minggu ini (batch minggu ini sudah "tutup pintu" begitu lewat hari Selasa-nya).
+// - Departemen lain (selain Sales & Marketing): 2 siklus/minggu yang SAMA buat semua departemen
+//   itu (gak dipecah per departemen) —
+//     • Rabu-Jumat, training/deadline di hari Jumat (join Rabu/Kamis/Jumat -> batch Jumat itu)
+//     • Sabtu-Selasa, training/deadline di hari Selasa (join Sabtu/Minggu/Senin/Selasa -> batch Selasa itu)
+//
+// Nama departemen di data karyawan itu teks bebas (hasil import Excel), jadi departemen mana
+// saja yang dianggap "Sales & Marketing" HARUS dikonfigurasi admin (bukan ditebak dari nama),
+// disimpan di collection "settings" dokumen "onboardingSchedule".
+
+window.onboardingScheduleConfig = function () {
+    const doc = (window.STATE.settings || []).find(s => s.id === "onboardingSchedule");
+    return { salesMarketingDepts: (doc && doc.salesMarketingDepts) || [] };
+};
+window.saveOnboardingScheduleConfig = async function (deptList) {
+    const { ref, setDoc } = window.LMS_DB;
+    await setDoc(ref("settings", "onboardingSchedule"), { salesMarketingDepts: deptList }, { merge: true });
+    window.toast("Konfigurasi departemen Sales & Marketing disimpan", "success");
+};
+window.isSalesMarketingDept = function (deptName) {
+    const cfg = window.onboardingScheduleConfig();
+    const d = String(deptName || "").trim().toLowerCase();
+    if (!d) return false;
+    return cfg.salesMarketingDepts.some(x => String(x).trim().toLowerCase() === d);
+};
+
+function addDaysSafe(d, n) { const r = new Date(d); r.setDate(r.getDate() + n); return r; }
+function dateOnlySafe(v) {
+    let d;
+    if (!v) return null;
+    if (v instanceof Date) d = v;
+    else if (typeof v.toDate === "function") d = v.toDate();
+    else if (typeof v.seconds === "number") d = new Date(v.seconds * 1000);
+    else d = new Date(v);
+    if (isNaN(d)) return null;
+    d = new Date(d); d.setHours(0, 0, 0, 0);
+    return d;
+}
+function isoDateKeySafe(d) { return d.toISOString().slice(0, 10); }
+
+// Hitung batch/jadwal onboarding untuk SATU karyawan, berdasarkan departemen & tanggal join.
+// Return null kalau tanggal join belum ada/tidak valid (belum bisa ditentukan batch-nya).
+window.onboardingBatchFor = function (emp) {
+    const d = dateOnlySafe(emp && emp.tglBergabung);
+    if (!d) return null;
+    const isSM = window.isSalesMarketingDept(emp.dept);
+    const dow = d.getDay(); // 0=Minggu ... 6=Sabtu, Selasa=2
+    let start, deadline, windowLabel, groupType;
+    if (isSM) {
+        groupType = "sales_marketing";
+        windowLabel = "Selasa–Sabtu";
+        const diffToTue = (2 - dow + 7) % 7; // 0 kalau join pas hari Selasa
+        start = addDaysSafe(d, diffToTue);      // Selasa batch ini
+        deadline = addDaysSafe(start, 4);        // Sabtu
+    } else if (dow === 3 || dow === 4 || dow === 5) { // Rabu/Kamis/Jumat
+        groupType = "lainnya";
+        windowLabel = "Rabu–Jumat";
+        deadline = addDaysSafe(d, 5 - dow);       // Jumat
+        start = addDaysSafe(deadline, -2);        // Rabu
+    } else { // Sabtu/Minggu/Senin/Selasa
+        groupType = "lainnya";
+        windowLabel = "Sabtu–Selasa";
+        const diffToTue = (2 - dow + 7) % 7;
+        deadline = addDaysSafe(d, diffToTue);     // Selasa
+        start = addDaysSafe(deadline, -3);        // Sabtu
+    }
+    const key = `${groupType}|${windowLabel}|${isoDateKeySafe(start)}`;
+    return { key, groupType, isSalesMarketing: isSM, windowLabel, start, deadline };
+};
+
+// Semua karyawan (yang punya tanggal join valid & punya akun) dikelompokkan per batch,
+// lengkap dengan status penyelesaian onboarding-nya masing-masing (pakai logika yang sama
+// dengan modal Detail Karyawan: assignedCourses = orderedPublishedCoursesForDept, "selesai"
+// = punya sertifikat untuk SEMUA training onboarding yang ditargetkan ke departemennya).
+window.buildOnboardingBatches = function () {
+    const usersByUsername = {};
+    window.STATE.users.forEach(u => { usersByUsername[normalizeUsername(u.username)] = u; });
+    const orderedCache = {};
+
+    const batches = {};
+    window.STATE.employees.forEach(e => {
+        const batch = window.onboardingBatchFor(e);
+        if (!batch) return;
+        const user = usersByUsername[normalizeUsername(e.username)];
+        const dept = (e.dept || "").trim();
+        if (!orderedCache[dept]) orderedCache[dept] = orderedPublishedCoursesForDept(dept);
+        const ordered = orderedCache[dept];
+        const completedCount = user ? ordered.filter(c => certOfUser(c.id, user.id)).length : 0;
+        const isDone = ordered.length === 0 || completedCount === ordered.length;
+
+        if (!batches[batch.key]) batches[batch.key] = { ...batch, members: [] };
+        batches[batch.key].members.push({ employee: e, user, ordered, completedCount, isDone });
+    });
+    return Object.values(batches).sort((a, b) => a.deadline - b.deadline);
+};
+
+function onboardingBatchTypeLabel(b) {
+    return b.isSalesMarketing ? "Sales & Marketing" : "Departemen Lain";
+}
+function onboardingBatchTypeBadgeClass(b) {
+    return b.isSalesMarketing ? "bg-violet-50 text-violet-600" : "bg-sky-50 text-sky-600";
+}
+
+let onboardingScheduleDeptDraft = null; // null = belum dibuka editor, array = sedang diedit
+
+function renderOnboardingSchedule() {
+    if (onboardingScheduleDeptDraft === null) {
+        onboardingScheduleDeptDraft = [...window.onboardingScheduleConfig().salesMarketingDepts];
+    }
+    const allDepts = window.sel.allDeptNames();
+    const batches = window.buildOnboardingBatches();
+    const today = dateOnlySafe(new Date());
+
+    const configHtml = `
+    <div class="bg-white rounded-3xl border border-slate-100 shadow-sm p-5 mb-6">
+        <h3 class="font-black text-sm text-slate-700 mb-1"><i class="fas fa-gear text-violet-500 mr-1"></i> Konfigurasi Departemen Sales & Marketing</h3>
+        <p class="text-xs text-slate-400 mb-3">Pilih departemen mana saja yang dianggap "Sales & Marketing" (pakai jadwal Selasa-Sabtu). Sisanya otomatis masuk jadwal "Departemen Lain" (Rabu-Jumat / Sabtu-Selasa).</p>
+        <div class="flex flex-wrap gap-1.5">
+            ${allDepts.map(dep => {
+                const active = onboardingScheduleDeptDraft.some(x => x.toLowerCase() === dep.toLowerCase());
+                return `<button type="button" onclick="window.toggleOnboardingScheduleDept('${window.escapeHtml(dep).replace(/'/g, "\\'")}')" class="text-[11px] font-bold px-2.5 py-1.5 rounded-full border transition ${active ? 'bg-violet-600 border-violet-600 text-white' : 'bg-white border-slate-200 text-slate-500 hover:border-violet-300'}">${active ? '<i class="fas fa-check mr-1"></i>' : ''}${window.escapeHtml(dep)}</button>`;
+            }).join("") || '<p class="text-[11px] text-slate-400">Belum ada data departemen. Import dulu lewat menu Data Karyawan.</p>'}
+        </div>
+        <button onclick="window.guardedClick(this, () => window.saveOnboardingScheduleConfig(onboardingScheduleDeptDraft))" class="mt-3 bg-violet-600 hover:bg-violet-700 text-white text-xs font-black px-4 py-2.5 rounded-2xl transition"><i class="fas fa-save mr-1"></i> Simpan Konfigurasi</button>
+    </div>`;
+
+    const batchCards = batches.map(b => {
+        const target = b.members.length;
+        const completed = b.members.filter(m => m.isDone).length;
+        const pct = target ? Math.round((completed / target) * 100) : 0;
+        const isOverdue = b.deadline < today && completed < target;
+        const isCurrent = b.start <= today && today <= b.deadline;
+
+        const rows = b.members.slice().sort((a, z) => (a.isDone === z.isDone ? 0 : a.isDone ? 1 : -1)).map(m => {
+            const e = m.employee;
+            const sisaLabel = m.ordered.length ? `${m.completedCount}/${m.ordered.length} training` : "Tidak ada training ditargetkan";
+            return `<tr class="border-b border-slate-50 hover:bg-slate-50/60">
+                <td class="px-3 py-2 text-sm font-bold text-slate-700">${window.escapeHtml(e.nama)}</td>
+                <td class="px-3 py-2 text-xs text-slate-500">${window.escapeHtml(e.dept || '-')}</td>
+                <td class="px-3 py-2 text-xs text-slate-500">${window.fmtDate(e.tglBergabung)}</td>
+                <td class="px-3 py-2 text-xs text-slate-500">${sisaLabel}</td>
+                <td class="px-3 py-2 text-center"><span class="text-[10px] font-black px-2 py-1 rounded-full ${m.isDone ? 'bg-emerald-50 text-emerald-600' : 'bg-amber-50 text-amber-600'}">${m.isDone ? 'Selesai' : 'Proses'}</span></td>
+                <td class="px-3 py-2 text-center">${(!m.isDone && m.ordered.length) ? `<button onclick="window.guardedClick(this, () => window.sendTrainingReminder('${e.id}'))" title="Kirim Reminder Kehadiran via WhatsApp" class="text-amber-500 hover:text-amber-700"><i class="fab fa-whatsapp"></i></button>` : '<span class="text-slate-200 text-xs">-</span>'}</td>
+            </tr>`;
+        }).join("") || `<tr><td colspan="6" class="text-center py-6 text-slate-400 text-sm">Belum ada peserta di batch ini</td></tr>`;
+
+        return `
+        <div class="bg-white rounded-3xl border border-slate-100 shadow-sm p-5 mb-4">
+            <div class="flex items-start justify-between flex-wrap gap-2 mb-3">
+                <div>
+                    <div class="flex items-center gap-2 flex-wrap">
+                        <span class="text-[10px] font-black px-2.5 py-1 rounded-full ${onboardingBatchTypeBadgeClass(b)}">${onboardingBatchTypeLabel(b)}</span>
+                        <span class="text-[10px] font-black px-2.5 py-1 rounded-full bg-slate-100 text-slate-500">${b.windowLabel}</span>
+                        ${isCurrent ? '<span class="text-[10px] font-black px-2.5 py-1 rounded-full bg-sky-50 text-sky-600"><i class="fas fa-circle-play mr-1"></i>Batch Berjalan</span>' : ''}
+                        ${isOverdue ? '<span class="text-[10px] font-black px-2.5 py-1 rounded-full bg-rose-50 text-rose-500"><i class="fas fa-triangle-exclamation mr-1"></i>Lewat Deadline</span>' : ''}
+                    </div>
+                    <p class="text-sm font-bold text-slate-700 mt-1.5">${window.fmtDate(b.start)} &nbsp;→&nbsp; ${window.fmtDate(b.deadline)}</p>
+                    <p class="text-[11px] text-slate-400">Deadline penyelesaian: <b>${window.fmtDate(b.deadline)}</b></p>
+                </div>
+                <div class="flex items-center gap-2">
+                    <span class="text-[10px] font-black px-2.5 py-1 rounded-full bg-indigo-50 text-indigo-600"><i class="fas fa-users mr-1"></i>${target} target peserta</span>
+                    <span class="text-[10px] font-black px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-600"><i class="fas fa-chart-simple mr-1"></i>Keterlaksanaan ${pct}% (${completed}/${target})</span>
+                </div>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="w-full text-left">
+                    <thead class="bg-slate-50 text-[10px] font-black uppercase text-slate-400">
+                        <tr><th class="px-3 py-2">Nama</th><th class="px-3 py-2">Departemen</th><th class="px-3 py-2">Tgl Bergabung</th><th class="px-3 py-2">Progres Onboarding</th><th class="px-3 py-2 text-center">Status</th><th class="px-3 py-2 text-center">Aksi</th></tr>
+                    </thead>
+                    <tbody>${rows}</tbody>
+                </table>
+            </div>
+        </div>`;
+    }).join("");
+
+    window.setPage(`
+        <h1 class="text-xl font-black text-slate-800 mb-1">Penjadwalan Onboarding</h1>
+        <p class="text-sm text-slate-500 mb-5">Batch/target peserta training onboarding dihitung otomatis dari departemen &amp; tanggal join karyawan.</p>
+        ${configHtml}
+        <div class="text-xs text-slate-400 mb-3"><i class="fas fa-circle-info mr-1"></i> Sales &amp; Marketing: siklus Selasa-Sabtu (join setelah Selasa masuk batch minggu depan). Departemen lain: 2 siklus/minggu — Rabu-Jumat &amp; Sabtu-Selasa.</div>
+        ${batchCards || '<div class="bg-white rounded-3xl border border-slate-100 shadow-sm p-10 text-center text-slate-400 text-sm">Belum ada karyawan dengan tanggal join yang valid.</div>'}
+    `);
+}
+window.ROUTES["admin/onboarding-schedule"] = requireAdmin(function () { renderOnboardingSchedule(); });
+window.toggleOnboardingScheduleDept = function (dep) {
+    const idx = onboardingScheduleDeptDraft.findIndex(x => x.toLowerCase() === dep.toLowerCase());
+    if (idx >= 0) onboardingScheduleDeptDraft.splice(idx, 1); else onboardingScheduleDeptDraft.push(dep);
+    renderOnboardingSchedule();
+};
 
 function enrollmentOfUser(courseId, userId) {
     return window.STATE.enrollments.find(e => e.courseId === courseId && e.userId === userId) || null;
