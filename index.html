@@ -2015,6 +2015,35 @@ function renderKpiMonthlyChart(stats, token) {
             });
             const pointRadii = stats.monthly.map((v, i) => v === null ? 0 : ((stats.best && i === stats.best.i) || (stats.worst && i === stats.worst.i) ? 6 : 3.5));
 
+            // Plugin custom buat nampilin angka nilai KPI persis di atas tiap titik chart.
+            // Ukuran font-nya nyesuain lebar canvas real-time (jadi otomatis lebih kecil di
+            // HP yang layarnya sempit, dan lebih besar/jelas di layar laptop/desktop).
+            const kpiValueLabelPlugin = {
+                id: "kpiValueLabelPlugin",
+                afterDatasetsDraw(chart) {
+                    const { ctx } = chart;
+                    const meta = chart.getDatasetMeta(0);
+                    const dataset = chart.data.datasets[0];
+                    const w = chart.width || 0;
+                    // Breakpoint kasar: <380px (HP kecil), <640px (HP/tablet), sisanya (laptop/desktop)
+                    const fontSize = w < 380 ? 8 : w < 640 ? 9.5 : 11.5;
+                    ctx.save();
+                    ctx.textAlign = "center";
+                    ctx.textBaseline = "bottom";
+                    meta.data.forEach((point, i) => {
+                        const value = dataset.data[i];
+                        if (value === null || typeof value === "undefined") return;
+                        const isHighlight = (stats.best && i === stats.best.i) || (stats.worst && i === stats.worst.i);
+                        ctx.fillStyle = (stats.best && i === stats.best.i) ? "#10b981"
+                            : (stats.worst && i === stats.worst.i) ? "#f43f5e"
+                            : "#334155";
+                        ctx.font = `bold ${isHighlight ? fontSize + 1 : fontSize}px 'Helvetica Neue', Arial, sans-serif`;
+                        ctx.fillText(`${value}%`, point.x, point.y - 8);
+                    });
+                    ctx.restore();
+                }
+            };
+
             __kpiChartInstance = new Chart(ctx, {
                 type: "line",
                 data: {
@@ -2035,9 +2064,13 @@ function renderKpiMonthlyChart(stats, token) {
                         pointHoverRadius: 7,
                     }]
                 },
+                plugins: [kpiValueLabelPlugin],
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
+                    layout: {
+                        padding: { top: 18 }
+                    },
                     interaction: { intersect: false, mode: "index" },
                     plugins: {
                         legend: { display: false },
