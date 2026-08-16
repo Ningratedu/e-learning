@@ -127,7 +127,14 @@ tailwind.config = { darkMode: "class" };
     #boot-loader, #boot-loader * { animation: none !important; }
 }
 
-body { font-family: 'Plus Jakarta Sans', sans-serif; background: #dbe8fb; }
+body {
+    font-family: 'Plus Jakarta Sans', sans-serif;
+    background-color: #f4f5fa;
+    background-image:
+        radial-gradient(circle at 12% 0%, rgba(99,102,241,.07), transparent 42%),
+        radial-gradient(circle at 100% 100%, rgba(129,140,248,.06), transparent 45%);
+    background-attachment: fixed;
+}
 
 .auth-bg {
     background: radial-gradient(circle at 50% 32%, #1e1b4b 0%, #100c2e 45%, #0b0f1e 75%, #060810 100%);
@@ -1830,13 +1837,22 @@ function courseCoverStyleSafe(c) {
 // (Training Diikuti / Selesai / Terdaftar / Sertifikat), lengkap dengan tombol
 // aksi "Lanjutkan" atau "Lihat Kembali" per item.
 function clickableStatCard(icon, color, value, label, onclick) {
-    const map = { indigo: "bg-indigo-50 text-indigo-600", emerald: "bg-emerald-50 text-emerald-600", amber: "bg-amber-50 text-amber-600", rose: "bg-rose-50 text-rose-600", violet: "bg-violet-50 text-violet-600" };
+    const c = DONUT_STAT_COLORS[color] || DONUT_STAT_COLORS.indigo;
+    const tag = onclick ? "button" : "div";
+    const attrs = onclick ? ` type="button" onclick="${onclick}"` : "";
     return `
-    <button type="button" onclick="${onclick}" class="text-left w-full bg-white rounded-3xl border border-slate-100 shadow-sm p-4 flex items-center gap-3 hover:shadow-md hover:border-indigo-200 hover:-translate-y-0.5 active:translate-y-0 transition-all cursor-pointer">
-        <div class="w-11 h-11 rounded-2xl ${map[color]} flex items-center justify-center shrink-0"><i class="fas ${icon}"></i></div>
-        <div class="flex-1 min-w-0"><p class="text-xl font-black text-slate-800 leading-none">${value}</p><p class="text-[11px] text-slate-400 font-semibold mt-1">${label}</p></div>
-        <i class="fas fa-chevron-right text-slate-300 text-xs shrink-0"></i>
-    </button>`;
+    <${tag}${attrs} class="text-left w-full bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden flex items-stretch${onclick ? " hover:shadow-md hover:border-indigo-200 hover:-translate-y-0.5 active:translate-y-0 transition-all cursor-pointer" : ""}">
+        <div class="shrink-0 w-[72px] bg-slate-900 flex items-center justify-center py-3">
+            <div class="w-11 h-11 rounded-2xl flex items-center justify-center" style="background:${c.hex}26;"><i class="fas ${icon} text-lg" style="color:${c.hex}"></i></div>
+        </div>
+        <div class="flex-1 min-w-0 p-3.5 flex items-center justify-between gap-2">
+            <div class="min-w-0">
+                <p class="text-xl font-black text-slate-800 leading-none">${value}</p>
+                <p class="text-[11px] text-slate-400 font-semibold mt-1 truncate">${label}</p>
+            </div>
+            ${onclick ? '<i class="fas fa-chevron-right text-slate-300 text-xs shrink-0"></i>' : ""}
+        </div>
+    </${tag}>`;
 }
 
 // Varian clickableStatCard yang menampilkan PERSENTASE sebagai angka utama, plus nilai
@@ -5450,24 +5466,7 @@ const DONUT_STAT_COLORS = {
 function donutStatCard(icon, color, x, y, label, onclick) {
     const c = DONUT_STAT_COLORS[color] || DONUT_STAT_COLORS.indigo;
     const pct = y > 0 ? Math.round((x / y) * 100) : 0;
-    const dash = Math.max(0, Math.min(100, pct));
-    const tag = onclick ? "button" : "div";
-    const attrs = onclick ? ` type="button" onclick="${onclick}"` : "";
-    return `
-    <${tag}${attrs} class="text-left w-full bg-white rounded-3xl border border-slate-100 shadow-sm p-4 flex items-center gap-3${onclick ? " hover:shadow-md hover:border-indigo-200 hover:-translate-y-0.5 active:translate-y-0 transition-all cursor-pointer" : ""}">
-        <div class="relative w-14 h-14 shrink-0">
-            <svg viewBox="0 0 36 36" class="w-14 h-14 -rotate-90">
-                <circle class="${c.track}" stroke="currentColor" stroke-width="4" fill="none" cx="18" cy="18" r="15.9155"></circle>
-                <circle stroke="${c.hex}" stroke-width="4" fill="none" stroke-linecap="round" stroke-dasharray="${dash} ${100 - dash}" stroke-dashoffset="25" cx="18" cy="18" r="15.9155"></circle>
-            </svg>
-            <div class="absolute inset-0 flex items-center justify-center"><span class="text-[11px] font-black ${c.text}">${pct}%</span></div>
-        </div>
-        <div class="min-w-0">
-            <div class="w-7 h-7 rounded-lg ${c.bg} flex items-center justify-center mb-1"><i class="fas ${icon} ${c.text} text-[11px]"></i></div>
-            <p class="text-[11px] text-slate-400 font-semibold truncate">${label}</p>
-            <p class="text-[10px] ${c.text} font-bold mt-0.5">${x}/${y} karyawan</p>
-        </div>
-    </${tag}>`;
+    return diagramStatCardDark(icon, color, donutDiagramSvg(pct, c.hex), label, `${x}/${y} karyawan`, onclick);
 }
 // Hitung status onboarding SETIAP karyawan (Selesai / On Progress / Belum Mulai), pakai
 // logika sama seperti window.buildOnboardingBatches: "selesai" = punya sertifikat untuk
