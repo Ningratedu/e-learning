@@ -992,9 +992,13 @@ window.toggleSidebar = function () {
         const sidebar = document.getElementById("sidebar");
         sidebar?.classList.toggle("sidebar-mini");
         // Label brand baru kelihatan lagi (display:none -> block) begitu sidebar-mini
-        // dilepas, jadi lebarnya baru bisa diukur ulang setelah itu.
+        // dilepas, jadi lebarnya baru bisa diukur ulang setelah itu. TAPI #sidebar masih
+        // ber-transisi lebar (.2s) saat ini — kalau diukur SEKARANG juga, elemen brand
+        // (flex child) masih sempat "kepepet" flex-shrink oleh lebar sidebar yang belum
+        // final, jadi hasil ukurnya lebih kecil dari seharusnya. Makanya dipanggil lewat
+        // scheduleBrandTextAdjust() supaya nunggu transisi kelar dulu baru dihitung.
         if (!sidebar?.classList.contains("sidebar-mini")) {
-            window.adjustBrandTextSize && window.adjustBrandTextSize();
+            window.scheduleBrandTextAdjust && window.scheduleBrandTextAdjust();
         }
     } else {
         const sidebar = document.getElementById("sidebar");
@@ -1021,6 +1025,9 @@ document.getElementById("sidebar-nav")?.addEventListener("click", function (e) {
         e.preventDefault();
         e.stopPropagation();
         sidebar.classList.remove("sidebar-mini");
+        // Sama seperti toggleSidebar(): tunggu transisi lebar sidebar kelar dulu baru
+        // ukur ulang teks logo, biar gak kepepet flex-shrink pas masih animasi.
+        window.scheduleBrandTextAdjust && window.scheduleBrandTextAdjust();
     }
 }, true);
 
@@ -1058,6 +1065,18 @@ window.adjustBrandTextSize = function () {
     // baris teks ada di dalam flex-col h-9 justify-center yang sudah menjamin itu).
     const newSize = baseSize * (taglineWidth / titleWidth) * 0.94;
     title.style.fontSize = newSize + "px";
+};
+// Versi "aman transisi" dari adjustBrandTextSize(): dipakai tiap kali sidebar BARU SAJA
+// di-expand (mini -> penuh), karena lebar #sidebar butuh .2s buat animasi ke ukuran
+// finalnya (lihat CSS "transition: width .2s ease" di #sidebar). Kalau diukur pas masih
+// animasi, elemen brand (anak flex) bisa sempat kepepet/flex-shrink oleh lebar sidebar
+// yang belum final, jadi hasil ukurnya keliru (lebih kecil). requestAnimationFrame x2
+// dipakai sebagai jaring pengaman awal (jaga2 sebelum browser mulai transisi), lalu
+// setTimeout menunggu sampai lewat durasi transisi baru menghitung ukuran final.
+window.scheduleBrandTextAdjust = function () {
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+        setTimeout(() => window.adjustBrandTextSize && window.adjustBrandTextSize(), 220);
+    }));
 };
 if (document.fonts && document.fonts.ready) {
     document.fonts.ready.then(() => window.adjustBrandTextSize());
@@ -1227,7 +1246,7 @@ window.enterApp = function () {
     } else {
         window.openMobileSidebar();
     }
-    window.adjustBrandTextSize && window.adjustBrandTextSize();
+    window.scheduleBrandTextAdjust ? window.scheduleBrandTextAdjust() : (window.adjustBrandTextSize && window.adjustBrandTextSize());
 };
 
 window.renderSidebar = function () {
@@ -3445,7 +3464,11 @@ function renderCourseAdminList() {
     const rows = sorted.map((c, i) => {
         const enrolledCount = window.STATE.enrollments.filter(e=>e.courseId===c.id).length;
         const completedCount = window.STATE.certificates.filter(cert => cert.type === "course" && cert.courseId === c.id).length;
-        const completedPct = enrolledCount ? Math.round((completedCount / enrolledCount) * 100) : 0;
+        // Pakai Math.floor, BUKAN Math.round: kalau dibulatkan (round), training yang
+        // misalnya baru 199 dari 200 peserta selesai (99.5%) bisa kebulet jadi tampil
+        // "100%" — padahal senyatanya belum semua kelar. Math.floor memastikan label
+        // 100% cuma muncul kalau BENERAN completedCount == enrolledCount.
+        const completedPct = enrolledCount ? Math.floor((completedCount / enrolledCount) * 100) : 0;
         return `
         <tr class="border-b border-slate-50 hover:bg-slate-50/60">
             <td class="px-3 py-3">
