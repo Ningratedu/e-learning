@@ -173,7 +173,7 @@ html.dark .corevalue-shell {
 .corevalue-cursor { display: inline-block; margin-left: 1px; color: #2563EB; animation: cvBlink 1s steps(1) infinite; }
 @keyframes cvBlink { 50% { opacity: 0; } }
 
-#corevalue-ticker { position: relative; height: 1.5rem; }
+#corevalue-ticker { position: relative; height: 1.5rem; overflow: hidden; }
 .corevalue-item {
     position: absolute; inset: 0;
     display: flex; align-items: center; gap: .5rem;
@@ -215,6 +215,7 @@ html.dark .corevalue-shell {
     background-size: 200% auto;
     -webkit-background-clip: text; background-clip: text; color: transparent;
     animation: cvShimmer 2.4s linear infinite;
+    flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis;
 }
 @keyframes cvShimmer { to { background-position: -200% center; } }
 
@@ -347,7 +348,7 @@ html.dark .corevalue-wire { background: rgba(96, 165, 250, .2); }
                     <div class="flex items-center gap-1.5 sm:gap-3">
                         <i class="fas fa-bolt text-[9px] sm:text-[11px] corevalue-icon shrink-0"></i>
                         <span class="hidden sm:inline text-[9px] font-black uppercase tracking-[0.2em] text-slate-400 shrink-0">Core Value<span class="corevalue-cursor">_</span></span>
-                        <div id="corevalue-ticker" class="relative w-[105px] sm:w-[230px] shrink-0">
+                        <div id="corevalue-ticker" class="relative w-[135px] sm:w-[230px] shrink min-w-0">
                             <span class="corevalue-item" style="animation-delay:0s">
                                 <span class="corevalue-badge" style="--cv-c:#2563EB">1</span>
                                 <span class="corevalue-text" style="--cv-g1:#93C5FD;--cv-g2:#1E3A8A">PROAKTIF</span>
