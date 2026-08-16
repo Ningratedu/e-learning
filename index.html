@@ -772,6 +772,21 @@ function trainingInviteAttendBadgeHtml(t) {
     return `<span class="text-[10px] font-bold px-2 py-1 rounded-full bg-slate-100 text-slate-500 inline-flex items-center gap-1 shrink-0"><i class="fas fa-users"></i>${trainingInvitedCount(t)} diundang</span>
             <span class="text-[10px] font-bold px-2 py-1 rounded-full bg-slate-100 text-slate-500 inline-flex items-center gap-1 shrink-0"><i class="fas fa-user-check"></i>${trainingAttendedCountSafe(t.id)} hadir</span>`;
 }
+// Badge % Kehadiran (X hadir / Y target diundang) & % Kelulusan (X lulus / Y hadir), rumus sama
+// persis dengan Laporan Keterlaksanaan per-training (lihat renderTrainingReport) — dipakai di
+// tabel Kelola Training TNA biar admin langsung lihat capaian tanpa buka laporan detail.
+function trainingAttendancePctBadgeHtml(t) {
+    const target = trainingInvitedCount(t);
+    const attended = trainingAttendedCountSafe(t.id);
+    const pct = target ? Math.round((attended / target) * 100) : 0;
+    return `<span class="text-[10px] font-bold px-2 py-1 rounded-full bg-emerald-50 text-emerald-600 inline-flex items-center gap-1 shrink-0"><i class="fas fa-chart-simple"></i>Kehadiran ${pct}% (${attended}/${target})</span>`;
+}
+function trainingPassPctBadgeHtml(t) {
+    const attended = trainingAttendedCountSafe(t.id);
+    const passCount = window.STATE.certificates.filter(c => c.trainingId === t.id).length;
+    const pct = attended ? Math.round((passCount / attended) * 100) : 0;
+    return `<span class="text-[10px] font-bold px-2 py-1 rounded-full bg-amber-50 text-amber-600 inline-flex items-center gap-1 shrink-0"><i class="fas fa-graduation-cap"></i>Kelulusan ${pct}% (${passCount}/${attended})</span>`;
+}
 // Ubah status sesi training (admin). Cuma boleh dipanggil dari sisi admin (tombol-tombolnya
 // juga cuma dirender di halaman admin), tapi tetap dijaga field-nya biar aman.
 window.setTrainingSessionStatus = async function (id, status) {
@@ -3450,7 +3465,17 @@ function renderTrainingAdminList() {
             : `<button onclick="window.guardedClick(this, () => window.setTrainingSessionStatus('${t.id}','ongoing'))" class="text-[10px] font-black px-2.5 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-500 transition"><i class="fas fa-rotate-left mr-1"></i>Buka Lagi</button>`;
         return `
         <tr class="border-b border-slate-50 hover:bg-slate-50/60">
-            <td class="px-3 py-3"><p class="font-bold text-slate-700 text-sm">${window.escapeHtml(t.title)}</p><p class="text-[11px] text-slate-400">${window.fmtDate(t.date)} • ${window.escapeHtml(t.location||'-')} • <i class="fas fa-user-tie"></i> ${window.escapeHtml(t.trainer||'-')} • ${(t.modules||[]).length} modul</p><p class="text-[10px] font-bold text-amber-600 mt-0.5"><i class="fas fa-users mr-1"></i>${window.escapeHtml(window.trainingScopeLabel(t))}</p></td>
+            <td class="px-3 py-3">
+                <p class="font-bold text-slate-700 text-sm">${window.escapeHtml(t.title)}</p>
+                <p class="text-[11px] text-slate-400">${window.fmtDate(t.date)} • ${window.escapeHtml(t.location||'-')} • <i class="fas fa-user-tie"></i> ${window.escapeHtml(t.trainer||'-')} • ${(t.modules||[]).length} modul</p>
+                <p class="text-[10px] font-bold text-amber-600 mt-0.5"><i class="fas fa-users mr-1"></i>${window.escapeHtml(window.trainingScopeLabel(t))}</p>
+                <div class="flex items-center gap-1.5 mt-2 flex-wrap">
+                    ${trainingSessionBadgeHtml(t)}
+                    ${trainingInviteAttendBadgeHtml(t)}
+                    ${trainingAttendancePctBadgeHtml(t)}
+                    ${trainingPassPctBadgeHtml(t)}
+                </div>
+            </td>
             <td class="px-3 py-3 text-center">
                 <div class="flex flex-col items-center gap-1.5">
                     ${trainingSessionBadgeHtml(t)}
@@ -3943,14 +3968,15 @@ function renderTrainingReport(id) {
     if (!t) { window.setPage(`<p class="text-center text-slate-400 py-20">Training tidak ditemukan.</p><a href="#/admin/trainings" class="block text-center text-xs font-bold text-amber-600 hover:underline">Kembali ke Kelola Training TNA</a>`); return; }
 
     const regs = window.STATE.trainingRegs.filter(r => r.trainingId === id && r.status !== "cancelled");
-    const registeredCount = regs.length;
 
     const hasScope = !!(t.participants && t.participants.mode && t.participants.mode !== "all");
     const targetEmployees = window.trainingTargetEmployees(t);
-    // Penyebut (denominator) persentase: kalau training punya target peserta spesifik, pakai
-    // jumlah target itu. Kalau terbuka untuk semua (mode "all"/lama), pakai jumlah yang
-    // terdaftar (karena tidak ada "target" pasti buat training terbuka).
-    const targetCount = hasScope ? targetEmployees.length : registeredCount;
+    // Penyebut (denominator) Keterlaksanaan/Kehadiran (Y) = jumlah target peserta sesuai
+    // penugasan admin (window.trainingTargetEmployees), SELALU — bukan jumlah yang terdaftar.
+    // Kalau scope-nya "Semua Karyawan" (mode "all"/lama), trainingTargetEmployees() sudah
+    // otomatis mengembalikan SELURUH karyawan, jadi Y = total karyawan, konsisten dengan badge
+    // "X diundang" di kartu jadwal (lihat trainingInvitedCount).
+    const targetCount = targetEmployees.length;
 
     // ---- Kehadiran ----
     const attendanceRecords = window.STATE.attendance.filter(a => a.trainingId === id);
@@ -4105,7 +4131,7 @@ function renderTrainingReport(id) {
         </div>
 
         <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
-            ${statCard("fa-users", "indigo", targetCount, hasScope ? "Jumlah Target Peserta" : "Jumlah Peserta Terdaftar")}
+            ${statCard("fa-users", "indigo", targetCount, "Jumlah Target Peserta")}
             ${statCard("fa-user-check", "emerald", `${attendedCount} (${attendancePct}%)`, "Kehadiran (Jumlah & %)")}
             ${statCard("fa-graduation-cap", "amber", `${passCount} (${passPct}%)`, "Kelulusan (dari yang Hadir)")}
             ${statCard("fa-star", "rose", avgRating !== null ? avgRating + "/5" : "-", "Rata-rata Rating Feedback")}
@@ -5076,14 +5102,16 @@ window.openReportDetail = function (type) {
     else if (type === "tna") {
         titleEl.innerHTML = `<i class="fas fa-chalkboard-user mr-1"></i> Semua Training TNA`;
         const rows = [...window.STATE.trainings].sort((a, b) => new Date(b.date) - new Date(a.date)).map(t => {
-            const hasScope = !!(t.participants && t.participants.mode && t.participants.mode !== "all");
             const targetEmployees = window.trainingTargetEmployees(t);
-            const regs = window.STATE.trainingRegs.filter(r => r.trainingId === t.id && r.status !== "cancelled");
-            const targetCount = hasScope ? targetEmployees.length : regs.length;
+            // Y Keterlaksanaan/Kehadiran = jumlah target peserta sesuai assign admin (kalau
+            // mode "all"/semua departemen, trainingTargetEmployees() = seluruh karyawan).
+            const targetCount = targetEmployees.length;
             const attendedCount = window.STATE.attendance.filter(a => a.trainingId === t.id).length;
             const attendancePct = targetCount ? Math.round((attendedCount / targetCount) * 100) : 0;
             const passCount = window.STATE.certificates.filter(c => c.trainingId === t.id).length;
-            const passPct = targetCount ? Math.round((passCount / targetCount) * 100) : 0;
+            // Y Kelulusan = jumlah yang HADIR (attendedCount), bukan jumlah target/diundang —
+            // konsisten dengan rumus di Laporan Keterlaksanaan per-training (renderTrainingReport).
+            const passPct = attendedCount ? Math.round((passCount / attendedCount) * 100) : 0;
             return `
             <div class="p-3 rounded-2xl border border-slate-100 hover:bg-amber-50/40 transition">
                 <p class="text-sm font-bold text-slate-700 truncate">${window.escapeHtml(t.title)}</p>
