@@ -991,6 +991,11 @@ window.toggleSidebar = function () {
     if (isDesktop) {
         const sidebar = document.getElementById("sidebar");
         sidebar?.classList.toggle("sidebar-mini");
+        // Label brand baru kelihatan lagi (display:none -> block) begitu sidebar-mini
+        // dilepas, jadi lebarnya baru bisa diukur ulang setelah itu.
+        if (!sidebar?.classList.contains("sidebar-mini")) {
+            window.adjustBrandTextSize && window.adjustBrandTextSize();
+        }
     } else {
         const sidebar = document.getElementById("sidebar");
         if (sidebar?.classList.contains("sidebar-mobile-open")) window.closeMobileSidebar();
@@ -1000,6 +1005,7 @@ window.toggleSidebar = function () {
 window.openMobileSidebar = function () {
     document.getElementById("sidebar")?.classList.add("sidebar-mobile-open");
     document.getElementById("sidebar-overlay")?.classList.remove("hide");
+    window.adjustBrandTextSize && window.adjustBrandTextSize();
 };
 window.closeMobileSidebar = function () {
     document.getElementById("sidebar")?.classList.remove("sidebar-mobile-open");
@@ -1038,18 +1044,26 @@ window.adjustBrandTextSize = function () {
     const title = document.getElementById("brand-title");
     const tagline = document.getElementById("brand-tagline");
     if (!title || !tagline) return;
+    // Kalau sidebar lagi mini (label disembunyikan via display:none), lebarnya akan
+    // kebaca 0 — jangan hitung ulang sekarang, tunggu sampai sidebar full lagi.
+    if (title.getClientRects().length === 0) return;
     title.style.fontSize = ""; // reset ke ukuran awal (Tailwind text-lg) sebelum dihitung ulang
     const taglineWidth = tagline.getBoundingClientRect().width;
     const titleWidth = title.getBoundingClientRect().width;
     if (!taglineWidth || !titleWidth) return;
     const baseSize = parseFloat(getComputedStyle(title).fontSize);
-    const newSize = baseSize * (taglineWidth / titleWidth);
+    // Faktor 0.94 supaya "NingratEdu" sedikit lebih kecil, bukan mepet pas-pasan
+    // dengan lebar tagline — jadi terlihat lebih rapi sekaligus tetap center
+    // secara vertikal terhadap tinggi logo di sampingnya (lihat markup: kedua
+    // baris teks ada di dalam flex-col h-9 justify-center yang sudah menjamin itu).
+    const newSize = baseSize * (taglineWidth / titleWidth) * 0.94;
     title.style.fontSize = newSize + "px";
 };
 if (document.fonts && document.fonts.ready) {
     document.fonts.ready.then(() => window.adjustBrandTextSize());
 }
 window.addEventListener("load", () => window.adjustBrandTextSize());
+window.addEventListener("resize", () => window.adjustBrandTextSize());
 
 // ================= ROUTER (hash based) =================
 window.ROUTES = {}; // path -> render function
@@ -1805,16 +1819,12 @@ window.printCertificate = function (certId) {
     const trainingRef = isTraining ? window.STATE.trainings.find(t => t.id === c.trainingId) : null;
     const trainerName = trainingRef?.trainer || "";
     const issuedDate = window.fmtDate(c.issuedAt);
-    // Siluet gedung sederhana (dekorasi bawah, dibuat dari div, bukan gambar) — meniru
-    // aksen skyline kota tipis-transparan seperti pada desain referensi.
-    const SKYLINE_BUILDINGS = [18,34,24,46,30,58,22,40,52,28,44,20,36,26,48,32]
-        .map((h, i) => `<div class="bld" style="height:${h}px;width:${100/16}%;"></div>`).join("");
     const win = window.open("", "_blank");
     win.document.write(`
     <html><head><title>Sertifikat - ${window.escapeHtml(c.title)}</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Alex+Brush&family=EB+Garamond:ital,wght@0,400;0,500;0,600;1,500&family=Playfair+Display:wght@700;800;900&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Alex+Brush&family=EB+Garamond:ital,wght@0,400;0,500;0,600;0,700;1,500&family=Playfair+Display:wght@700;800;900&display=swap" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.7.2/css/all.min.css" rel="stylesheet">
     <style>
         * { box-sizing: border-box; }
@@ -1824,126 +1834,138 @@ window.printCertificate = function (certId) {
             background: radial-gradient(circle at 50% 0%, #1c2541 0%, #0b1120 60%, #060a14 100%);
             display:flex; align-items:center; justify-content:center; min-height:100vh; padding:32px;
         }
-        .cert-wrap{ position:relative; width:1100px; max-width:96vw; }
+        .cert-wrap{ position:relative; width:1150px; max-width:96vw; }
 
-        /* ===== Bingkai luar navy + pita emas diagonal di dua sudut ===== */
+        /* ===== Bingkai luar navy dengan garis emas tipis di dalamnya ===== */
         .cert-outer{
-            position:relative; background:linear-gradient(160deg,#182a5c,#0e1c40 55%,#0a1633);
-            padding:20px; border-radius:8px; overflow:hidden;
+            position:relative; background:linear-gradient(160deg,#16234a 0%,#0e1c3d 55%,#0a1633 100%);
+            padding:16px 16px 66px; border-radius:6px; overflow:hidden;
             box-shadow: 0 30px 80px rgba(0,0,0,.55);
         }
-        .gold-ribbon{
-            position:absolute; height:52px; width:170%;
-            background:linear-gradient(100deg,#8a6b26 0%,#e9cf87 18%,#caa542 32%,#fff6d9 50%,#caa542 68%,#e9cf87 82%,#8a6b26 100%);
-            box-shadow:0 3px 10px rgba(0,0,0,.35);
+        .cert-outer:before{
+            content:''; position:absolute; inset:6px; border:1px solid rgba(202,165,66,.55); border-radius:3px;
+            pointer-events:none; z-index:3;
         }
-        .gold-ribbon.r1{ top:64px; right:-380px; transform:rotate(32deg); }
-        .gold-ribbon.r2{ bottom:64px; left:-380px; transform:rotate(32deg); }
-        .corner-mark{ position:absolute; width:26px; height:26px; z-index:3; opacity:.9; }
-        .corner-mark:before, .corner-mark:after{ content:''; position:absolute; background:#e9cf87; }
+
+        /* Dekorasi sudut: gelombang navy + pita emas diagonal, di kiri-atas dan kanan-bawah */
+        .corner-decor{ position:absolute; width:380px; height:380px; overflow:hidden; pointer-events:none; z-index:1; }
+        .corner-decor.tl{ top:-120px; left:-120px; }
+        .corner-decor.br{ bottom:-120px; right:-120px; transform:rotate(180deg); }
+        .corner-decor .swoosh{
+            position:absolute; width:600px; height:230px; top:70px; left:-90px; transform:rotate(-36deg);
+            background:linear-gradient(120deg,#0a1633 0%,#16234a 45%,#20336b 75%,#0a1633 100%);
+            border-radius:0 0 55% 0;
+        }
+        .corner-decor .ribbon{
+            position:absolute; width:640px; height:32px; top:158px; left:-110px; transform:rotate(-36deg);
+            background:linear-gradient(100deg,#7a5c1f 0%,#e9cf87 20%,#caa542 38%,#fff6d9 52%,#caa542 66%,#e9cf87 82%,#7a5c1f 100%);
+            box-shadow:0 3px 10px rgba(0,0,0,.3);
+        }
+
+        /* ===== Kartu putih/krem di dalam bingkai ===== */
+        .cert-card{
+            position:relative; z-index:2; background:#fdfbf6; border-radius:2px;
+            padding:44px 64px 40px; overflow:hidden;
+        }
+        .corner-mark{ position:absolute; width:30px; height:30px; z-index:4; opacity:.9; }
+        .corner-mark:before, .corner-mark:after{ content:''; position:absolute; background:#caa542; }
         .corner-mark:before{ width:100%; height:1.5px; top:0; left:0; }
         .corner-mark:after{ width:1.5px; height:100%; top:0; left:0; }
-        .corner-mark.tl{ top:12px; left:12px; }
-        .corner-mark.tr{ top:12px; right:12px; transform:scaleX(-1); }
-        .corner-mark.bl{ bottom:12px; left:12px; transform:scaleY(-1); }
-        .corner-mark.br{ bottom:12px; right:12px; transform:scale(-1,-1); }
+        .corner-mark.tl{ top:16px; left:16px; }
+        .corner-mark.tr{ top:16px; right:16px; transform:scaleX(-1); }
+        .corner-mark.bl{ bottom:16px; left:16px; transform:scaleY(-1); }
+        .corner-mark.br{ bottom:16px; right:16px; transform:scale(-1,-1); }
 
-        /* ===== Kartu putih/cream di dalam bingkai ===== */
-        .cert-card{
-            position:relative; background:#fdfbf5; border-radius:3px;
-            padding:46px 60px 38px; overflow:hidden;
-            box-shadow: inset 0 0 0 1px rgba(202,165,66,.5);
-        }
-        .cert-card:before{
-            content:''; position:absolute; inset:9px; border:1px solid rgba(202,165,66,.55); pointer-events:none;
-        }
-        .skyline{ position:absolute; left:0; right:0; bottom:0; height:58px; display:flex; align-items:flex-end;
-            opacity:.06; z-index:0; }
-        .skyline .bld{ background:#16234a; margin:0 1px; }
         .cert-content{ position:relative; z-index:1; text-align:center; }
 
-        .cert-logos{
-            display:flex; align-items:center; justify-content:center; gap:18px; margin-bottom:26px;
-        }
-        .cert-logos img{ height:42px; width:auto; object-fit:contain; display:block; }
-        .cert-logos .logo-td{ height:58px; }
-        .logo-divider{ width:1px; height:34px; background:rgba(22,35,74,.35); }
+        .cert-logos{ display:flex; align-items:center; justify-content:center; gap:16px; margin-bottom:20px; }
+        .cert-logos img{ height:40px; width:auto; object-fit:contain; display:block; }
+        .cert-logos .logo-tg{ height:46px; }
+        .logo-divider{ width:1px; height:32px; background:rgba(22,35,74,.3); }
 
         .cert-title{
-            font-family:'Playfair Display', serif; font-weight:900; font-size:78px; letter-spacing:5px;
-            line-height:1; margin:0; text-shadow: 0 4px 3px rgba(0,0,0,.14);
-            background:linear-gradient(180deg,#223466 0%,#16234a 55%,#0c1633 100%);
-            -webkit-background-clip:text; background-clip:text; color:transparent;
+            font-family:'Playfair Display', serif; font-weight:900; font-size:66px; letter-spacing:10px;
+            line-height:1; margin:14px 0 4px; color:#16234a;
         }
-
-        .ribbon-badge{
-            position:relative; display:inline-block; margin:14px auto 24px;
-            background:linear-gradient(180deg,#f6e6ab,#caa542 55%,#8a6b26);
-            padding:9px 40px; clip-path: polygon(2.5% 0,97.5% 0,100% 50%,97.5% 100%,2.5% 100%,0 50%);
-            box-shadow:0 4px 10px rgba(0,0,0,.2);
-        }
-        .ribbon-badge span{
-            font-family:'Playfair Display', serif; font-weight:700; letter-spacing:7px; font-size:15px;
-            color:#16234a;
-        }
-
-        .presented-to{
-            font-family:'EB Garamond', serif; font-weight:600; letter-spacing:3.5px; font-size:14px;
-            color:#16234a; margin:0 0 6px; text-transform:uppercase;
+        .diberikan{
+            font-family:'EB Garamond', serif; font-weight:600; letter-spacing:5px; font-size:13px;
+            color:#b7902f; text-transform:uppercase; margin:0 0 8px;
         }
         .cert-name{
-            font-family:'Alex Brush', cursive; font-weight:400; font-size:60px; color:#16234a;
-            margin:8px 0 6px; line-height:1;
+            font-family:'Alex Brush', cursive; font-weight:400; font-size:52px; color:#16234a;
+            margin:2px 0 10px; line-height:1;
         }
-        .mini-divider{ display:flex; align-items:center; justify-content:center; gap:12px; width:300px; margin:8px auto 22px; }
+        .mini-divider{ display:flex; align-items:center; justify-content:center; gap:10px; width:340px; margin:0 auto 18px; }
         .mini-divider .dline{ flex:1; height:1px; background:#c9b27a; }
-        .mini-divider .dot{ width:8px; height:8px; background:#c9b27a; transform:rotate(45deg); flex-shrink:0; }
+        .mini-divider .dot{ width:7px; height:7px; background:#c9b27a; transform:rotate(45deg); flex-shrink:0; }
 
-        .complete-text{ font-family:'EB Garamond', serif; font-style:italic; font-size:18px; color:#16234a; margin:0 0 16px; }
+        .complete-text{ font-family:'EB Garamond', serif; font-size:16px; color:#3a4a6b; margin:0 0 4px; }
+        .course-name{
+            font-family:'Playfair Display', serif; font-weight:800; letter-spacing:1px; font-size:23px;
+            color:#16234a; text-transform:uppercase; margin:2px 0 8px;
+        }
+        .organizer-text{ font-family:'EB Garamond', serif; font-size:15px; color:#3a4a6b; margin:0 0 22px; line-height:1.5; }
+        .organizer-text b{ color:#16234a; }
 
-        .course-banner{
-            position:relative; margin:6px auto 22px; width:90%; max-width:820px;
-            background:linear-gradient(180deg,#1c2f63,#0c1633);
-            clip-path: polygon(0 0, 96.5% 0, 100% 50%, 96.5% 100%, 0 100%);
-            padding:16px 56px 16px 34px; box-shadow:0 6px 16px rgba(0,0,0,.25);
+        /* ===== Kotak fitur (3 kolom) ===== */
+        .feature-box{
+            display:flex; align-items:stretch; justify-content:center; gap:0;
+            border:1px solid rgba(202,165,66,.55); border-radius:14px; padding:20px 28px; margin:0 auto 22px; max-width:920px;
         }
-        .course-banner:before{
-            content:''; position:absolute; left:-3px; top:0; bottom:0; width:11px;
-            background:linear-gradient(180deg,#f6e6ab,#caa542 55%,#8a6b26);
+        .feature-col{ flex:1; padding:0 18px; }
+        .feature-sep{ width:1px; background:rgba(22,35,74,.18); margin:2px 0; }
+        .feature-icon{
+            width:52px; height:52px; border-radius:50%; margin:0 auto 10px;
+            background:#16234a; display:flex; align-items:center; justify-content:center;
+            box-shadow:0 4px 10px rgba(22,35,74,.35);
         }
-        .course-banner span{
-            font-family:'Playfair Display', serif; font-weight:800; letter-spacing:1.5px; font-size:22px;
-            color:#f0d97e; text-transform:uppercase;
-        }
+        .feature-icon i{ color:#f0d97e; font-size:19px; }
+        .feature-title{ font-family:'EB Garamond', serif; font-weight:700; font-size:13px; letter-spacing:.5px;
+            color:#16234a; text-transform:uppercase; margin-bottom:6px; }
+        .feature-desc{ font-family:'EB Garamond', serif; font-size:12.5px; color:#5b6a8a; line-height:1.45; }
 
-        .organizer-line, .date-line{
-            font-family:'EB Garamond', serif; font-size:15px; color:#16234a;
-            display:flex; align-items:center; justify-content:center; gap:16px; margin:7px 0;
-        }
-        .date-line{ font-style:italic; }
-        .organizer-line .tick, .date-line .tick{ width:30px; height:1px; background:#c9b27a; }
+        .wish-text{ font-family:'EB Garamond', serif; font-size:14.5px; font-style:italic; color:#3a4a6b; margin:0 0 24px; line-height:1.5; }
 
-        .cert-footer{ display:flex; align-items:center; justify-content:center; gap:56px; margin-top:30px; }
-        .medal-wrap{ position:relative; width:88px; height:120px; flex-shrink:0; }
-        .medal-ribbon{ position:absolute; top:52px; width:22px; height:52px; background:#16234a; }
-        .medal-ribbon.left{ left:16px; clip-path:polygon(0 0,100% 0,100% 100%,50% 76%,0 100%); transform:rotate(-8deg); }
-        .medal-ribbon.right{ right:16px; clip-path:polygon(0 0,100% 0,100% 100%,50% 76%,0 100%); transform:rotate(8deg); }
+        /* ===== Footer 3 kolom ===== */
+        .cert-footer{ display:flex; align-items:flex-end; justify-content:space-between; padding-top:6px; }
+        .footer-date{ text-align:left; min-width:200px; }
+        .date-row{ display:flex; align-items:center; gap:8px; }
+        .date-row i{ color:#c9a94a; font-size:15px; }
+        .date-row span{ font-family:'EB Garamond', serif; font-weight:700; font-size:16px; color:#16234a; }
+        .certno{ font-family:'EB Garamond', serif; font-size:11.5px; color:#5b6a8a; margin-top:4px; }
+
+        .medal-wrap{ position:relative; width:78px; height:104px; flex-shrink:0; margin-bottom:-30px; }
+        .medal-ribbon{ position:absolute; top:46px; width:20px; height:56px; background:#16234a; }
+        .medal-ribbon.left{ left:14px; clip-path:polygon(0 0,100% 0,100% 100%,50% 78%,0 100%); transform:rotate(-9deg); }
+        .medal-ribbon.right{ right:14px; clip-path:polygon(0 0,100% 0,100% 100%,50% 78%,0 100%); transform:rotate(9deg); }
         .medal-circle{
-            position:absolute; top:0; left:50%; transform:translateX(-50%); width:84px; height:84px; border-radius:50%;
+            position:absolute; top:0; left:50%; transform:translateX(-50%); width:76px; height:76px; border-radius:50%;
             background:radial-gradient(circle at 35% 30%, #fdf3d0, #e8c465 45%, #caa542 72%, #8a6b26);
             display:flex; align-items:center; justify-content:center;
             box-shadow:0 6px 14px rgba(0,0,0,.25), inset 0 0 0 3px rgba(255,255,255,.4); z-index:2;
         }
-        .medal-circle:before{ content:''; position:absolute; inset:8px; border:1px dashed rgba(74,52,3,.5); border-radius:50%; }
-        .medal-circle i{ color:#16234a; font-size:26px; }
+        .medal-circle:before{ content:''; position:absolute; inset:7px; border:1px dashed rgba(74,52,3,.5); border-radius:50%; }
+        .medal-circle i{ color:#16234a; font-size:22px; }
 
         .sign-block{ text-align:center; min-width:200px; }
-        .signature{ font-family:'Alex Brush', cursive; font-size:36px; color:#16234a; margin-bottom:0; }
-        .sign-line{ width:180px; height:1px; background:#16234a; margin:4px auto 8px; }
-        .sign-name{ font-family:'EB Garamond', serif; font-weight:700; font-size:13.5px; color:#16234a; }
-        .sign-org{ font-family:'EB Garamond', serif; font-size:12.5px; color:#5b5344; margin-top:1px; }
+        .signature{ font-family:'Alex Brush', cursive; font-size:32px; color:#16234a; margin-bottom:-2px; }
+        .sign-line{ width:170px; height:1px; background:#16234a; margin:4px auto 6px; }
+        .sign-name{ font-family:'EB Garamond', serif; font-weight:700; font-size:13px; color:#16234a; }
+        .sign-org{ font-family:'EB Garamond', serif; font-size:12px; color:#5b6a8a; margin-top:1px; }
 
-        .certid{ text-align:center; margin-top:22px; font-size:11px; letter-spacing:2px; color:#8a6b26; position:relative; z-index:1; }
+        .certid{ text-align:center; margin-top:16px; font-size:10.5px; letter-spacing:2px; color:#c9b27a; position:relative; z-index:1; }
+
+        /* Badge LMS di pojok kiri bawah bingkai navy */
+        .lms-badge{
+            position:absolute; left:24px; bottom:16px; z-index:3;
+            display:flex; align-items:center; gap:8px;
+            background:rgba(255,255,255,.08); border:1px solid rgba(255,255,255,.25);
+            border-radius:999px; padding:7px 16px 7px 12px;
+            font-family:'EB Garamond', serif; font-size:12.5px; color:#e7ecf7;
+        }
+        .lms-badge i{ color:#f0d97e; }
+        .lms-badge b{ color:#fff; }
+
         .btnbar{ text-align:center; margin-top:18px; }
         .btnbar button{ font-family:'EB Garamond',serif; font-size:14px; font-weight:600; letter-spacing:1px; color:#0b1120;
             background:linear-gradient(120deg,#e9cf87,#bf9b4a); border:none; padding:10px 26px; border-radius:999px; cursor:pointer; }
@@ -1951,6 +1973,7 @@ window.printCertificate = function (certId) {
         @media print{
             body{ background:#fff; padding:0; }
             .btnbar{ display:none; }
+            .certid{ color:#8a6b26; }
             .cert-outer{ box-shadow:none; width:297mm; border-radius:0; }
             .cert-wrap{ width:297mm; max-width:none; }
         }
@@ -1958,44 +1981,69 @@ window.printCertificate = function (certId) {
     <body>
     <div class="cert-wrap">
         <div class="cert-outer">
-            <div class="gold-ribbon r1"></div>
-            <div class="gold-ribbon r2"></div>
-            <div class="corner-mark tl"></div><div class="corner-mark tr"></div>
-            <div class="corner-mark bl"></div><div class="corner-mark br"></div>
+            <div class="corner-decor tl"><div class="swoosh"></div><div class="ribbon"></div></div>
+            <div class="corner-decor br"><div class="swoosh"></div><div class="ribbon"></div></div>
             <div class="cert-card">
-                <div class="skyline">${SKYLINE_BUILDINGS}</div>
+                <div class="corner-mark tl"></div><div class="corner-mark tr"></div>
+                <div class="corner-mark bl"></div><div class="corner-mark br"></div>
                 <div class="cert-content">
                     <div class="cert-logos">
-                        <img class="logo-tg" src="data:image/png;base64,${TG_LOGO_B64}" alt="Trusmi Group">
-                        <span class="logo-divider"></span>
                         <img class="logo-td" src="data:image/png;base64,${TD_LOGO_B64}" alt="Trusmi Group Training &amp; Development">
+                        <span class="logo-divider"></span>
+                        <img class="logo-tg" src="data:image/png;base64,${TG_LOGO_B64}" alt="Trusmi Group">
                     </div>
-                    <h1 class="cert-title">CERTIFICATE</h1>
-                    <div class="ribbon-badge"><span>OF TRAINING</span></div>
-                    <p class="presented-to">This certificate is proudly presented to</p>
+                    <h1 class="cert-title">SERTIFIKAT</h1>
+                    <p class="diberikan">DIBERIKAN KEPADA</p>
                     <h2 class="cert-name">${window.escapeHtml(displayName)}</h2>
                     <div class="mini-divider"><span class="dline"></span><span class="dot"></span><span class="dline"></span></div>
-                    <p class="complete-text">For successfully completing the training program</p>
-                    <div class="course-banner"><span>${window.escapeHtml(c.title)}</span></div>
-                    <p class="organizer-line"><span class="tick"></span> Organized by Trusmi Group Training &amp; Development <span class="tick"></span></p>
-                    <p class="date-line"><span class="tick"></span> Cirebon, ${issuedDate} <span class="tick"></span></p>
+                    <p class="complete-text">Telah berhasil menyelesaikan program pelatihan</p>
+                    <div class="course-name">${window.escapeHtml(c.title)}</div>
+                    <p class="organizer-text">yang diselenggarakan oleh Trusmi Group Training Development<br>melalui platform <b>NingratEdu</b></p>
+
+                    <div class="feature-box">
+                        <div class="feature-col">
+                            <div class="feature-icon"><i class="fas fa-book-open"></i></div>
+                            <div class="feature-title">Rangkaian Modul</div>
+                            <div class="feature-desc">Peserta telah mempelajari seluruh modul sesuai dengan kurikulum pelatihan.</div>
+                        </div>
+                        <div class="feature-sep"></div>
+                        <div class="feature-col">
+                            <div class="feature-icon"><i class="fas fa-clipboard-check"></i></div>
+                            <div class="feature-title">Materi</div>
+                            <div class="feature-desc">Peserta telah memahami materi yang diberikan dalam setiap modul.</div>
+                        </div>
+                        <div class="feature-sep"></div>
+                        <div class="feature-col">
+                            <div class="feature-icon"><i class="fas fa-briefcase"></i></div>
+                            <div class="feature-title">Penugasan</div>
+                            <div class="feature-desc">Peserta telah menyelesaikan seluruh penugasan dengan baik.</div>
+                        </div>
+                    </div>
+
+                    <p class="wish-text">Semoga ilmu dan keterampilan yang diperoleh dapat memberikan<br>manfaat dan kontribusi terbaik bagi perusahaan.</p>
+
                     <div class="cert-footer">
+                        <div class="footer-date">
+                            <div class="date-row"><i class="fas fa-calendar-days"></i><span>${issuedDate}</span></div>
+                            <div class="certno">No. Sertifikat: ${window.escapeHtml(c.certId)}</div>
+                        </div>
                         <div class="medal-wrap">
                             <div class="medal-ribbon left"></div>
                             <div class="medal-ribbon right"></div>
-                            <div class="medal-circle"><i class="fas fa-award"></i></div>
+                            <div class="medal-circle"><i class="fas fa-star"></i></div>
                         </div>
                         <div class="sign-block">
                             <div class="signature">${trainerName ? window.escapeHtml(trainerName) : "Tim NingratEdu"}</div>
                             <div class="sign-line"></div>
-                            <div class="sign-name">${trainerName ? "Trainer" : "Head of Training &amp; Development"}</div>
+                            <div class="sign-name">${trainerName ? "Trainer" : "Training Manager"}</div>
                             <div class="sign-org">Trusmi Group</div>
                         </div>
                     </div>
-                    <p class="certid">ID SERTIFIKAT&nbsp;: ${window.escapeHtml(c.certId)} &nbsp;&middot;&nbsp; Terverifikasi oleh Sistem NingratEdu LMS</p>
                 </div>
             </div>
+            <div class="lms-badge"><i class="fas fa-graduation-cap"></i><span>Diterbitkan melalui LMS <b>NingratEdu</b></span></div>
         </div>
+        <p class="certid">ID SERTIFIKAT&nbsp;: ${window.escapeHtml(c.certId)} &nbsp;&middot;&nbsp; Terverifikasi oleh Sistem NingratEdu LMS</p>
         <div class="btnbar"><button onclick="window.print()"><i class="fas fa-print" style="margin-right:6px;"></i>Cetak / Simpan sebagai PDF</button></div>
     </div>
     </body></html>`);
