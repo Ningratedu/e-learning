@@ -1131,17 +1131,14 @@ window.enterApp = function () {
 window.renderSidebar = function () {
     const isAdmin = window.sel.isAdmin();
     const nav = [
-        { key: "dashboard", icon: "fa-grid-2", label: "Dashboard" },
+        { key: "dashboard", icon: "fa-gauge-high", label: "Dashboard" },
         { key: "courses", icon: "fa-book-open", label: "Onboarding Training" },
         { key: "trainings", icon: "fa-chalkboard-user", label: "Training By TNA" },
         { key: "certificates", icon: "fa-award", label: "Sertifikat Saya" },
     ];
     const adminNav = [
         { key: "admin/courses", icon: "fa-layer-group", label: "Kelola Onboarding" },
-        { key: "admin/onboarding-schedule", icon: "fa-calendar-week", label: "Penjadwalan Onboarding" },
         { key: "admin/trainings", icon: "fa-calendar-days", label: "Kelola Training TNA" },
-        { key: "admin/assignments", icon: "fa-file-signature", label: "Penilaian Tugas" },
-        { key: "admin/quiz-attempts", icon: "fa-rotate-left", label: "Percobaan Kuis" },
         { key: "admin/employees", icon: "fa-id-card-clip", label: "Data Karyawan" },
         { key: "admin/users", icon: "fa-users-gear", label: "Kelola Akun" },
         { key: "admin/reports", icon: "fa-chart-simple", label: "Laporan" },
@@ -3342,7 +3339,38 @@ function requireAdmin(renderFn) {
 }
 
 // ================= ADMIN: KELOLA ONBOARDING =================
+// ================= TAB NAVIGASI ANTAR SUB-MENU ADMIN =================
+// "Penjadwalan Onboarding" (dulu menu sendiri), "Penilaian Tugas" & "Percobaan Kuis" (dulu 2
+// menu sendiri) sekarang jadi TAB di dalam halaman "Kelola Onboarding" & "Kelola Training TNA"
+// biar sidebar gak kepanjangan. Karena halaman Penilaian Tugas & Percobaan Kuis dipakai bareng
+// oleh Onboarding maupun Training TNA, kita simpan "lagi di konteks yang mana" di variabel ini,
+// di-set tiap kali admin masuk ke salah satu dari 2 menu induk itu, biar pas buka Penilaian
+// Tugas / Percobaan Kuis, baris tab yang tampil tetap nyambung ke menu induknya.
+window.adminNavContext = "onboarding"; // "onboarding" | "tna"
+
+function renderAdminSectionTabs(active) {
+    const ctx = window.adminNavContext === "tna" ? "tna" : "onboarding";
+    const tabs = ctx === "tna" ? [
+        { key: "admin/trainings", icon: "fa-calendar-days", label: "Jadwal Training" },
+        { key: "admin/assignments", icon: "fa-file-signature", label: "Penilaian Tugas" },
+        { key: "admin/quiz-attempts", icon: "fa-rotate-left", label: "Percobaan Kuis" },
+    ] : [
+        { key: "admin/courses", icon: "fa-layer-group", label: "Daftar Training" },
+        { key: "admin/onboarding-schedule", icon: "fa-calendar-week", label: "Penjadwalan Onboarding" },
+        { key: "admin/assignments", icon: "fa-file-signature", label: "Penilaian Tugas" },
+        { key: "admin/quiz-attempts", icon: "fa-rotate-left", label: "Percobaan Kuis" },
+    ];
+    return `
+    <div class="flex items-center gap-1 flex-wrap mb-5 bg-slate-100/70 p-1.5 rounded-2xl w-fit max-w-full">
+        ${tabs.map(t => `
+            <a href="#/${t.key}" class="flex items-center gap-1.5 text-xs font-bold px-3 py-2 rounded-xl transition ${active === t.key ? "bg-white shadow text-indigo-600" : "text-slate-500 hover:text-slate-700"}">
+                <i class="fas ${t.icon}"></i> ${t.label}
+            </a>`).join("")}
+    </div>`;
+}
+
 window.ROUTES["admin/courses"] = requireAdmin(function (id) {
+    window.adminNavContext = "onboarding";
     if (id === "new" || (id && window.STATE.courses.some(c => c.id === id))) { renderCourseBuilder(id === "new" ? null : id); return; }
     renderCourseAdminList();
 });
@@ -3378,6 +3406,7 @@ function renderCourseAdminList() {
         </tr>`).join("");
 
     window.setPage(`
+        ${renderAdminSectionTabs("admin/courses")}
         <div class="flex items-center justify-between mb-5">
             <h1 class="text-xl font-black text-slate-800">Kelola Onboarding</h1>
             <a href="#/admin/courses/new" class="bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold px-4 py-2.5 rounded-2xl"><i class="fas fa-plus mr-1"></i> Training Baru</a>
@@ -3659,6 +3688,7 @@ window.saveCourseDraft = async function () {
 
 // ================= ADMIN: KELOLA TRAINING TNA=================
 window.ROUTES["admin/trainings"] = requireAdmin(function (id) {
+    window.adminNavContext = "tna";
     if (id === "new" || (id && window.STATE.trainings.some(t => t.id === id))) { renderTrainingBuilder(id === "new" ? null : id); return; }
     renderTrainingAdminList();
 });
@@ -3707,6 +3737,7 @@ function renderTrainingAdminList() {
     }).join("");
 
     window.setPage(`
+        ${renderAdminSectionTabs("admin/trainings")}
         <div class="flex items-center justify-between mb-5">
             <h1 class="text-xl font-black text-slate-800">Kelola Training TNA</h1>
             <a href="#/admin/trainings/new" class="bg-amber-500 hover:bg-amber-600 text-white text-sm font-bold px-4 py-2.5 rounded-2xl"><i class="fas fa-plus mr-1"></i> Jadwal Baru</a>
@@ -4442,6 +4473,7 @@ function renderAdminAssignments() {
     }).join("");
 
     window.setPage(`
+        ${renderAdminSectionTabs("admin/assignments")}
         <div class="flex items-center justify-between flex-wrap gap-2 mb-5">
             <h1 class="text-xl font-black text-slate-800">Penilaian Tugas</h1>
             <div class="flex gap-2">
@@ -4542,6 +4574,7 @@ function renderAdminQuizAttempts() {
     }).join("");
 
     window.setPage(`
+        ${renderAdminSectionTabs("admin/quiz-attempts")}
         <div class="flex items-center justify-between flex-wrap gap-2 mb-5">
             <h1 class="text-xl font-black text-slate-800">Kelola Percobaan Kuis</h1>
             <div class="flex gap-2 flex-wrap">
@@ -4917,15 +4950,15 @@ async function issueCertificateForUser(user, courseId, title) {
     const payload = { userId: user.id, userName: user.username, title, certId, issuedAt: serverTimestamp(), type: "course", courseId };
     await addDoc(col("certificates"), payload);
 }
-window.bulkCompleteOnboardingUntilJuly = async function () {
-    const cutoffYear = new Date().getFullYear();
-    const cutoff = new Date(cutoffYear, 6, 31, 23, 59, 59); // akhir 31 Juli tahun berjalan
+window.bulkCompleteOnboardingUntilCutoff = async function () {
+    const cutoff = bulkCompleteCutoffDate(bulkCompleteCutoff);
+    const cutoffLabel = bulkCompleteCutoffLabel(bulkCompleteCutoff);
     const eligible = window.STATE.employees.filter(e => {
         const d = dateOnlySafe(e.tglBergabung);
         return d && d <= cutoff;
     });
-    if (!eligible.length) { window.toast("Tidak ada karyawan dengan tanggal join sampai Juli " + cutoffYear + ".", "info"); return; }
-    if (!confirm(`Tandai SEMUA training onboarding sebagai selesai (nilai 80) untuk ${eligible.length} karyawan yang join sampai Juli ${cutoffYear}?\n\nTraining yang sudah punya sertifikat tidak akan ditimpa.`)) return;
+    if (!eligible.length) { window.toast("Tidak ada karyawan dengan tanggal join sampai " + cutoffLabel + ".", "info"); return; }
+    if (!confirm(`Tandai SEMUA training onboarding sebagai selesai (nilai 80) untuk ${eligible.length} karyawan yang join sampai ${cutoffLabel}?\n\nTraining yang sudah punya sertifikat tidak akan ditimpa.`)) return;
 
     const { col, addDoc, updateDoc, ref, serverTimestamp } = window.LMS_DB;
     const usersByUsername = {};
@@ -5083,6 +5116,45 @@ function onboardingBatchTypeBadgeClass(b) {
 let onboardingScheduleDeptDraft = null; // null = belum dibuka editor, array = sedang diedit
 let onboardingScheduleOpenWeeks = null;  // null = belum diinit, Set = daftar key minggu yang lagi dibuka
 
+// "Konfigurasi Departemen" & "Tuntaskan Data Karyawan Lama" disembunyikan secara default (biar
+// gak bikin bingung admin harian) — cuma muncul kalau judul halaman "Penjadwalan Onboarding"
+// diklik 5x berturut-turut dalam waktu singkat. Tetap tersimpan lagi (locked) begitu pindah
+// halaman lain / reload.
+let onboardingScheduleAdvancedUnlocked = false;
+let onboardingScheduleTitleClickCount = 0;
+let onboardingScheduleTitleClickTimer = null;
+window.onboardingScheduleTitleClick = function () {
+    if (onboardingScheduleAdvancedUnlocked) return;
+    onboardingScheduleTitleClickCount++;
+    clearTimeout(onboardingScheduleTitleClickTimer);
+    onboardingScheduleTitleClickTimer = setTimeout(() => { onboardingScheduleTitleClickCount = 0; }, 1500);
+    if (onboardingScheduleTitleClickCount >= 5) {
+        onboardingScheduleTitleClickCount = 0;
+        onboardingScheduleAdvancedUnlocked = true;
+        window.toast("Pengaturan lanjutan ditampilkan", "success");
+        renderOnboardingSchedule();
+    }
+};
+
+// Batas ("sampai kapan") buat tombol "Tuntaskan Data Karyawan Lama" — bisa diatur admin sampai
+// bulan tertentu, opsional dipersempit lagi sampai minggu ke berapa di bulan itu ("end" = akhir
+// bulan penuh). Default: akhir Juli tahun berjalan (perilaku lama).
+let bulkCompleteCutoff = { year: new Date().getFullYear(), month: 7, week: "end" };
+function bulkCompleteCutoffDate(cfg) {
+    const monthIndex = cfg.month - 1;
+    const lastDayOfMonth = new Date(cfg.year, monthIndex + 1, 0).getDate();
+    if (cfg.week === "end") return new Date(cfg.year, monthIndex, lastDayOfMonth, 23, 59, 59);
+    const weekNum = parseInt(cfg.week, 10);
+    const rangeStartDay = (weekNum - 1) * 7 + 1;
+    const rangeEndDay = Math.min(rangeStartDay + 6, lastDayOfMonth);
+    return new Date(cfg.year, monthIndex, rangeEndDay, 23, 59, 59);
+}
+function bulkCompleteCutoffLabel(cfg) {
+    const monthName = ONBOARDING_MONTH_NAMES[cfg.month - 1];
+    if (cfg.week === "end") return `akhir ${monthName} ${cfg.year}`;
+    return `Minggu ${cfg.week} ${monthName} ${cfg.year}`;
+}
+
 // Kelompokkan sebuah tanggal ke "minggu ke-N di bulan X" (week 1 = tgl 1-7, week 2 = tgl 8-14, dst,
 // minggu terakhir bulan itu boleh lebih pendek dari 7 hari). Dipakai buat nge-bucket batch onboarding
 // (yang siklusnya mingguan) ke dalam tampilan "Minggu 1 Agustus", "Minggu 2 Agustus", dst.
@@ -5201,7 +5273,7 @@ function renderOnboardingSchedule() {
         })
         .filter(w => w.batches.length > 0);
 
-    const configHtml = `
+    const configHtml = !onboardingScheduleAdvancedUnlocked ? "" : `
     <div class="bg-white rounded-3xl border border-slate-100 shadow-sm p-5 mb-6">
         <h3 class="font-black text-sm text-slate-700 mb-1"><i class="fas fa-gear text-violet-500 mr-1"></i> Konfigurasi Departemen Sales & Marketing</h3>
         <p class="text-xs text-slate-400 mb-3">Pilih departemen mana saja yang dianggap "Sales & Marketing" (pakai jadwal Selasa-Sabtu). Sisanya otomatis masuk jadwal "Departemen Lain" (Rabu-Jumat / Sabtu-Selasa).</p>
@@ -5214,13 +5286,33 @@ function renderOnboardingSchedule() {
         <button onclick="window.guardedClick(this, () => window.saveOnboardingScheduleConfig(onboardingScheduleDeptDraft))" class="mt-3 bg-violet-600 hover:bg-violet-700 text-white text-xs font-black px-4 py-2.5 rounded-2xl transition"><i class="fas fa-save mr-1"></i> Simpan Konfigurasi</button>
     </div>`;
 
-    const bulkCompleteHtml = `
-    <div class="bg-emerald-50/60 border border-emerald-100 rounded-3xl p-5 mb-6 flex items-start justify-between flex-wrap gap-3">
-        <div>
-            <h3 class="font-black text-sm text-emerald-700 mb-1"><i class="fas fa-check-double mr-1"></i> Tuntaskan Data Karyawan Lama</h3>
-            <p class="text-xs text-emerald-700/70 max-w-xl">Tandai semua training onboarding sebagai <b>selesai dengan nilai 80</b> untuk karyawan yang tanggal join-nya sampai dengan Juli tahun ini. Karyawan yang join Agustus dan seterusnya tetap mengikuti jadwal mingguan di bawah seperti biasa.</p>
+    const bulkCompleteHtml = !onboardingScheduleAdvancedUnlocked ? "" : `
+    <div class="bg-emerald-50/60 border border-emerald-100 rounded-3xl p-5 mb-6">
+        <h3 class="font-black text-sm text-emerald-700 mb-1"><i class="fas fa-check-double mr-1"></i> Tuntaskan Data Karyawan Lama</h3>
+        <p class="text-xs text-emerald-700/70 max-w-xl mb-3">Tandai semua training onboarding sebagai <b>selesai dengan nilai 80</b> sekaligus, untuk karyawan yang tanggal join-nya sampai dengan batas di bawah ini. Karyawan yang join setelah batas ini tetap mengikuti jadwal mingguan seperti biasa.</p>
+        <div class="flex items-end gap-2 flex-wrap">
+            <div>
+                <label class="block text-[10px] font-black text-emerald-700/70 uppercase mb-1">Sampai Bulan</label>
+                <select onchange="bulkCompleteCutoff.month = parseInt(this.value); renderOnboardingSchedule()" class="text-xs font-bold border border-emerald-200 rounded-xl px-2.5 py-2 bg-white text-emerald-700">
+                    ${ONBOARDING_MONTH_NAMES.map((m, i) => `<option value="${i + 1}" ${bulkCompleteCutoff.month === i + 1 ? "selected" : ""}>${m}</option>`).join("")}
+                </select>
+            </div>
+            <div>
+                <label class="block text-[10px] font-black text-emerald-700/70 uppercase mb-1">Tahun</label>
+                <select onchange="bulkCompleteCutoff.year = parseInt(this.value); renderOnboardingSchedule()" class="text-xs font-bold border border-emerald-200 rounded-xl px-2.5 py-2 bg-white text-emerald-700">
+                    ${[today.getFullYear() - 1, today.getFullYear(), today.getFullYear() + 1].map(y => `<option value="${y}" ${bulkCompleteCutoff.year === y ? "selected" : ""}>${y}</option>`).join("")}
+                </select>
+            </div>
+            <div>
+                <label class="block text-[10px] font-black text-emerald-700/70 uppercase mb-1">Sampai Minggu</label>
+                <select onchange="bulkCompleteCutoff.week = this.value; renderOnboardingSchedule()" class="text-xs font-bold border border-emerald-200 rounded-xl px-2.5 py-2 bg-white text-emerald-700">
+                    <option value="end" ${bulkCompleteCutoff.week === "end" ? "selected" : ""}>Akhir bulan</option>
+                    ${[1, 2, 3, 4, 5].map(w => `<option value="${w}" ${String(bulkCompleteCutoff.week) === String(w) ? "selected" : ""}>Minggu ${w}</option>`).join("")}
+                </select>
+            </div>
+            <button onclick="window.guardedClick(this, () => window.bulkCompleteOnboardingUntilCutoff())" class="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black px-4 py-2.5 rounded-2xl transition shrink-0"><i class="fas fa-wand-magic-sparkles mr-1"></i> Selesaikan Onboarding</button>
         </div>
-        <button onclick="window.guardedClick(this, () => window.bulkCompleteOnboardingUntilJuly())" class="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black px-4 py-2.5 rounded-2xl transition shrink-0"><i class="fas fa-wand-magic-sparkles mr-1"></i> Selesaikan Onboarding (s.d. Juli)</button>
+        <p class="text-[10px] text-emerald-700/50 mt-2">Batas saat ini: karyawan yang join s.d. <b>${bulkCompleteCutoffLabel(bulkCompleteCutoff)}</b> akan ditandai selesai.</p>
     </div>`;
 
     const weekCards = weeks.map(w => {
@@ -5299,7 +5391,8 @@ function renderOnboardingSchedule() {
     }).join("");
 
     window.setPage(`
-        <h1 class="text-xl font-black text-slate-800 mb-1">Penjadwalan Onboarding</h1>
+        ${renderAdminSectionTabs("admin/onboarding-schedule")}
+        <h1 class="text-xl font-black text-slate-800 mb-1 select-none cursor-default" onclick="window.onboardingScheduleTitleClick()">Penjadwalan Onboarding</h1>
         <p class="text-sm text-slate-500 mb-5">Target &amp; progres peserta training onboarding, dikelompokkan per minggu. Klik satu minggu untuk lihat rincian nama peserta.</p>
         ${configHtml}
         ${bulkCompleteHtml}
@@ -5308,7 +5401,7 @@ function renderOnboardingSchedule() {
         ${weekCards || '<div class="bg-white rounded-3xl border border-slate-100 shadow-sm p-10 text-center text-slate-400 text-sm">Tidak ada data yang cocok dengan filter saat ini.</div>'}
     `);
 }
-window.ROUTES["admin/onboarding-schedule"] = requireAdmin(function () { renderOnboardingSchedule(); });
+window.ROUTES["admin/onboarding-schedule"] = requireAdmin(function () { window.adminNavContext = "onboarding"; renderOnboardingSchedule(); });
 window.toggleOnboardingScheduleDept = function (dep) {
     const idx = onboardingScheduleDeptDraft.findIndex(x => x.toLowerCase() === dep.toLowerCase());
     if (idx >= 0) onboardingScheduleDeptDraft.splice(idx, 1); else onboardingScheduleDeptDraft.push(dep);
