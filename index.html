@@ -5531,6 +5531,79 @@ function computeEmployeeTnaStats() {
     });
     return { attended, targeted, targetedList };
 }
+// ================= KPI PERFORMA BULANAN KARYAWAN (TAHUN BERJALAN) =================
+// Dipakai di Dashboard Admin. Sumbernya data karyawan (window.STATE.employees) yang
+// dicocokkan ke akun user-nya (biar cuma menghitung karyawan asli, bukan admin/akun tes),
+// lalu dihitung berapa sertifikat (Onboarding + Training TNA) yang terbit tiap bulan untuk
+// tahun berjalan — dipakai sebagai proksi "performa" keterlaksanaan training karyawan per bulan.
+const KPI_MONTH_LABELS_ID = ["Jan","Feb","Mar","Apr","Mei","Jun","Jul","Agu","Sep","Okt","Nov","Des"];
+function computeMonthlyEmployeeKpi() {
+    const year = new Date().getFullYear();
+    const usersByUsername = {};
+    window.STATE.users.forEach(u => { usersByUsername[normalizeUsername(u.username)] = u; });
+    const empUserIds = new Set();
+    window.STATE.employees.forEach(e => {
+        const user = usersByUsername[normalizeUsername(e.username)];
+        if (user) empUserIds.add(user.id);
+    });
+    const months = Array.from({ length: 12 }, () => 0);
+    window.STATE.certificates.forEach(c => {
+        if (empUserIds.size && !empUserIds.has(c.userId)) return;
+        const ms = tsMillis(c.issuedAt);
+        if (!ms) return;
+        const d = new Date(ms);
+        if (d.getFullYear() !== year) return;
+        months[d.getMonth()]++;
+    });
+    return months;
+}
+// Chart batang SVG dengan gradient + garis tren tipis di atasnya, bulan berjalan disorot
+// warna emerald biar langsung kelihatan progres bulan ini dibanding bulan-bulan lain.
+function monthlyKpiChartSvg(months) {
+    const w = 760, h = 190, padL = 8, padR = 8, padT = 22, padB = 24;
+    const chartW = w - padL - padR;
+    const chartH = h - padT - padB;
+    const max = Math.max(1, ...months);
+    const colW = chartW / 12;
+    const barW = Math.max(10, colW - 14);
+    const nowMonth = new Date().getMonth();
+    const pts = months.map((v, i) => {
+        const x = padL + i * colW + colW / 2;
+        const y = padT + chartH - (v / max) * chartH;
+        return `${x},${y}`;
+    }).join(" ");
+    const bars = months.map((v, i) => {
+        const barH = v ? Math.max(4, Math.round((v / max) * chartH)) : 2;
+        const x = padL + i * colW + (colW - barW) / 2;
+        const y = padT + chartH - barH;
+        const isNow = i === nowMonth;
+        return `
+        <g>
+            <rect x="${x}" y="${y}" width="${barW}" height="${barH}" rx="7" fill="url(#kpiBarGrad${isNow ? "Now" : ""})"></rect>
+            ${v ? `<text x="${x + barW / 2}" y="${y - 6}" text-anchor="middle" font-size="10" font-weight="900" fill="${isNow ? "#059669" : "#475569"}">${v}</text>` : ""}
+            <text x="${x + barW / 2}" y="${padT + chartH + 16}" text-anchor="middle" font-size="10" font-weight="800" fill="${isNow ? "#059669" : "#94a3b8"}">${KPI_MONTH_LABELS_ID[i]}</text>
+        </g>`;
+    }).join("");
+    return `
+    <svg viewBox="0 0 ${w} ${h}" class="w-full h-48">
+        <defs>
+            <linearGradient id="kpiBarGrad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stop-color="#a5b4fc"></stop>
+                <stop offset="100%" stop-color="#4338ca"></stop>
+            </linearGradient>
+            <linearGradient id="kpiBarGradNow" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stop-color="#6ee7b7"></stop>
+                <stop offset="100%" stop-color="#059669"></stop>
+            </linearGradient>
+            <linearGradient id="kpiTrendGrad" x1="0" y1="0" x2="1" y2="0">
+                <stop offset="0%" stop-color="#818cf8" stop-opacity=".55"></stop>
+                <stop offset="100%" stop-color="#f472b6" stop-opacity=".55"></stop>
+            </linearGradient>
+        </defs>
+        <polyline points="${pts}" fill="none" stroke="url(#kpiTrendGrad)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"></polyline>
+        ${bars}
+    </svg>`;
+}
 // Isi & buka modal detail (reuse "modal-dashboard-detail") waktu salah satu dari 4 kartu
 // donat di halaman Data Karyawan diklik. type: 'onboarding-done' | 'onboarding-progress' |
 // 'onboarding-notstarted' | 'tna-attended'. Tiap baris karyawan bisa diklik buat langsung
@@ -6622,6 +6695,12 @@ window.ROUTES["admin/reports"] = requireAdmin(function () {
             </div>
         </div>`).join("") || '<p class="text-sm text-slate-400 text-center py-5">Belum ada aktivitas</p>';
 
+    // ---- KPI Performa Bulanan karyawan, tahun berjalan ----
+    const kpiYear = new Date().getFullYear();
+    const monthlyKpi = computeMonthlyEmployeeKpi();
+    const kpiTotal = monthlyKpi.reduce((a, b) => a + b, 0);
+    const kpiThisMonth = monthlyKpi[new Date().getMonth()];
+
     window.setPage(`
         <h1 class="text-xl font-black text-slate-800 mb-1">Dashboard Admin</h1>
         <p class="text-xs text-slate-400 mb-3">Klik kartu di bawah untuk lihat rincian lengkapnya, termasuk laporan keterlaksanaan & kelulusan per training.</p>
@@ -6640,6 +6719,15 @@ window.ROUTES["admin/reports"] = requireAdmin(function () {
         <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
             ${clickableStatCard("fa-file-signature", "violet", totalAssignments, "Tugas Dikumpulkan", "window.openReportDetail('assignments')")}
             ${clickableStatCard("fa-hourglass-half", "amber", pendingAssignments, "Tugas Menunggu Nilai", "window.openReportDetail('assignments-pending')")}
+        </div>
+
+        <div class="bg-white rounded-3xl border border-slate-100 shadow-sm p-4 mb-3">
+            <div class="flex items-center justify-between gap-2 mb-0.5">
+                <h3 class="font-black text-slate-700 text-sm"><i class="fas fa-chart-column text-indigo-400 mr-1"></i> KPI Performa Bulanan ${kpiYear}</h3>
+                <span class="text-[10px] font-black px-2 py-1 rounded-full bg-emerald-50 text-emerald-600 shrink-0">${kpiThisMonth} bulan ini</span>
+            </div>
+            <p class="text-[11px] text-slate-400 mb-1">Jumlah training (Onboarding + TNA) yang diselesaikan karyawan tiap bulan • Total ${kpiTotal} penyelesaian sepanjang ${kpiYear}</p>
+            ${monthlyKpiChartSvg(monthlyKpi)}
         </div>
 
         <div class="grid grid-cols-1 lg:grid-cols-3 gap-3 mb-3">
