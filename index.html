@@ -31,7 +31,7 @@ tailwind.config = { darkMode: "class" };
 <script src="https://cdn.tailwindcss.com" defer></script>
 <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.7.2/css/all.min.css" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" defer></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js" defer></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js" defer onerror="window.__chartJsLoadFailed=true"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrious/4.0.2/qrious.min.js" defer></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jsQR/1.4.0/jsQR.js" defer></script>
 <style>
@@ -1818,9 +1818,9 @@ function renderUserDashboard() {
             <h1 class="text-xl font-black text-slate-800">Halo, ${window.escapeHtml(u.name || u.username)} 👋</h1>
             <p class="text-sm text-slate-500">Ini ringkasan progres belajar kamu.</p>
         </div>
-        <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
             ${diagramStatCardDark("fa-book-open", "indigo", donutDiagramSvg(onboardingPct, DONUT_STAT_COLORS.indigo.hex), "Training Onboarding", `${completedCourses}/${myAssignedCourses.length} selesai`, "window.openDashboardDetail('enrolled')")}
-            ${diagramStatCardDark("fa-chart-line", "sky", prePostBarDiagramSvg(prePostStats.avgPre, prePostStats.avgPost), "Progress Pre & Post Training", prePostStats.n ? `Rata² ${prePostStats.avgPre} → ${prePostStats.avgPost}` : "Belum ada data", "window.openDashboardDetail('prepost')")}
+            ${diagramStatCardDark("fa-chart-line", "sky", prePostBarDiagramSvg(prePostStats.avgPre, prePostStats.avgPost), "Progres Training", prePostStats.n ? `Nilai rata² Pre test ${prePostStats.avgPre} - Nilai rata² Post test ${prePostStats.avgPost}` : "Belum ada data", "window.openDashboardDetail('prepost')")}
             ${diagramStatCardDark("fa-chalkboard-user", "amber", donutDiagramSvg(tnaPct, DONUT_STAT_COLORS.amber.hex), "Training by TNA", `${myCompletedTnaTrainings}/${myTargetTrainings.length} selesai`, "window.openDashboardDetail('registered')")}
             ${clickableStatCard("fa-award", "rose", myCerts.length, "Sertifikat", "window.openDashboardDetail('certificates')")}
         </div>
@@ -1841,7 +1841,11 @@ function renderUserDashboard() {
     // di setPage di atas), makanya render chart-nya ditunda. Chart.js sendiri di-load dengan
     // atribut "defer" dari CDN, jadi kadang belum selesai di-download & di-eksekusi saat kode
     // ini jalan (setTimeout(0) doang gak cukup) — makanya di-retry sampai window.Chart siap.
-    waitForChartJsThenRender(kpiStats);
+    // "__kpiRenderToken" dipakai buat membatalkan retry LAMA kalau dashboard ini di-render ulang
+    // lagi sebelum retry lama sempat selesai (misal Firestore listener nembak dobel) — supaya
+    // chart gak ketiban-timpa data KPI yang udah basi.
+    const myKpiToken = ++window.__kpiRenderToken;
+    waitForChartJsThenRender(kpiStats, 0, myKpiToken);
 }
 
 // ================= KPI PERFORMANCE BULANAN (Dashboard User) =================
@@ -1907,7 +1911,7 @@ function kpiPerformanceCard(stats) {
             ${avgBadge}
         </div>
         ${stats.hasData
-            ? `<div class="relative h-56 sm:h-64"><canvas id="kpi-monthly-chart"></canvas></div>`
+            ? `<div class="relative h-56 sm:h-64" id="kpi-monthly-chart-wrap"><canvas id="kpi-monthly-chart"></canvas></div>`
             : `<div class="h-40 flex flex-col items-center justify-center text-center gap-1">
                     <i class="fas fa-chart-simple text-3xl text-slate-200"></i>
                     <p class="text-sm text-slate-400 max-w-xs">Belum ada data KPI bulanan tahun ini.</p>
@@ -1922,87 +1926,131 @@ function kpiPerformanceCard(stats) {
 // Nunggu Chart.js (script "defer" dari CDN) beneran siap sebelum render, dengan retry
 // beberapa kali dulu (bukan cuma sekali kayak sebelumnya) supaya chart gak blank kalau
 // koneksi lagi lambat / library-nya belum sempat ke-load pas kode dashboard ini jalan.
-function waitForChartJsThenRender(stats, attempt) {
+// "token" = penanda "render generasi ke berapa" — kalau dashboard sempat di-render ulang
+// (misal Firestore listener nembak dobel / user pindah-pindah halaman cepat) sebelum retry
+// ini kelar, token bakal ketinggalan zaman dan retry ini otomatis dibatalkan diam-diam,
+// supaya chart yang lagi ditampilkan gak ketiban-timpa data KPI yang sudah basi.
+window.__kpiRenderToken = window.__kpiRenderToken || 0;
+function waitForChartJsThenRender(stats, attempt, token) {
     attempt = attempt || 0;
+    if (token !== window.__kpiRenderToken) return; // sudah ada render dashboard yang lebih baru
     const canvas = document.getElementById("kpi-monthly-chart");
     if (!canvas) return; // halaman sudah berpindah, gak perlu render lagi
+
+    if (window.__chartJsLoadFailed) {
+        showKpiChartError("Gagal memuat library grafik (koneksi ke CDN bermasalah).");
+        return;
+    }
     if (typeof Chart === "undefined") {
         if (attempt < 50) { // coba sampai ~5 detik
-            setTimeout(() => waitForChartJsThenRender(stats, attempt + 1), 100);
+            setTimeout(() => waitForChartJsThenRender(stats, attempt + 1, token), 100);
         } else {
             console.error("Chart.js gagal dimuat, chart KPI tidak bisa ditampilkan.");
+            showKpiChartError("Grafik gagal dimuat, koneksi mungkin lambat.");
         }
         return;
     }
-    renderKpiMonthlyChart(stats);
+    renderKpiMonthlyChart(stats, token);
+}
+
+// Tampilkan pesan fallback yang jelas di kartu chart kalau gagal render — daripada dibiarkan
+// blank kosong yang bikin bingung ("kayaknya error tapi gak jelas errornya apa").
+function showKpiChartError(message) {
+    const wrap = document.getElementById("kpi-monthly-chart-wrap");
+    if (!wrap) return;
+    wrap.innerHTML = `
+        <div class="h-full flex flex-col items-center justify-center text-center gap-2">
+            <i class="fas fa-triangle-exclamation text-2xl text-amber-300"></i>
+            <p class="text-xs text-slate-400 max-w-[240px]">${window.escapeHtml(message)}</p>
+            <button onclick="window.location.reload()" class="text-xs font-black text-indigo-500 hover:underline">Muat ulang halaman</button>
+        </div>`;
 }
 
 let __kpiChartInstance = null;
-function renderKpiMonthlyChart(stats) {
+function renderKpiMonthlyChart(stats, token) {
     if (!stats.hasData) return;
+    if (typeof token !== "undefined" && token !== window.__kpiRenderToken) return;
     const canvas = document.getElementById("kpi-monthly-chart");
     if (!canvas || typeof Chart === "undefined") return;
-    if (__kpiChartInstance) { __kpiChartInstance.destroy(); __kpiChartInstance = null; }
 
-    const ctx = canvas.getContext("2d");
-    const gradient = ctx.createLinearGradient(0, 0, 0, canvas.clientHeight || 220);
-    gradient.addColorStop(0, "rgba(79,70,229,.32)");
-    gradient.addColorStop(1, "rgba(79,70,229,0)");
+    // Tunggu 1 frame biar layout kelar duluan (termasuk class Tailwind "h-56 sm:h-64" yang
+    // baru di-compile async sama Tailwind Play CDN pas elemen ini baru di-inject lewat
+    // innerHTML) — kalau langsung digambar di frame yang sama, canvas bisa kebaca tinggi 0
+    // dan chart-nya jadi invisible/gepeng di render pertama.
+    requestAnimationFrame(() => {
+        if (typeof token !== "undefined" && token !== window.__kpiRenderToken) return;
+        const liveCanvas = document.getElementById("kpi-monthly-chart");
+        if (!liveCanvas) return;
 
-    const pointColors = stats.monthly.map((v, i) => {
-        if (v === null) return "transparent";
-        if (stats.best && i === stats.best.i) return "#10b981";
-        if (stats.worst && i === stats.worst.i) return "#f43f5e";
-        return "#4f46e5";
-    });
-    const pointRadii = stats.monthly.map((v, i) => v === null ? 0 : ((stats.best && i === stats.best.i) || (stats.worst && i === stats.worst.i) ? 6 : 3.5));
+        try {
+            if (__kpiChartInstance) { __kpiChartInstance.destroy(); __kpiChartInstance = null; }
 
-    __kpiChartInstance = new Chart(ctx, {
-        type: "line",
-        data: {
-            labels: KPI_MONTH_NAMES_SHORT,
-            datasets: [{
-                label: "KPI",
-                data: stats.monthly,
-                spanGaps: true,
-                fill: true,
-                tension: 0.4,
-                borderColor: "#4f46e5",
-                backgroundColor: gradient,
-                borderWidth: 2.5,
-                pointBackgroundColor: pointColors,
-                pointBorderColor: "#fff",
-                pointBorderWidth: 2,
-                pointRadius: pointRadii,
-                pointHoverRadius: 7,
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            interaction: { intersect: false, mode: "index" },
-            plugins: {
-                legend: { display: false },
-                tooltip: {
-                    backgroundColor: "#0f172a",
-                    titleFont: { weight: "bold" },
-                    padding: 10,
-                    cornerRadius: 10,
-                    displayColors: false,
-                    callbacks: { label: (c) => c.parsed.y === null ? "Belum ada data" : ` KPI: ${c.parsed.y}%` }
-                }
-            },
-            scales: {
-                y: {
-                    min: 0, max: 100,
-                    ticks: { callback: (v) => v + "%", font: { size: 10 }, color: "#94a3b8" },
-                    grid: { color: "#f1f5f9" }
+            const ctx = liveCanvas.getContext("2d");
+            const wrapEl = document.getElementById("kpi-monthly-chart-wrap");
+            const h = liveCanvas.clientHeight || (wrapEl && wrapEl.clientHeight) || 220;
+            const gradient = ctx.createLinearGradient(0, 0, 0, h);
+            gradient.addColorStop(0, "rgba(79,70,229,.32)");
+            gradient.addColorStop(1, "rgba(79,70,229,0)");
+
+            const pointColors = stats.monthly.map((v, i) => {
+                if (v === null) return "transparent";
+                if (stats.best && i === stats.best.i) return "#10b981";
+                if (stats.worst && i === stats.worst.i) return "#f43f5e";
+                return "#4f46e5";
+            });
+            const pointRadii = stats.monthly.map((v, i) => v === null ? 0 : ((stats.best && i === stats.best.i) || (stats.worst && i === stats.worst.i) ? 6 : 3.5));
+
+            __kpiChartInstance = new Chart(ctx, {
+                type: "line",
+                data: {
+                    labels: KPI_MONTH_NAMES_SHORT,
+                    datasets: [{
+                        label: "KPI",
+                        data: stats.monthly,
+                        spanGaps: true,
+                        fill: true,
+                        tension: 0.4,
+                        borderColor: "#4f46e5",
+                        backgroundColor: gradient,
+                        borderWidth: 2.5,
+                        pointBackgroundColor: pointColors,
+                        pointBorderColor: "#fff",
+                        pointBorderWidth: 2,
+                        pointRadius: pointRadii,
+                        pointHoverRadius: 7,
+                    }]
                 },
-                x: {
-                    grid: { display: false },
-                    ticks: { font: { size: 10, weight: "bold" }, color: "#94a3b8" }
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: { intersect: false, mode: "index" },
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            backgroundColor: "#0f172a",
+                            titleFont: { weight: "bold" },
+                            padding: 10,
+                            cornerRadius: 10,
+                            displayColors: false,
+                            callbacks: { label: (c) => c.parsed.y === null ? "Belum ada data" : ` KPI: ${c.parsed.y}%` }
+                        }
+                    },
+                    scales: {
+                        y: {
+                            min: 0, max: 100,
+                            ticks: { callback: (v) => v + "%", font: { size: 10 }, color: "#94a3b8" },
+                            grid: { color: "#f1f5f9" }
+                        },
+                        x: {
+                            grid: { display: false },
+                            ticks: { font: { size: 10, weight: "bold" }, color: "#94a3b8" }
+                        }
+                    }
                 }
-            }
+            });
+        } catch (err) {
+            console.error("Gagal render chart KPI:", err);
+            showKpiChartError("Terjadi kesalahan saat menggambar grafik.");
         }
     });
 }
@@ -2027,7 +2075,7 @@ function statCard(icon, color, value, label) {
     const map = { indigo: "bg-indigo-50 text-indigo-600", emerald: "bg-emerald-50 text-emerald-600", amber: "bg-amber-50 text-amber-600", rose: "bg-rose-50 text-rose-600", violet: "bg-violet-50 text-violet-600" };
     return `
     <div class="bg-white rounded-3xl border border-slate-100 shadow-sm p-4 flex items-center gap-3">
-        <div class="w-11 h-11 rounded-2xl ${map[color]} flex items-center justify-center"><i class="fas ${icon}"></i></div>
+        <div class="w-12 h-12 rounded-2xl ${map[color]} flex items-center justify-center text-lg"><i class="fas ${icon}"></i></div>
         <div><p class="text-xl font-black text-slate-800 leading-none">${value}</p><p class="text-[11px] text-slate-400 font-semibold mt-1">${label}</p></div>
     </div>`;
 }
@@ -2052,7 +2100,7 @@ function clickableStatCard(icon, color, value, label, onclick) {
         </div>
         <div class="flex-1 min-w-0 p-3.5 flex items-center justify-between gap-2">
             <div class="min-w-0 flex items-center gap-2">
-                <div class="w-8 h-8 rounded-lg ${c.bg} flex items-center justify-center shrink-0"><i class="fas ${icon} ${c.text} text-[12px]"></i></div>
+                <div class="w-9 h-9 rounded-lg ${c.bg} flex items-center justify-center shrink-0"><i class="fas ${icon} ${c.text} text-[14px]"></i></div>
                 <p class="text-[11px] text-slate-400 font-semibold truncate">${label}</p>
             </div>
             ${onclick ? '<i class="fas fa-chevron-right text-slate-300 text-xs shrink-0"></i>' : ""}
@@ -2069,7 +2117,7 @@ function clickableStatCardProgress(icon, color, doneCount, totalCount, label, on
     const pct = totalCount ? Math.round((doneCount / totalCount) * 100) : 0;
     return `
     <button type="button" onclick="${onclick}" class="text-left w-full bg-white rounded-3xl border border-slate-100 shadow-sm p-4 flex items-center gap-3 hover:shadow-md hover:border-indigo-200 hover:-translate-y-0.5 active:translate-y-0 transition-all cursor-pointer">
-        <div class="w-11 h-11 rounded-2xl ${map[color]} flex items-center justify-center shrink-0"><i class="fas ${icon}"></i></div>
+        <div class="w-12 h-12 rounded-2xl ${map[color]} flex items-center justify-center shrink-0 text-lg"><i class="fas ${icon}"></i></div>
         <div class="flex-1 min-w-0">
             <p class="text-xl font-black text-slate-800 leading-none">${pct}%</p>
             <p class="text-[11px] text-slate-400 font-semibold mt-1">${label}</p>
@@ -2095,7 +2143,7 @@ function diagramStatCardDark(icon, color, diagramHtml, label, subLabel, onclick)
             ${diagramHtml}
         </div>
         <div class="flex-1 min-w-0 p-3.5 flex flex-col justify-center">
-            <div class="w-7 h-7 rounded-lg ${c.bg} flex items-center justify-center mb-1.5"><i class="fas ${icon} ${c.text} text-[11px]"></i></div>
+            <div class="w-8 h-8 rounded-lg ${c.bg} flex items-center justify-center mb-1.5"><i class="fas ${icon} ${c.text} text-[13px]"></i></div>
             <p class="text-[11px] text-slate-400 font-semibold truncate">${label}</p>
             <p class="text-[10px] ${c.text} font-bold mt-0.5">${subLabel}</p>
         </div>
@@ -2216,7 +2264,7 @@ window.openDashboardDetail = function (type) {
 
     else if (type === "prepost") {
         const stats = computeUserPrePostStats();
-        titleEl.innerHTML = `<i class="fas fa-chart-line mr-1"></i> Progress Pre &amp; Post Training`;
+        titleEl.innerHTML = `<i class="fas fa-chart-line mr-1"></i> Progres Training`;
         const pct = stats.avgPre > 0 ? Math.round(((stats.avgPost - stats.avgPre) / stats.avgPre) * 100) : (stats.avgPost > 0 ? 100 : 0);
         const summaryHtml = stats.n ? `
             <div class="flex items-center justify-around bg-sky-50 rounded-2xl p-4 mb-3">
@@ -6845,19 +6893,19 @@ window.ROUTES["admin/reports"] = requireAdmin(function () {
     window.setPage(`
         <h1 class="text-xl font-black text-slate-800 mb-1">Dashboard Admin</h1>
         <p class="text-xs text-slate-400 mb-3">Klik kartu di bawah untuk lihat rincian lengkapnya, termasuk laporan keterlaksanaan & kelulusan per training.</p>
-        <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
             ${donutStatCard("fa-user-check", "emerald", onboardingStats.done, onboardingStats.total, "Selesai Onboarding", "window.openEmployeeStatDetail('onboarding-done')")}
             ${donutStatCard("fa-chalkboard-user", "amber", tnaStats.attended, tnaStats.targeted, "Sudah Ikut Training TNA", "window.openEmployeeStatDetail('tna-attended')")}
             ${donutStatCard("fa-spinner", "sky", onboardingStats.progress, onboardingStats.total, "On Progress Onboarding", "window.openEmployeeStatDetail('onboarding-progress')")}
             ${donutStatCard("fa-hourglass-half", "rose", onboardingStats.notStarted, onboardingStats.total, "Belum Mulai Onboarding", "window.openEmployeeStatDetail('onboarding-notstarted')")}
         </div>
-        <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
             ${clickableStatCard("fa-book-open", "indigo", totalCourses, "Total Onboarding", "window.openReportDetail('onboarding')")}
             ${clickableStatCard("fa-chalkboard-user", "amber", totalTrainings, "Total Training TNA", "window.openReportDetail('tna')")}
             ${clickableStatCard("fa-award", "rose", totalCerts, "Sertifikat Terbit", "window.openReportDetail('certificates')")}
             ${clickableStatCard("fa-users", "emerald", totalUsers, "Total Pengguna", "window.openReportDetail('users')")}
         </div>
-        <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
             ${clickableStatCard("fa-file-signature", "violet", totalAssignments, "Tugas Dikumpulkan", "window.openReportDetail('assignments')")}
             ${clickableStatCard("fa-hourglass-half", "amber", pendingAssignments, "Tugas Menunggu Nilai", "window.openReportDetail('assignments-pending')")}
         </div>
