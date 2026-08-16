@@ -4816,12 +4816,12 @@ window.reRenderEmployeeList = function () {
 // Kartu ring/donut kecil: irisan berwarna = persentase (x/y), sisanya abu-abu.
 // Dipakai buat kartu "Selesai Onboarding", "Training TNA", "On Progress", "Belum Mulai".
 const DONUT_STAT_COLORS = {
-    indigo: { text: "text-indigo-600", track: "text-indigo-100", hex: "#4f46e5" },
-    emerald: { text: "text-emerald-600", track: "text-emerald-100", hex: "#10b981" },
-    amber: { text: "text-amber-600", track: "text-amber-100", hex: "#f59e0b" },
-    rose: { text: "text-rose-600", track: "text-rose-100", hex: "#f43f5e" },
-    violet: { text: "text-violet-600", track: "text-violet-100", hex: "#8b5cf6" },
-    sky: { text: "text-sky-600", track: "text-sky-100", hex: "#0ea5e9" },
+    indigo: { bg: "bg-indigo-50", text: "text-indigo-600", track: "text-indigo-100", hex: "#4f46e5" },
+    emerald: { bg: "bg-emerald-50", text: "text-emerald-600", track: "text-emerald-100", hex: "#10b981" },
+    amber: { bg: "bg-amber-50", text: "text-amber-600", track: "text-amber-100", hex: "#f59e0b" },
+    rose: { bg: "bg-rose-50", text: "text-rose-600", track: "text-rose-100", hex: "#f43f5e" },
+    violet: { bg: "bg-violet-50", text: "text-violet-600", track: "text-violet-100", hex: "#8b5cf6" },
+    sky: { bg: "bg-sky-50", text: "text-sky-600", track: "text-sky-100", hex: "#0ea5e9" },
 };
 function donutStatCard(icon, color, x, y, label, onclick) {
     const c = DONUT_STAT_COLORS[color] || DONUT_STAT_COLORS.indigo;
@@ -4836,11 +4836,11 @@ function donutStatCard(icon, color, x, y, label, onclick) {
                 <circle class="${c.track}" stroke="currentColor" stroke-width="4" fill="none" cx="18" cy="18" r="15.9155"></circle>
                 <circle stroke="${c.hex}" stroke-width="4" fill="none" stroke-linecap="round" stroke-dasharray="${dash} ${100 - dash}" stroke-dashoffset="25" cx="18" cy="18" r="15.9155"></circle>
             </svg>
-            <div class="absolute inset-0 flex items-center justify-center"><i class="fas ${icon} text-[11px] ${c.text}"></i></div>
+            <div class="absolute inset-0 flex items-center justify-center"><span class="text-[11px] font-black ${c.text}">${pct}%</span></div>
         </div>
         <div class="min-w-0">
-            <p class="text-xl font-black text-slate-800 leading-none">${pct}%</p>
-            <p class="text-[11px] text-slate-400 font-semibold mt-1 truncate">${label}</p>
+            <div class="w-7 h-7 rounded-lg ${c.bg} flex items-center justify-center mb-1"><i class="fas ${icon} ${c.text} text-[11px]"></i></div>
+            <p class="text-[11px] text-slate-400 font-semibold truncate">${label}</p>
             <p class="text-[10px] ${c.text} font-bold mt-0.5">${x}/${y} karyawan</p>
         </div>
     </${tag}>`;
@@ -5897,6 +5897,8 @@ window.ROUTES["admin/reports"] = requireAdmin(function () {
     const totalUsers = S.users.length;
     const totalAssignments = S.assignmentSubmissions.length;
     const pendingAssignments = S.assignmentSubmissions.filter(s => s.status !== "graded").length;
+    const onboardingStats = computeEmployeeOnboardingStats();
+    const tnaStats = computeEmployeeTnaStats();
 
     const topCourses = [...S.courses].map(c => ({
         c, count: S.enrollments.filter(e => e.courseId === c.id).length
@@ -5969,6 +5971,12 @@ window.ROUTES["admin/reports"] = requireAdmin(function () {
     window.setPage(`
         <h1 class="text-xl font-black text-slate-800 mb-1">Dashboard Admin</h1>
         <p class="text-xs text-slate-400 mb-5">Klik kartu di bawah untuk lihat rincian lengkapnya, termasuk laporan keterlaksanaan & kelulusan per training.</p>
+        <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+            ${donutStatCard("fa-user-check", "emerald", onboardingStats.done, onboardingStats.total, "Selesai Onboarding", "window.openEmployeeStatDetail('onboarding-done')")}
+            ${donutStatCard("fa-chalkboard-user", "amber", tnaStats.attended, tnaStats.targeted, "Sudah Ikut Training TNA", "window.openEmployeeStatDetail('tna-attended')")}
+            ${donutStatCard("fa-spinner", "sky", onboardingStats.progress, onboardingStats.total, "On Progress Onboarding", "window.openEmployeeStatDetail('onboarding-progress')")}
+            ${donutStatCard("fa-hourglass-half", "rose", onboardingStats.notStarted, onboardingStats.total, "Belum Mulai Onboarding", "window.openEmployeeStatDetail('onboarding-notstarted')")}
+        </div>
         <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
             ${clickableStatCard("fa-book-open", "indigo", totalCourses, "Total Onboarding", "window.openReportDetail('onboarding')")}
             ${clickableStatCard("fa-chalkboard-user", "amber", totalTrainings, "Total Training TNA", "window.openReportDetail('tna')")}
