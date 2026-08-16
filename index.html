@@ -24,7 +24,7 @@
 <link rel="preconnect" href="https://firestore.googleapis.com">
 
 <script src="https://cdn.tailwindcss.com" defer></script>
-<link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+<link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.7.2/css/all.min.css" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" defer></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrious/4.0.2/qrious.min.js" defer></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jsQR/1.4.0/jsQR.js" defer></script>
@@ -66,9 +66,36 @@ button:disabled, input[type="submit"]:disabled {
 .nav-item:hover { background: rgba(255,255,255,0.06); color: #fff; }
 .nav-item.nav-active { background: #4f46e5; color: #fff; box-shadow: 0 4px 14px rgba(79,70,229,.4); }
 
-#sidebar { transition: transform .2s ease, width .2s ease, min-width .2s ease, opacity .2s ease; }
+#sidebar {
+    position: fixed; top: 0; left: 0; bottom: 0; height: 100dvh; z-index: 40;
+    width: var(--sidebar-w, 260px);
+    display: flex; flex-direction: column;
+    box-shadow: 2px 0 20px rgba(0,0,0,.25);
+    transition: width .2s ease, box-shadow .2s ease;
+}
+#sidebar .brand-label, #sidebar .nav-label, #sidebar .logout-label { transition: opacity .12s ease; white-space: nowrap; }
+#sidebar.sidebar-mini { width: var(--sidebar-mini-w, 76px); }
+#sidebar.sidebar-mini .brand-label, #sidebar.sidebar-mini .nav-label, #sidebar.sidebar-mini .logout-label { display: none; }
+#sidebar.sidebar-mini #sidebar-brand { justify-content: center; padding-left: 0; padding-right: 0; }
+#sidebar.sidebar-mini .nav-item { justify-content: center; padding-left: 0; padding-right: 0; }
+#sidebar-nav { scrollbar-width: thin; }
+
+/* Main content shifts to make room for the fixed sidebar on desktop only. */
+#main-wrapper { transition: margin-left .2s ease; }
 @media (min-width: 1024px) {
-    #sidebar.sidebar-collapsed { width: 0; min-width: 0; opacity: 0; overflow: hidden; border: 0; pointer-events: none; }
+    #main-wrapper { margin-left: var(--sidebar-w, 260px); }
+    #sidebar.sidebar-mini ~ #main-wrapper { margin-left: var(--sidebar-mini-w, 76px); }
+}
+
+/* Mobile: sidebar is always a slim fixed rail hugging the left edge by default
+   so it never scrolls away with a tall page, and it floats OVER the content
+   (no margin-push) so it doesn't disturb the page layout. Tapping it (or the
+   header hamburger) expands it into a full drawer with a backdrop. */
+@media (max-width: 1023.98px) {
+    #sidebar { width: var(--sidebar-mini-w-mobile, 56px); }
+    #sidebar.sidebar-mini { width: var(--sidebar-mini-w-mobile, 56px); }
+    #sidebar:not(.sidebar-mini) { width: var(--sidebar-w, 260px); }
+    #main-wrapper { margin-left: 0 !important; }
 }
 
 @keyframes toast-in { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: translateY(0); } }
@@ -159,23 +186,24 @@ button:disabled, input[type="submit"]:disabled {
 <!-- ================= APP SHELL ================= -->
 <div id="app-shell" class="hide min-h-screen lg:flex">
 
-    <!-- Sidebar overlay (mobile) -->
-    <div id="sidebar-overlay" class="hide fixed inset-0 bg-black/40 z-30 lg:hidden" onclick="document.getElementById('sidebar').classList.add('-translate-x-full'); this.classList.add('hide')"></div>
+    <!-- Sidebar overlay (mobile, only shown when the drawer is fully expanded) -->
+    <div id="sidebar-overlay" class="hide fixed inset-0 bg-black/40 z-30 lg:hidden" onclick="window.collapseSidebar()"></div>
 
-    <!-- Sidebar -->
-    <aside id="sidebar" class="fixed lg:static inset-y-0 left-0 w-64 bg-slate-900 z-40 -translate-x-full lg:translate-x-0 transition-transform flex flex-col">
-        <div class="flex items-center gap-2 px-5 py-5">
-            <div class="w-9 h-9 rounded-xl bg-indigo-600 flex items-center justify-center"><i class="fas fa-graduation-cap text-white"></i></div>
-            <span class="text-white font-black text-lg">NingratEdu</span>
-        </div>
-        <nav id="sidebar-nav" class="flex-1 px-3 space-y-1 overflow-y-auto"></nav>
+    <!-- Sidebar: always a fixed icon rail hugging the left edge (mini) or a full menu (expanded).
+         Fixed positioning means it never scrolls away with tall pages. -->
+    <aside id="sidebar" class="bg-slate-900 flex flex-col">
+        <button id="sidebar-brand" onclick="window.toggleSidebar()" class="flex items-center gap-2 px-5 py-5 text-left" title="Buka/tutup menu">
+            <div class="w-9 h-9 rounded-xl bg-indigo-600 flex items-center justify-center shrink-0"><i class="fas fa-graduation-cap text-white"></i></div>
+            <span class="brand-label text-white font-black text-lg">NingratEdu</span>
+        </button>
+        <nav id="sidebar-nav" class="flex-1 px-3 space-y-1 overflow-y-auto overflow-x-hidden"></nav>
         <div class="p-3 border-t border-white/10">
-            <button onclick="window.doLogout()" class="nav-item w-full text-rose-300 hover:text-rose-200"><i class="fas fa-right-from-bracket w-5 text-center"></i><span>Keluar</span></button>
+            <button onclick="window.doLogout()" class="nav-item w-full text-rose-300 hover:text-rose-200" title="Keluar"><i class="fas fa-right-from-bracket w-5 text-center"></i><span class="logout-label">Keluar</span></button>
         </div>
     </aside>
 
     <!-- Main -->
-    <div class="flex-1 min-w-0 flex flex-col">
+    <div id="main-wrapper" class="flex-1 min-w-0 flex flex-col">
         <header class="bg-white border-b border-slate-100 px-4 lg:px-6 py-3 flex items-center justify-between sticky top-0 z-20">
             <button class="text-slate-500 hover:text-indigo-600 transition" onclick="window.toggleSidebar()"><i class="fas fa-bars text-lg"></i></button>
             <div class="hidden lg:block"></div>
@@ -842,25 +870,33 @@ window.closeModal = function (id) {
 };
 
 // ================= TOGGLE SIDEBAR (garis tiga) =================
-// Di layar kecil (mobile/tablet): buka/tutup sidebar dengan animasi slide + overlay gelap.
-// Di layar besar (desktop): sidebar bisa dilipat (collapse) supaya area konten lebih lega.
+// Sidebar selalu berupa rail ikon yang fixed nempel di kiri (mini) supaya tidak
+// pernah ikut ke-scroll walau halaman panjang. Tombol ini membuka/menutupnya
+// jadi menu penuh (dengan label teks). Di mobile, saat penuh ia jadi drawer
+// dengan overlay gelap; saat mini ia hanya rail tipis yang tidak mengganggu halaman.
 window.toggleSidebar = function () {
+    const sidebar = document.getElementById("sidebar");
+    if (!sidebar) return;
+    if (sidebar.classList.contains("sidebar-mini")) {
+        window.expandSidebar();
+    } else {
+        window.collapseSidebar();
+    }
+};
+window.expandSidebar = function () {
     const sidebar = document.getElementById("sidebar");
     const overlay = document.getElementById("sidebar-overlay");
     if (!sidebar) return;
+    sidebar.classList.remove("sidebar-mini");
     const isDesktop = window.matchMedia("(min-width: 1024px)").matches;
-    if (isDesktop) {
-        sidebar.classList.toggle("sidebar-collapsed");
-    } else {
-        const isOpen = !sidebar.classList.contains("-translate-x-full");
-        if (isOpen) {
-            sidebar.classList.add("-translate-x-full");
-            overlay?.classList.add("hide");
-        } else {
-            sidebar.classList.remove("-translate-x-full");
-            overlay?.classList.remove("hide");
-        }
-    }
+    if (!isDesktop) overlay?.classList.remove("hide");
+};
+window.collapseSidebar = function () {
+    const sidebar = document.getElementById("sidebar");
+    const overlay = document.getElementById("sidebar-overlay");
+    if (!sidebar) return;
+    sidebar.classList.add("sidebar-mini");
+    overlay?.classList.add("hide");
 };
 
 // ================= ROUTER (hash based) =================
@@ -888,14 +924,20 @@ function resolveRoute() {
 }
 window.addEventListener("hashchange", resolveRoute);
 window.resolveRoute = resolveRoute;
+// Kalau layar di-resize lewat breakpoint desktop/mobile, pastikan overlay gelap
+// (khusus drawer mobile) tidak nyangkut aktif di layar besar.
+window.addEventListener("resize", () => {
+    if (window.matchMedia("(min-width: 1024px)").matches) {
+        document.getElementById("sidebar-overlay")?.classList.add("hide");
+    }
+});
 
 function setActiveNav(key) {
     document.querySelectorAll("[data-nav]").forEach(a => {
         a.classList.toggle("nav-active", a.dataset.nav === key);
     });
-    // close mobile sidebar after navigating
-    document.getElementById("sidebar")?.classList.add("-translate-x-full", "lg:translate-x-0");
-    document.getElementById("sidebar-overlay")?.classList.add("hide");
+    // collapse sidebar back to the mini rail after navigating on mobile
+    if (!window.matchMedia("(min-width: 1024px)").matches) window.collapseSidebar();
 }
 
 window.setPage = function (html) {
@@ -1007,6 +1049,9 @@ window.enterApp = function () {
     window.renderSidebar();
     window.renderTopbar();
     window.resolveRoute();
+    // Di mobile, sidebar mulai sebagai rail ikon mini (fixed di kiri) supaya tidak
+    // menutupi halaman. Di desktop tetap terbuka penuh seperti biasa.
+    if (!window.matchMedia("(min-width: 1024px)").matches) window.collapseSidebar();
 };
 
 window.renderSidebar = function () {
@@ -1028,8 +1073,8 @@ window.renderSidebar = function () {
         { key: "admin/reports", icon: "fa-chart-simple", label: "Laporan" },
     ];
     const item = (n) => `
-        <a href="#/${n.key}" data-nav="${n.key}" class="nav-item">
-            <i class="fas ${n.icon} w-5 text-center"></i><span>${n.label}</span>
+        <a href="#/${n.key}" data-nav="${n.key}" class="nav-item" title="${n.label}">
+            <i class="fas ${n.icon} w-5 text-center shrink-0"></i><span class="nav-label">${n.label}</span>
         </a>`;
     document.getElementById("sidebar-nav").innerHTML =
         nav.map(item).join("") +
@@ -1513,7 +1558,7 @@ window.printCertificate = function (certId) {
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600;700&family=Cinzel+Decorative:wght@700;900&family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;1,500&display=swap" rel="stylesheet">
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.7.2/css/all.min.css" rel="stylesheet">
     <style>
         * { box-sizing: border-box; }
         html,body{ margin:0; padding:0; }
