@@ -5824,7 +5824,7 @@ window.ROUTES["admin/reports"] = requireAdmin(function () {
         </div>`).join("") || '<p class="text-sm text-slate-400 text-center py-6">Belum ada aktivitas</p>';
 
     window.setPage(`
-        <h1 class="text-xl font-black text-slate-800 mb-1">Laporan</h1>
+        <h1 class="text-xl font-black text-slate-800 mb-1">Dashboard Admin</h1>
         <p class="text-xs text-slate-400 mb-5">Klik kartu di bawah untuk lihat rincian lengkapnya, termasuk laporan keterlaksanaan & kelulusan per training.</p>
         <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
             ${clickableStatCard("fa-book-open", "indigo", totalCourses, "Total Onboarding", "window.openReportDetail('onboarding')")}
