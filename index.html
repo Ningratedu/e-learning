@@ -1767,15 +1767,19 @@ function renderUserDashboard() {
             <div class="flex-1 min-w-0"><p class="text-sm font-bold text-slate-700 truncate">${window.escapeHtml(t.title)}</p><p class="text-xs text-slate-400">${window.escapeHtml(t.location||'-')}</p></div>
         </a>`).join("");
 
+    const prePostStats = computeUserPrePostStats();
+    const onboardingPct = myAssignedCourses.length ? Math.round((completedCourses / myAssignedCourses.length) * 100) : 0;
+    const tnaPct = myTargetTrainings.length ? Math.round((myCompletedTnaTrainings / myTargetTrainings.length) * 100) : 0;
+
     window.setPage(`
         <div class="mb-3">
             <h1 class="text-xl font-black text-slate-800">Halo, ${window.escapeHtml(u.name || u.username)} 👋</h1>
             <p class="text-sm text-slate-500">Ini ringkasan progres belajar kamu.</p>
         </div>
         <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
-            ${clickableStatCardProgress("fa-book-open", "indigo", completedCourses, myAssignedCourses.length, "Training Onboarding", "window.openDashboardDetail('enrolled')")}
-            ${clickableStatCard("fa-circle-check", "emerald", completedCourses, "Training Selesai", "window.openDashboardDetail('completed')")}
-            ${clickableStatCardProgress("fa-chalkboard-user", "amber", myCompletedTnaTrainings, myTargetTrainings.length, "Training by TNA", "window.openDashboardDetail('registered')")}
+            ${diagramStatCardDark("fa-book-open", "indigo", donutDiagramSvg(onboardingPct, DONUT_STAT_COLORS.indigo.hex), "Training Onboarding", `${completedCourses}/${myAssignedCourses.length} selesai`, "window.openDashboardDetail('enrolled')")}
+            ${diagramStatCardDark("fa-chart-line", "sky", prePostBarDiagramSvg(prePostStats.avgPre, prePostStats.avgPost), "Progress Pre & Post Training", prePostStats.n ? `Rata² ${prePostStats.avgPre} → ${prePostStats.avgPost}` : "Belum ada data", "window.openDashboardDetail('prepost')")}
+            ${diagramStatCardDark("fa-chalkboard-user", "amber", donutDiagramSvg(tnaPct, DONUT_STAT_COLORS.amber.hex), "Training by TNA", `${myCompletedTnaTrainings}/${myTargetTrainings.length} selesai`, "window.openDashboardDetail('registered')")}
             ${clickableStatCard("fa-award", "rose", myCerts.length, "Sertifikat", "window.openDashboardDetail('certificates')")}
         </div>
         <div class="grid grid-cols-1 lg:grid-cols-2 gap-3">
@@ -1854,6 +1858,89 @@ function clickableStatCardProgress(icon, color, doneCount, totalCount, label, on
     </button>`;
 }
 
+// ================= CARD DASHBOARD USER — VARIAN DENGAN DIAGRAM (PANEL GELAP) =================
+// Kartu dashboard user yang punya "panel diagram" gelap di sisi kiri (donut atau bar,
+// tergantung konteksnya — lihat donutDiagramSvg & prePostBarDiagramSvg di bawah), dan
+// sisi kanan tetap putih normal berisi ikon kecil + label + sub-label. Dipakai untuk kartu
+// "Training Onboarding", "Progress Pre & Post Training", dan "Training by TNA". Kartu
+// "Sertifikat" SENGAJA tetap pakai clickableStatCard biasa (tanpa diagram), sesuai request.
+function diagramStatCardDark(icon, color, diagramHtml, label, subLabel, onclick) {
+    const c = DONUT_STAT_COLORS[color] || DONUT_STAT_COLORS.indigo;
+    const tag = onclick ? "button" : "div";
+    const attrs = onclick ? ` type="button" onclick="${onclick}"` : "";
+    return `
+    <${tag}${attrs} class="text-left w-full bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden flex items-stretch${onclick ? " hover:shadow-md hover:border-indigo-200 hover:-translate-y-0.5 active:translate-y-0 transition-all cursor-pointer" : ""}">
+        <div class="shrink-0 w-[72px] bg-slate-900 flex items-center justify-center py-3">
+            ${diagramHtml}
+        </div>
+        <div class="flex-1 min-w-0 p-3.5 flex flex-col justify-center">
+            <div class="w-7 h-7 rounded-lg ${c.bg} flex items-center justify-center mb-1.5"><i class="fas ${icon} ${c.text} text-[11px]"></i></div>
+            <p class="text-[11px] text-slate-400 font-semibold truncate">${label}</p>
+            <p class="text-[10px] ${c.text} font-bold mt-0.5">${subLabel}</p>
+        </div>
+    </${tag}>`;
+}
+// Diagram donut (dipakai untuk kartu rasio x/y seperti "Training Onboarding" & "Training by
+// TNA") — sama seperti donutStatCard di halaman Laporan Admin, tapi versi track/teks yang
+// disesuaikan supaya kontras di atas panel gelap (bukan di atas kartu putih).
+function donutDiagramSvg(pct, hex) {
+    const dash = Math.max(0, Math.min(100, pct));
+    return `
+    <div class="relative w-14 h-14">
+        <svg viewBox="0 0 36 36" class="w-14 h-14 -rotate-90">
+            <circle class="text-white/10" stroke="currentColor" stroke-width="4" fill="none" cx="18" cy="18" r="15.9155"></circle>
+            <circle stroke="${hex}" stroke-width="4" fill="none" stroke-linecap="round" stroke-dasharray="${dash} ${100 - dash}" stroke-dashoffset="25" cx="18" cy="18" r="15.9155"></circle>
+        </svg>
+        <div class="absolute inset-0 flex items-center justify-center"><span class="text-[11px] font-black text-white">${pct}%</span></div>
+    </div>`;
+}
+// Diagram bar Pre vs Post (dipakai khusus kartu "Progress Pre & Post Training"). Donut kurang
+// cocok di sini karena datanya BUKAN rasio bagian-dari-keseluruhan, tapi PERBANDINGAN dua nilai
+// (skor rata-rata sebelum vs sesudah) — jadi bar berdampingan lebih jelas menunjukkan arah
+// kenaikannya, dengan label persentase kenaikan di bawahnya.
+function prePostBarDiagramSvg(avgPre, avgPost) {
+    const maxH = 26, baseY = 30;
+    const preH = avgPre > 0 ? Math.max(3, Math.round((Math.min(100, avgPre) / 100) * maxH)) : 2;
+    const postH = avgPost > 0 ? Math.max(3, Math.round((Math.min(100, avgPost) / 100) * maxH)) : 2;
+    const pct = avgPre > 0 ? Math.round(((avgPost - avgPre) / avgPre) * 100) : (avgPost > 0 ? 100 : 0);
+    const sign = pct > 0 ? "+" : "";
+    const pctColor = pct > 0 ? "text-emerald-300" : (pct < 0 ? "text-rose-300" : "text-slate-300");
+    return `
+    <div class="flex flex-col items-center gap-1">
+        <svg viewBox="0 0 36 34" class="w-11 h-10">
+            <line x1="2" y1="${baseY}" x2="34" y2="${baseY}" stroke="rgba(255,255,255,.15)" stroke-width="1"></line>
+            <rect x="8" y="${baseY - preH}" width="7" height="${preH}" rx="1.5" fill="rgba(255,255,255,.35)"></rect>
+            <rect x="21" y="${baseY - postH}" width="7" height="${postH}" rx="1.5" fill="#38bdf8"></rect>
+        </svg>
+        <span class="text-[10px] font-black ${pctColor} leading-none">${sign}${pct}%</span>
+    </div>`;
+}
+// Hitung rata-rata skor Pre-test & Post-test (percobaan terbaru) milik user saat ini, dari
+// SEMUA training onboarding & training TNA yang punya kuis dan SUDAH dikerjakan pre+post-nya.
+// Dipakai kartu "Progress Pre & Post Training" di dashboard user.
+function computeUserPrePostStats() {
+    const u = window.STATE.user;
+    const pairs = [];
+    window.STATE.enrollments.filter(e => e.userId === u.id).forEach(e => {
+        const c = window.STATE.courses.find(x => x.id === e.courseId);
+        if (!c || !(c.quiz && (c.quiz.questions || []).length)) return;
+        const pre = window.sel.myPretestAttempt("course", c.id);
+        const post = (window.sel.myPostTestAttempts("course", c.id) || [])[0];
+        if (pre && post) pairs.push({ pre: pre.score, post: post.score, kind: "course", refId: c.id, title: c.title });
+    });
+    window.STATE.trainings.forEach(t => {
+        if (!window.trainingAllowedForUser(t)) return;
+        if (!(t.quiz && (t.quiz.questions || []).length)) return;
+        const pre = window.sel.myPretestAttempt("training", t.id);
+        const post = (window.sel.myPostTestAttempts("training", t.id) || [])[0];
+        if (pre && post) pairs.push({ pre: pre.score, post: post.score, kind: "training", refId: t.id, title: t.title });
+    });
+    const n = pairs.length;
+    const avgPre = n ? Math.round(pairs.reduce((s, p) => s + p.pre, 0) / n) : 0;
+    const avgPost = n ? Math.round(pairs.reduce((s, p) => s + p.post, 0) / n) : 0;
+    return { avgPre, avgPost, n, pairs };
+}
+
 // Item kosong (dipakai di dalam modal detail dashboard kalau datanya belum ada).
 function dashboardEmptyState(icon, text, link, linkText) {
     return `
@@ -1906,22 +1993,30 @@ window.openDashboardDetail = function (type) {
         }).join("") : dashboardEmptyState("fa-book-open", "Belum ada training onboarding yang ditugaskan untukmu.", "/courses", "Jelajahi Training");
     }
 
-    else if (type === "completed") {
-        const myEnrCompleted = window.STATE.enrollments.filter(e => e.userId === u.id && e.status === "completed");
-        titleEl.innerHTML = `<i class="fas fa-circle-check mr-1"></i> Training Selesai`;
-        bodyEl.innerHTML = myEnrCompleted.length ? myEnrCompleted.map(e => {
-            const c = window.STATE.courses.find(x => x.id === e.courseId);
-            if (!c) return "";
+    else if (type === "prepost") {
+        const stats = computeUserPrePostStats();
+        titleEl.innerHTML = `<i class="fas fa-chart-line mr-1"></i> Progress Pre &amp; Post Training`;
+        const pct = stats.avgPre > 0 ? Math.round(((stats.avgPost - stats.avgPre) / stats.avgPre) * 100) : (stats.avgPost > 0 ? 100 : 0);
+        const summaryHtml = stats.n ? `
+            <div class="flex items-center justify-around bg-sky-50 rounded-2xl p-4 mb-3">
+                <div class="text-center"><p class="text-[10px] text-slate-400 font-black uppercase">Rata² Pre-test</p><p class="text-xl font-black text-slate-600">${stats.avgPre}</p></div>
+                <i class="fas fa-arrow-right-long text-sky-300"></i>
+                <div class="text-center"><p class="text-[10px] text-slate-400 font-black uppercase">Rata² Post-test</p><p class="text-xl font-black text-sky-600">${stats.avgPost}</p></div>
+                <div class="text-center"><p class="text-[10px] text-slate-400 font-black uppercase">Kenaikan</p><p class="text-xl font-black ${pct >= 0 ? 'text-emerald-500' : 'text-rose-500'}">${pct >= 0 ? '+' : ''}${pct}%</p></div>
+            </div>` : "";
+        const rowsHtml = stats.pairs.map(p => {
+            const delta = p.pre > 0 ? Math.round(((p.post - p.pre) / p.pre) * 100) : (p.post > 0 ? 100 : 0);
             return `
-            <div class="flex items-center gap-3 p-3 rounded-2xl border border-slate-100 hover:bg-emerald-50/40 transition">
-                <div class="w-12 h-12 rounded-xl bg-cover bg-center shrink-0" style="${courseCoverStyleSafe(c)}"></div>
+            <div class="flex items-center gap-3 p-3 rounded-2xl border border-slate-100 hover:bg-sky-50/40 transition">
+                <div class="w-10 h-10 rounded-xl bg-sky-50 text-sky-500 flex items-center justify-center shrink-0"><i class="fas ${p.kind === 'training' ? 'fa-chalkboard-user' : 'fa-book-open'}"></i></div>
                 <div class="flex-1 min-w-0">
-                    <p class="text-sm font-bold text-slate-700 truncate">${window.escapeHtml(c.title)}</p>
-                    <p class="text-[11px] text-emerald-500 font-bold mt-1"><i class="fas fa-check-circle mr-1"></i>Selesai</p>
+                    <p class="text-sm font-bold text-slate-700 truncate">${window.escapeHtml(p.title)}</p>
+                    <p class="text-[11px] text-slate-500 font-semibold mt-0.5">Pre ${p.pre} → Post ${p.post}</p>
                 </div>
-                <button onclick="window.closeModal('modal-dashboard-detail'); window.navigate('/courses/${c.id}')" class="shrink-0 text-[11px] font-black px-3 py-2 rounded-xl bg-emerald-50 text-emerald-600 hover:bg-emerald-100 transition">Lihat Kembali</button>
+                <span class="shrink-0 text-[11px] font-black px-2 py-1 rounded-full ${delta >= 0 ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-500'}">${delta >= 0 ? '+' : ''}${delta}%</span>
             </div>`;
-        }).join("") : dashboardEmptyState("fa-circle-check", "Belum ada training yang selesai.", "/courses", "Jelajahi Training");
+        }).join("");
+        bodyEl.innerHTML = summaryHtml + (stats.n ? rowsHtml : dashboardEmptyState("fa-chart-line", "Belum ada training dengan pre-test & post-test yang lengkap dikerjakan.", "/courses", "Jelajahi Training"));
     }
 
     else if (type === "registered") {
