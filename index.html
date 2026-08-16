@@ -398,12 +398,12 @@ html.dark .corevalue-wire { background: rgba(96, 165, 250, .2); }
 
 <!-- ================= MODAL: EDIT PROFIL ================= -->
 <div id="modal-edit-profile" class="fixed inset-0 z-[10000] hide modal-overlay flex items-center justify-center p-4">
-    <div class="bg-white w-full max-w-sm rounded-3xl shadow-2xl overflow-hidden">
-        <div class="p-4 border-b flex justify-between items-center bg-indigo-50">
+    <div class="bg-white w-full max-w-sm rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+        <div class="p-4 border-b flex justify-between items-center bg-indigo-50 shrink-0">
             <h3 class="text-sm font-black text-indigo-600"><i class="fas fa-user-pen mr-1"></i> Edit Profil</h3>
             <button onclick="window.closeModal('modal-edit-profile')" class="text-slate-400 hover:text-slate-700"><i class="fas fa-times"></i></button>
         </div>
-        <div class="p-5 space-y-3">
+        <div class="p-5 space-y-3 overflow-y-auto">
             <div class="flex flex-col items-center gap-3">
                 <div id="profile-photo-preview" class="w-20 h-20 rounded-full bg-indigo-600 text-white flex items-center justify-center font-black text-2xl overflow-hidden shrink-0"></div>
                 <label class="text-[11px] font-bold text-indigo-500 hover:text-indigo-700 bg-indigo-50 px-4 py-2 rounded-xl cursor-pointer">
@@ -414,6 +414,22 @@ html.dark .corevalue-wire { background: rgba(96, 165, 250, .2); }
                     <div class="flex items-center justify-between text-[10px] font-bold text-indigo-500 mb-1"><span><i class="fas fa-spinner fa-spin mr-1"></i>Mengupload foto...</span><span id="profile-photo-progress-pct">0%</span></div>
                     <div class="h-1.5 bg-slate-200 rounded-full overflow-hidden"><div id="profile-photo-progress-bar" class="h-full bg-indigo-500 transition-all" style="width:0%"></div></div>
                 </div>
+            </div>
+            <div class="border-t border-slate-100 pt-4 space-y-3">
+                <p class="text-xs font-black text-slate-700"><i class="fas fa-key text-indigo-500 mr-1"></i> Ganti Password</p>
+                <div>
+                    <label class="text-[10px] font-bold uppercase text-slate-400">Password Lama</label>
+                    <input id="change-password-old" type="password" class="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm mt-1 outline-none focus:ring-2 focus:ring-indigo-400" placeholder="Password saat ini">
+                </div>
+                <div>
+                    <label class="text-[10px] font-bold uppercase text-slate-400">Password Baru</label>
+                    <input id="change-password-new" type="password" class="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm mt-1 outline-none focus:ring-2 focus:ring-indigo-400" placeholder="Minimal 6 karakter">
+                </div>
+                <div>
+                    <label class="text-[10px] font-bold uppercase text-slate-400">Konfirmasi Password Baru</label>
+                    <input id="change-password-confirm" type="password" class="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm mt-1 outline-none focus:ring-2 focus:ring-indigo-400" placeholder="Ulangi password baru" onkeydown="if(event.key==='Enter') window.guardedClick(this, () => window.changePassword())">
+                </div>
+                <button onclick="window.guardedClick(this, () => window.changePassword())" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2.5 rounded-2xl transition text-sm"><i class="fas fa-key mr-1"></i> Simpan Password Baru</button>
             </div>
             <div class="flex items-center justify-between border-t border-slate-100 pt-4">
                 <div>
@@ -1459,8 +1475,39 @@ document.addEventListener("click", function (e) {
 window.openEditProfile = function () {
     const u = window.STATE.user;
     document.getElementById("profile-photo-preview").innerHTML = window.avatarInnerHTML(u);
+    const oldEl = document.getElementById("change-password-old");
+    const newEl = document.getElementById("change-password-new");
+    const confEl = document.getElementById("change-password-confirm");
+    if (oldEl) oldEl.value = "";
+    if (newEl) newEl.value = "";
+    if (confEl) confEl.value = "";
     window.updateThemeToggleUI();
     window.openModal("modal-edit-profile");
+};
+
+window.changePassword = async function () {
+    const u = window.STATE.user;
+    const oldPass = document.getElementById("change-password-old").value;
+    const newPass = document.getElementById("change-password-new").value;
+    const confirmPass = document.getElementById("change-password-confirm").value;
+
+    if (!oldPass || !newPass || !confirmPass) { window.toast("Semua field password wajib diisi", "warn"); return; }
+    if (oldPass !== u.password) { window.toast("Password lama salah", "error"); return; }
+    if (newPass.length < 6) { window.toast("Password baru minimal 6 karakter", "warn"); return; }
+    if (newPass !== confirmPass) { window.toast("Konfirmasi password baru tidak cocok", "warn"); return; }
+    if (newPass === oldPass) { window.toast("Password baru harus berbeda dari password lama", "warn"); return; }
+
+    try {
+        await window.LMS_DB.updateDoc(window.LMS_DB.ref("users", u.id), { password: newPass });
+        window.STATE.user.password = newPass;
+        document.getElementById("change-password-old").value = "";
+        document.getElementById("change-password-new").value = "";
+        document.getElementById("change-password-confirm").value = "";
+        window.toast("Password berhasil diperbarui", "success");
+    } catch (e) {
+        console.error(e);
+        window.toast("Gagal mengganti password: " + (e.message || e), "error");
+    }
 };
 
 window.uploadProfilePhoto = async function (inputEl) {
@@ -6000,7 +6047,8 @@ window.ROUTES["admin/users"] = requireAdmin(function () {
                     <option value="superadmin" ${u.role==='superadmin'?'selected':''}>Super Admin</option>
                 </select>
             </td>
-            <td class="px-3 py-3 text-right">
+            <td class="px-3 py-3 text-right whitespace-nowrap">
+                <button onclick="window.guardedClick(this, () => window.resetUserPassword('${u.id}', '${window.escapeHtml(u.name || u.username).replace(/'/g, "\\'")}'))" title="Reset Password" class="text-indigo-400 hover:text-indigo-600 mr-2"><i class="fas fa-key"></i></button>
                 ${window.sel.isSuperAdmin() ? `<button onclick="window.guardedClick(this, () => window.deleteUser('${u.id}'))" class="text-rose-400 hover:text-rose-600"><i class="fas fa-trash"></i></button>` : ''}
             </td>
         </tr>`).join("");
@@ -6026,6 +6074,21 @@ window.deleteUser = async function (id) {
     if (!confirm("Hapus akun ini?")) return;
     await window.LMS_DB.deleteDoc(window.LMS_DB.ref("users", id));
     window.toast("Akun dihapus", "success");
+};
+
+const DEFAULT_RESET_PASSWORD = "pembelajar";
+
+window.resetUserPassword = async function (id, name) {
+    if (!confirm(`Reset password untuk "${name}" ke password default ("${DEFAULT_RESET_PASSWORD}")?\n\nPassword lama akun ini akan digantikan.`)) return;
+    try {
+        await window.LMS_DB.updateDoc(window.LMS_DB.ref("users", id), { password: DEFAULT_RESET_PASSWORD });
+        if (window.STATE.user && window.STATE.user.id === id) window.STATE.user.password = DEFAULT_RESET_PASSWORD;
+        alert(`Password untuk "${name}" berhasil direset ke password default: "${DEFAULT_RESET_PASSWORD}"\n\nSampaikan ke karyawan, lalu minta mereka menggantinya lagi lewat menu Edit Profil setelah login.`);
+        window.toast("Password berhasil direset ke default", "success");
+    } catch (e) {
+        console.error(e);
+        window.toast("Gagal reset password: " + (e.message || e), "error");
+    }
 };
 
 // ================= ADMIN: LAPORAN =================
