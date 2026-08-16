@@ -23,6 +23,11 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="preconnect" href="https://firestore.googleapis.com">
 
+<script>
+try { if (localStorage.getItem("ningratedu-theme") === "dark") document.documentElement.classList.add("dark"); } catch (e) {}
+window.tailwind = window.tailwind || {};
+tailwind.config = { darkMode: "class" };
+</script>
 <script src="https://cdn.tailwindcss.com" defer></script>
 <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.7.2/css/all.min.css" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" defer></script>
@@ -68,34 +73,32 @@ button:disabled, input[type="submit"]:disabled {
 
 #sidebar {
     position: fixed; top: 0; left: 0; bottom: 0; height: 100dvh; z-index: 40;
-    width: var(--sidebar-w, 260px);
     display: flex; flex-direction: column;
     box-shadow: 2px 0 20px rgba(0,0,0,.25);
-    transition: width .2s ease, box-shadow .2s ease;
+    transition: width .2s ease, transform .2s ease, box-shadow .2s ease;
 }
-#sidebar .brand-label, #sidebar .nav-label, #sidebar .logout-label { transition: opacity .12s ease; white-space: nowrap; }
-#sidebar.sidebar-mini { width: var(--sidebar-mini-w, 76px); }
-#sidebar.sidebar-mini .brand-label, #sidebar.sidebar-mini .nav-label, #sidebar.sidebar-mini .logout-label { display: none; }
-#sidebar.sidebar-mini #sidebar-brand { justify-content: center; padding-left: 0; padding-right: 0; }
-#sidebar.sidebar-mini .nav-item { justify-content: center; padding-left: 0; padding-right: 0; }
+#sidebar .brand-label, #sidebar .nav-label { transition: opacity .12s ease; white-space: nowrap; }
 #sidebar-nav { scrollbar-width: thin; }
 
-/* Main content shifts to make room for the fixed sidebar on desktop only. */
-#main-wrapper { transition: margin-left .2s ease; }
+/* Desktop: sidebar is fixed & always visible (never scrolls away on tall pages).
+   Default = full menu with labels. Toggling collapses it into a slim icon-only rail
+   that stays pinned to the left edge; clicking that rail re-opens the full menu. */
 @media (min-width: 1024px) {
-    #main-wrapper { margin-left: var(--sidebar-w, 260px); }
+    #sidebar { width: var(--sidebar-w, 260px); transform: translateX(0); }
+    #sidebar.sidebar-mini { width: var(--sidebar-mini-w, 76px); }
+    #sidebar.sidebar-mini .brand-label, #sidebar.sidebar-mini .nav-label { display: none; }
+    #sidebar.sidebar-mini #sidebar-brand { justify-content: center; padding-left: 0; padding-right: 0; }
+    #sidebar.sidebar-mini .nav-item { justify-content: center; padding-left: 0; padding-right: 0; }
+    #main-wrapper { margin-left: var(--sidebar-w, 260px); transition: margin-left .2s ease; }
     #sidebar.sidebar-mini ~ #main-wrapper { margin-left: var(--sidebar-mini-w, 76px); }
 }
 
-/* Mobile: sidebar is always a slim fixed rail hugging the left edge by default
-   so it never scrolls away with a tall page, and it floats OVER the content
-   (no margin-push) so it doesn't disturb the page layout. Tapping it (or the
-   header hamburger) expands it into a full drawer with a backdrop. */
+/* Mobile: sidebar is fully hidden off-canvas by default so it never covers the
+   page. The hamburger button (or overlay tap) slides it in as a full drawer. */
 @media (max-width: 1023.98px) {
-    #sidebar { width: var(--sidebar-mini-w-mobile, 56px); }
-    #sidebar.sidebar-mini { width: var(--sidebar-mini-w-mobile, 56px); }
-    #sidebar:not(.sidebar-mini) { width: var(--sidebar-w, 260px); }
-    #main-wrapper { margin-left: 0 !important; }
+    #sidebar { width: var(--sidebar-w, 260px); transform: translateX(-100%); }
+    #sidebar.sidebar-mobile-open { transform: translateX(0); }
+    #main-wrapper { margin-left: 0; }
 }
 
 @keyframes toast-in { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: translateY(0); } }
@@ -105,6 +108,28 @@ button:disabled, input[type="submit"]:disabled {
 ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 8px; }
 
 .line-clamp-2 { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+
+/* ================= DARK THEME (blanket retrofit) =================
+   Aplikasi ini pakai palet Tailwind yang konsisten (bg-white, bg-slate-50,
+   text-slate-*, border-slate-*, dst) di ratusan tempat, jadi dark mode dibuat
+   dengan cara "remap" kelas-kelas umum itu lewat scope html.dark, bukan dengan
+   nulis dark: di tiap baris satu-satu. Sidebar & modal-overlay sudah gelap dari
+   sananya jadi tidak disentuh. */
+html.dark body { background: #0b1220; color: #e2e8f0; }
+html.dark #boot-loader { background: #0b1220; }
+html.dark .bg-white { background-color: #141b2d !important; }
+html.dark .bg-slate-50 { background-color: #0f1626 !important; }
+html.dark .bg-indigo-50 { background-color: #1e2440 !important; }
+html.dark .bg-slate-100 { background-color: #1c2436 !important; }
+html.dark .text-slate-800, html.dark .text-slate-700 { color: #e2e8f0 !important; }
+html.dark .text-slate-600, html.dark .text-slate-500 { color: #b8c2d6 !important; }
+html.dark .text-slate-400, html.dark .text-slate-300 { color: #8a94ab !important; }
+html.dark .border-slate-100, html.dark .border-slate-200, html.dark .border-slate-50 { border-color: #26304a !important; }
+html.dark .divide-slate-100 > * + * { border-color: #26304a !important; }
+html.dark input, html.dark select, html.dark textarea { background-color: #0f1626; color: #e2e8f0; border-color: #2a3550 !important; }
+html.dark input::placeholder, html.dark textarea::placeholder { color: #64708a; }
+html.dark ::-webkit-scrollbar-thumb { background: #2a3550; }
+html.dark .shadow-sm, html.dark .shadow, html.dark .shadow-md, html.dark .shadow-lg, html.dark .shadow-xl, html.dark .shadow-2xl { box-shadow: 0 4px 18px rgba(0,0,0,.45) !important; }
 
 </style>
 </head>
@@ -187,19 +212,17 @@ button:disabled, input[type="submit"]:disabled {
 <div id="app-shell" class="hide min-h-screen lg:flex">
 
     <!-- Sidebar overlay (mobile, only shown when the drawer is fully expanded) -->
-    <div id="sidebar-overlay" class="hide fixed inset-0 bg-black/40 z-30 lg:hidden" onclick="window.collapseSidebar()"></div>
+    <div id="sidebar-overlay" class="hide fixed inset-0 bg-black/40 z-30 lg:hidden" onclick="window.closeMobileSidebar()"></div>
 
-    <!-- Sidebar: always a fixed icon rail hugging the left edge (mini) or a full menu (expanded).
-         Fixed positioning means it never scrolls away with tall pages. -->
+    <!-- Sidebar: fixed & pinned to the left edge (never scrolls away on tall pages).
+         Desktop: full menu by default, can collapse into a slim icon rail.
+         Mobile: fully hidden off-canvas by default, opens as a full drawer. -->
     <aside id="sidebar" class="bg-slate-900 flex flex-col">
         <button id="sidebar-brand" onclick="window.toggleSidebar()" class="flex items-center gap-2 px-5 py-5 text-left" title="Buka/tutup menu">
             <div class="w-9 h-9 rounded-xl bg-indigo-600 flex items-center justify-center shrink-0"><i class="fas fa-graduation-cap text-white"></i></div>
             <span class="brand-label text-white font-black text-lg">NingratEdu</span>
         </button>
         <nav id="sidebar-nav" class="flex-1 px-3 space-y-1 overflow-y-auto overflow-x-hidden"></nav>
-        <div class="p-3 border-t border-white/10">
-            <button onclick="window.doLogout()" class="nav-item w-full text-rose-300 hover:text-rose-200" title="Keluar"><i class="fas fa-right-from-bracket w-5 text-center"></i><span class="logout-label">Keluar</span></button>
-        </div>
     </aside>
 
     <!-- Main -->
@@ -207,15 +230,57 @@ button:disabled, input[type="submit"]:disabled {
         <header class="bg-white border-b border-slate-100 px-4 lg:px-6 py-3 flex items-center justify-between sticky top-0 z-20">
             <button class="text-slate-500 hover:text-indigo-600 transition" onclick="window.toggleSidebar()"><i class="fas fa-bars text-lg"></i></button>
             <div class="hidden lg:block"></div>
-            <div class="flex items-center gap-3">
-                <div class="text-right hidden sm:block">
-                    <p id="topbar-username" class="text-sm font-bold text-slate-700 leading-none"></p>
-                    <p id="topbar-role" class="text-[10px] text-indigo-500 font-bold mt-0.5"></p>
+            <div class="relative">
+                <button id="profile-menu-btn" onclick="window.toggleProfileMenu()" class="flex items-center gap-3">
+                    <div class="text-right hidden sm:block">
+                        <p id="topbar-username" class="text-sm font-bold text-slate-700 leading-none"></p>
+                        <p id="topbar-role" class="text-[10px] text-indigo-500 font-bold mt-0.5"></p>
+                    </div>
+                    <div id="topbar-avatar" class="w-9 h-9 rounded-full bg-indigo-600 text-white flex items-center justify-center font-black text-sm overflow-hidden shrink-0"></div>
+                </button>
+                <div id="profile-menu" class="hide absolute right-0 mt-2 w-56 bg-white rounded-2xl shadow-xl border border-slate-100 overflow-hidden z-50">
+                    <div class="p-4 border-b border-slate-100">
+                        <p id="profile-menu-name" class="text-sm font-black text-slate-800"></p>
+                        <p id="profile-menu-role" class="text-[11px] text-indigo-500 font-bold mt-0.5"></p>
+                    </div>
+                    <button onclick="window.closeProfileMenu(); window.openEditProfile()" class="w-full text-left px-4 py-3 text-sm font-bold text-slate-600 hover:bg-slate-50 flex items-center gap-2"><i class="fas fa-user-pen text-indigo-500 w-4 text-center"></i> Edit Profil</button>
+                    <button onclick="window.doLogout()" class="w-full text-left px-4 py-3 text-sm font-bold text-rose-500 hover:bg-rose-50 flex items-center gap-2 border-t border-slate-100"><i class="fas fa-right-from-bracket w-4 text-center"></i> Keluar</button>
                 </div>
-                <div id="topbar-avatar" class="w-9 h-9 rounded-full bg-indigo-600 text-white flex items-center justify-center font-black text-sm"></div>
             </div>
         </header>
         <main id="page-content" class="flex-1 p-4 lg:p-6"></main>
+    </div>
+</div>
+
+<!-- ================= MODAL: EDIT PROFIL ================= -->
+<div id="modal-edit-profile" class="fixed inset-0 z-[10000] hide modal-overlay flex items-center justify-center p-4">
+    <div class="bg-white w-full max-w-sm rounded-3xl shadow-2xl overflow-hidden">
+        <div class="p-5 border-b flex justify-between items-center bg-indigo-50">
+            <h3 class="text-sm font-black text-indigo-600"><i class="fas fa-user-pen mr-1"></i> Edit Profil</h3>
+            <button onclick="window.closeModal('modal-edit-profile')" class="text-slate-400 hover:text-slate-700"><i class="fas fa-times"></i></button>
+        </div>
+        <div class="p-6 space-y-5">
+            <div class="flex flex-col items-center gap-3">
+                <div id="profile-photo-preview" class="w-20 h-20 rounded-full bg-indigo-600 text-white flex items-center justify-center font-black text-2xl overflow-hidden shrink-0"></div>
+                <label class="text-[11px] font-bold text-indigo-500 hover:text-indigo-700 bg-indigo-50 px-4 py-2 rounded-xl cursor-pointer">
+                    <i class="fas fa-camera mr-1"></i> Ganti Foto
+                    <input type="file" accept="image/*" class="hidden" onchange="window.uploadProfilePhoto(this)">
+                </label>
+                <div id="profile-photo-progress" class="hide w-full">
+                    <div class="flex items-center justify-between text-[10px] font-bold text-indigo-500 mb-1"><span><i class="fas fa-spinner fa-spin mr-1"></i>Mengupload foto...</span><span id="profile-photo-progress-pct">0%</span></div>
+                    <div class="h-1.5 bg-slate-200 rounded-full overflow-hidden"><div id="profile-photo-progress-bar" class="h-full bg-indigo-500 transition-all" style="width:0%"></div></div>
+                </div>
+            </div>
+            <div class="flex items-center justify-between border-t border-slate-100 pt-4">
+                <div>
+                    <p class="text-xs font-black text-slate-700">Tema Tampilan</p>
+                    <p id="theme-toggle-desc" class="text-[11px] text-slate-400">Terang</p>
+                </div>
+                <button id="theme-toggle-btn" onclick="window.toggleTheme()" class="w-14 h-8 rounded-full bg-slate-200 relative transition-colors shrink-0">
+                    <span id="theme-toggle-knob" class="absolute top-1 left-1 w-6 h-6 rounded-full bg-white shadow flex items-center justify-center text-[10px] transition-transform"><i class="fas fa-sun text-amber-400"></i></span>
+                </button>
+            </div>
+        </div>
     </div>
 </div>
 
@@ -870,34 +935,43 @@ window.closeModal = function (id) {
 };
 
 // ================= TOGGLE SIDEBAR (garis tiga) =================
-// Sidebar selalu berupa rail ikon yang fixed nempel di kiri (mini) supaya tidak
-// pernah ikut ke-scroll walau halaman panjang. Tombol ini membuka/menutupnya
-// jadi menu penuh (dengan label teks). Di mobile, saat penuh ia jadi drawer
-// dengan overlay gelap; saat mini ia hanya rail tipis yang tidak mengganggu halaman.
+// Sidebar selalu fixed nempel di kiri sehingga tidak pernah ikut ke-scroll walau
+// halaman panjang. Perilakunya beda per layar:
+// - Desktop: default menu penuh (label kelihatan); tombol ini melipatnya jadi rail
+//   ikon-saja ("sidebar-mini") yang tetap kepasang di kiri.
+// - Mobile: default sidebar disembunyikan total (biar gak nutupin halaman); tombol
+//   ini membuka/menutupnya sebagai drawer penuh + overlay gelap.
 window.toggleSidebar = function () {
-    const sidebar = document.getElementById("sidebar");
-    if (!sidebar) return;
-    if (sidebar.classList.contains("sidebar-mini")) {
-        window.expandSidebar();
+    const isDesktop = window.matchMedia("(min-width: 1024px)").matches;
+    if (isDesktop) {
+        const sidebar = document.getElementById("sidebar");
+        sidebar?.classList.toggle("sidebar-mini");
     } else {
-        window.collapseSidebar();
+        const sidebar = document.getElementById("sidebar");
+        if (sidebar?.classList.contains("sidebar-mobile-open")) window.closeMobileSidebar();
+        else window.openMobileSidebar();
     }
 };
-window.expandSidebar = function () {
-    const sidebar = document.getElementById("sidebar");
-    const overlay = document.getElementById("sidebar-overlay");
-    if (!sidebar) return;
-    sidebar.classList.remove("sidebar-mini");
+window.openMobileSidebar = function () {
+    document.getElementById("sidebar")?.classList.add("sidebar-mobile-open");
+    document.getElementById("sidebar-overlay")?.classList.remove("hide");
+};
+window.closeMobileSidebar = function () {
+    document.getElementById("sidebar")?.classList.remove("sidebar-mobile-open");
+    document.getElementById("sidebar-overlay")?.classList.add("hide");
+};
+// Di desktop, kalau sidebar lagi mini (cuma rail ikon), klik pertama pada menu
+// hanya membuka sidebar-nya dulu — belum langsung pindah halaman. Baru klik
+// berikutnya (setelah kebuka) yang benar-benar navigasi.
+document.getElementById("sidebar-nav")?.addEventListener("click", function (e) {
     const isDesktop = window.matchMedia("(min-width: 1024px)").matches;
-    if (!isDesktop) overlay?.classList.remove("hide");
-};
-window.collapseSidebar = function () {
     const sidebar = document.getElementById("sidebar");
-    const overlay = document.getElementById("sidebar-overlay");
-    if (!sidebar) return;
-    sidebar.classList.add("sidebar-mini");
-    overlay?.classList.add("hide");
-};
+    if (isDesktop && sidebar && sidebar.classList.contains("sidebar-mini")) {
+        e.preventDefault();
+        e.stopPropagation();
+        sidebar.classList.remove("sidebar-mini");
+    }
+}, true);
 
 // ================= ROUTER (hash based) =================
 window.ROUTES = {}; // path -> render function
@@ -924,10 +998,11 @@ function resolveRoute() {
 }
 window.addEventListener("hashchange", resolveRoute);
 window.resolveRoute = resolveRoute;
-// Kalau layar di-resize lewat breakpoint desktop/mobile, pastikan overlay gelap
-// (khusus drawer mobile) tidak nyangkut aktif di layar besar.
+// Kalau layar di-resize lewat breakpoint desktop/mobile, pastikan drawer mobile +
+// overlay gelapnya tidak nyangkut aktif di layar besar.
 window.addEventListener("resize", () => {
     if (window.matchMedia("(min-width: 1024px)").matches) {
+        document.getElementById("sidebar")?.classList.remove("sidebar-mobile-open");
         document.getElementById("sidebar-overlay")?.classList.add("hide");
     }
 });
@@ -936,8 +1011,8 @@ function setActiveNav(key) {
     document.querySelectorAll("[data-nav]").forEach(a => {
         a.classList.toggle("nav-active", a.dataset.nav === key);
     });
-    // collapse sidebar back to the mini rail after navigating on mobile
-    if (!window.matchMedia("(min-width: 1024px)").matches) window.collapseSidebar();
+    // close the mobile drawer after navigating so it doesn't cover the page
+    if (!window.matchMedia("(min-width: 1024px)").matches) window.closeMobileSidebar();
 }
 
 window.setPage = function (html) {
@@ -1049,9 +1124,8 @@ window.enterApp = function () {
     window.renderSidebar();
     window.renderTopbar();
     window.resolveRoute();
-    // Di mobile, sidebar mulai sebagai rail ikon mini (fixed di kiri) supaya tidak
-    // menutupi halaman. Di desktop tetap terbuka penuh seperti biasa.
-    if (!window.matchMedia("(min-width: 1024px)").matches) window.collapseSidebar();
+    // Sidebar mobile mulai tersembunyi total (default lewat CSS), desktop mulai
+    // terbuka penuh — tidak perlu di-set manual di sini.
 };
 
 window.renderSidebar = function () {
@@ -1081,11 +1155,99 @@ window.renderSidebar = function () {
         (isAdmin ? `<div class="px-4 pt-5 pb-2 text-[10px] font-black uppercase tracking-wider text-indigo-300/60">Admin</div>` + adminNav.map(item).join("") : "");
 };
 
+// Avatar: foto profil kalau ada (photoUrl), fallback ke inisial nama.
+window.avatarInnerHTML = function (u) {
+    if (u?.photoUrl) return `<img src="${u.photoUrl}" class="w-full h-full object-cover" alt="Foto profil">`;
+    return (u?.name || u?.username || "?").slice(0, 1).toUpperCase();
+};
+
 window.renderTopbar = function () {
     const u = window.STATE.user;
+    const roleLabel = u.role === "superadmin" ? "Super Admin" : (u.role === "admin" ? "Admin" : "Peserta");
     document.getElementById("topbar-username").textContent = u.name || u.username;
-    document.getElementById("topbar-role").textContent = u.role === "superadmin" ? "Super Admin" : (u.role === "admin" ? "Admin" : "Peserta");
-    document.getElementById("topbar-avatar").textContent = (u.name || u.username || "?").slice(0, 1).toUpperCase();
+    document.getElementById("topbar-role").textContent = roleLabel;
+    document.getElementById("topbar-avatar").innerHTML = window.avatarInnerHTML(u);
+    document.getElementById("profile-menu-name").textContent = u.name || u.username;
+    document.getElementById("profile-menu-role").textContent = roleLabel;
+};
+
+// ================= PROFILE MENU (dropdown di avatar/nama) =================
+window.toggleProfileMenu = function () {
+    document.getElementById("profile-menu")?.classList.toggle("hide");
+};
+window.closeProfileMenu = function () {
+    document.getElementById("profile-menu")?.classList.add("hide");
+};
+document.addEventListener("click", function (e) {
+    const menu = document.getElementById("profile-menu");
+    const btn = document.getElementById("profile-menu-btn");
+    if (!menu || menu.classList.contains("hide")) return;
+    if (menu.contains(e.target) || btn?.contains(e.target)) return;
+    menu.classList.add("hide");
+});
+
+// ================= EDIT PROFIL (foto + tema) =================
+window.openEditProfile = function () {
+    const u = window.STATE.user;
+    document.getElementById("profile-photo-preview").innerHTML = window.avatarInnerHTML(u);
+    window.updateThemeToggleUI();
+    window.openModal("modal-edit-profile");
+};
+
+window.uploadProfilePhoto = async function (inputEl) {
+    const file = inputEl.files[0];
+    if (!file) return;
+    if (!file.type.startsWith("image/")) { window.toast("File harus berupa gambar", "warn"); return; }
+    if (file.size > 5 * 1024 * 1024) { window.toast("Ukuran foto maksimal 5MB", "warn"); return; }
+
+    const box = document.getElementById("profile-photo-progress");
+    const bar = document.getElementById("profile-photo-progress-bar");
+    const pct = document.getElementById("profile-photo-progress-pct");
+    inputEl.disabled = true;
+    box?.classList.remove("hide");
+    if (bar) bar.style.width = "0%";
+    if (pct) pct.textContent = "0%";
+
+    try {
+        const url = await window.LMS_DB.uploadFileWithProgress(file, `avatars/${window.STATE.user.id}`, (p) => {
+            if (bar) bar.style.width = p + "%";
+            if (pct) pct.textContent = p + "%";
+        });
+        await window.LMS_DB.updateDoc(window.LMS_DB.ref("users", window.STATE.user.id), { photoUrl: url });
+        window.STATE.user.photoUrl = url;
+        window.renderTopbar();
+        document.getElementById("profile-photo-preview").innerHTML = window.avatarInnerHTML(window.STATE.user);
+        window.toast("Foto profil berhasil diperbarui", "success");
+    } catch (e) {
+        console.error(e);
+        window.toast("Gagal upload foto: " + (e.message || e), "error");
+    } finally {
+        inputEl.disabled = false;
+        box?.classList.add("hide");
+    }
+};
+
+// ================= TEMA TERANG/GELAP =================
+// Palet dark-mode di-remap global lewat CSS (scope html.dark), lihat blok
+// "DARK THEME (blanket retrofit)" di <style>. Preferensi disimpan di localStorage
+// supaya kepilih lagi tiap buka app, dan sudah diterapkan sebelum halaman
+// dirender (lihat inline script kecil di <head>) biar gak ada kedip warna.
+window.updateThemeToggleUI = function () {
+    const isDark = document.documentElement.classList.contains("dark");
+    const btn = document.getElementById("theme-toggle-btn");
+    const knob = document.getElementById("theme-toggle-knob");
+    const desc = document.getElementById("theme-toggle-desc");
+    if (!btn || !knob) return;
+    btn.classList.toggle("bg-indigo-600", isDark);
+    btn.classList.toggle("bg-slate-200", !isDark);
+    knob.style.transform = isDark ? "translateX(24px)" : "translateX(0)";
+    knob.innerHTML = isDark ? '<i class="fas fa-moon text-indigo-500"></i>' : '<i class="fas fa-sun text-amber-400"></i>';
+    if (desc) desc.textContent = isDark ? "Gelap" : "Terang";
+};
+window.toggleTheme = function () {
+    const isDark = document.documentElement.classList.toggle("dark");
+    try { localStorage.setItem("ningratedu-theme", isDark ? "dark" : "light"); } catch (e) {}
+    window.updateThemeToggleUI();
 };
 
 
