@@ -31,6 +31,7 @@ tailwind.config = { darkMode: "class" };
 <script src="https://cdn.tailwindcss.com" defer></script>
 <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.7.2/css/all.min.css" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" defer></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js" defer></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrious/4.0.2/qrious.min.js" defer></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jsQR/1.4.0/jsQR.js" defer></script>
 <style>
@@ -1809,6 +1810,8 @@ function renderUserDashboard() {
     const prePostStats = computeUserPrePostStats();
     const onboardingPct = myAssignedCourses.length ? Math.round((completedCourses / myAssignedCourses.length) * 100) : 0;
     const tnaPct = myTargetTrainings.length ? Math.round((myCompletedTnaTrainings / myTargetTrainings.length) * 100) : 0;
+    const myEmployee = window.sel.employeeOfUser(u);
+    const kpiStats = computeUserKpiStatsFor(myEmployee);
 
     window.setPage(`
         <div class="mb-3">
@@ -1831,7 +1834,157 @@ function renderUserDashboard() {
                 <div class="space-y-1">${upcomingHtml || '<p class="text-sm text-slate-400 py-5 text-center">Belum ada jadwal training. <a href="#/trainings" class="text-amber-500 font-bold">Lihat jadwal →</a></p>'}</div>
             </div>
         </div>
+        ${kpiPerformanceCard(kpiStats)}
     `);
+
+    // Chart.js butuh elemen canvas-nya sudah ada di DOM dulu (baru di-inject lewat innerHTML
+    // di setPage di atas), makanya render chart-nya ditunda ke tick berikutnya.
+    setTimeout(() => renderKpiMonthlyChart(kpiStats), 0);
+}
+
+// ================= KPI PERFORMANCE BULANAN (Dashboard User) =================
+// Kartu chart tren KPI bulanan karyawan di tahun berjalan, plus resume kalimat otomatis
+// (rata-rata, bulan terbaik/perlu perhatian, dan tren dibanding bulan sebelumnya).
+// Sumber data: window.STATE.employees (field "kpi", diisi lewat Upload Data Karyawan Excel).
+const KPI_MONTH_NAMES_SHORT = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"];
+const KPI_MONTH_NAMES_FULL = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
+
+function computeUserKpiStatsFor(employee) {
+    const year = new Date().getFullYear();
+    const kpi = (employee && employee.kpi) || {};
+    const monthly = [];
+    for (let m = 1; m <= 12; m++) {
+        const raw = kpi[m] ?? kpi[String(m)];
+        monthly.push(typeof raw === "number" ? Math.round(raw * 1000) / 10 : null);
+    }
+    const filled = monthly.map((v, i) => ({ v, i })).filter(x => typeof x.v === "number");
+    if (!filled.length) return { monthly, year, hasData: false };
+
+    const avg = Math.round((filled.reduce((s, x) => s + x.v, 0) / filled.length) * 10) / 10;
+    const best = filled.reduce((a, b) => (b.v > a.v ? b : a));
+    const worst = filled.reduce((a, b) => (b.v < a.v ? b : a));
+    const latest = filled[filled.length - 1];
+    const prev = filled.length > 1 ? filled[filled.length - 2] : null;
+    let trend = "stabil";
+    if (prev) trend = latest.v > prev.v ? "naik" : (latest.v < prev.v ? "turun" : "stabil");
+
+    return { monthly, year, hasData: true, avg, best, worst, latest, prev, trend };
+}
+
+function buildKpiResumeSentence(stats) {
+    if (!stats.hasData) {
+        return `Belum ada data KPI bulanan untuk tahun ${stats.year} yang tercatat. Data KPI bisa dimasukkan lewat menu <b>Data Karyawan → Upload Data Karyawan</b>.`;
+    }
+    const { avg, best, worst, latest, prev, trend, year } = stats;
+    let s = `Sepanjang tahun ${year}, rata-rata KPI kamu berada di angka <b>${avg}%</b>. `;
+    if (best.i !== worst.i) {
+        s += `Performa terbaik ada di bulan <b>${KPI_MONTH_NAMES_FULL[best.i]}</b> (${best.v}%), sementara bulan <b>${KPI_MONTH_NAMES_FULL[worst.i]}</b> (${worst.v}%) masih jadi yang paling perlu digenjot lagi. `;
+    } else {
+        s += `Baru ada satu bulan data KPI yang tercatat, yaitu <b>${KPI_MONTH_NAMES_FULL[best.i]}</b> (${best.v}%). `;
+    }
+    if (prev) {
+        const diff = Math.round((latest.v - prev.v) * 10) / 10;
+        if (trend === "naik") s += `Dibanding bulan <b>${KPI_MONTH_NAMES_FULL[prev.i]}</b>, KPI bulan <b>${KPI_MONTH_NAMES_FULL[latest.i]}</b> naik <b>${diff}%</b> — pertahankan momentumnya! 🚀`;
+        else if (trend === "turun") s += `Dibanding bulan <b>${KPI_MONTH_NAMES_FULL[prev.i]}</b>, KPI bulan <b>${KPI_MONTH_NAMES_FULL[latest.i]}</b> turun <b>${Math.abs(diff)}%</b>. Yuk semangat lagi bulan berikutnya 💪`;
+        else s += `KPI bulan <b>${KPI_MONTH_NAMES_FULL[latest.i]}</b> stabil dibanding bulan sebelumnya.`;
+    } else {
+        s += `Terus konsisten ya, biar tren KPI-nya makin kelihatan di bulan-bulan berikutnya.`;
+    }
+    return s;
+}
+
+function kpiPerformanceCard(stats) {
+    const resume = buildKpiResumeSentence(stats);
+    const avgBadge = stats.hasData
+        ? `<span class="text-xs font-black px-2.5 py-1 rounded-full bg-indigo-50 text-indigo-600">Rata² ${stats.avg}%</span>`
+        : "";
+    return `
+    <div class="bg-white rounded-3xl border border-slate-100 shadow-sm p-4 mt-3">
+        <div class="flex items-center justify-between mb-2">
+            <h3 class="font-black text-slate-700 text-sm"><i class="fas fa-chart-area text-indigo-400 mr-1"></i> Performa KPI Bulanan ${stats.year || new Date().getFullYear()}</h3>
+            ${avgBadge}
+        </div>
+        ${stats.hasData
+            ? `<div class="relative h-56 sm:h-64"><canvas id="kpi-monthly-chart"></canvas></div>`
+            : `<div class="h-40 flex flex-col items-center justify-center text-center gap-1">
+                    <i class="fas fa-chart-simple text-3xl text-slate-200"></i>
+                    <p class="text-sm text-slate-400 max-w-xs">Belum ada data KPI bulanan tahun ini.</p>
+               </div>`}
+        <div class="mt-3 bg-indigo-50/60 rounded-2xl p-3.5 flex items-start gap-2.5">
+            <i class="fas fa-sparkles text-indigo-400 mt-0.5 shrink-0"></i>
+            <p class="text-[13px] text-slate-600 leading-relaxed">${resume}</p>
+        </div>
+    </div>`;
+}
+
+let __kpiChartInstance = null;
+function renderKpiMonthlyChart(stats) {
+    if (!stats.hasData) return;
+    const canvas = document.getElementById("kpi-monthly-chart");
+    if (!canvas || typeof Chart === "undefined") return;
+    if (__kpiChartInstance) { __kpiChartInstance.destroy(); __kpiChartInstance = null; }
+
+    const ctx = canvas.getContext("2d");
+    const gradient = ctx.createLinearGradient(0, 0, 0, canvas.clientHeight || 220);
+    gradient.addColorStop(0, "rgba(79,70,229,.32)");
+    gradient.addColorStop(1, "rgba(79,70,229,0)");
+
+    const pointColors = stats.monthly.map((v, i) => {
+        if (v === null) return "transparent";
+        if (stats.best && i === stats.best.i) return "#10b981";
+        if (stats.worst && i === stats.worst.i) return "#f43f5e";
+        return "#4f46e5";
+    });
+    const pointRadii = stats.monthly.map((v, i) => v === null ? 0 : ((stats.best && i === stats.best.i) || (stats.worst && i === stats.worst.i) ? 6 : 3.5));
+
+    __kpiChartInstance = new Chart(ctx, {
+        type: "line",
+        data: {
+            labels: KPI_MONTH_NAMES_SHORT,
+            datasets: [{
+                label: "KPI",
+                data: stats.monthly,
+                spanGaps: true,
+                fill: true,
+                tension: 0.4,
+                borderColor: "#4f46e5",
+                backgroundColor: gradient,
+                borderWidth: 2.5,
+                pointBackgroundColor: pointColors,
+                pointBorderColor: "#fff",
+                pointBorderWidth: 2,
+                pointRadius: pointRadii,
+                pointHoverRadius: 7,
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            interaction: { intersect: false, mode: "index" },
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    backgroundColor: "#0f172a",
+                    titleFont: { weight: "bold" },
+                    padding: 10,
+                    cornerRadius: 10,
+                    displayColors: false,
+                    callbacks: { label: (c) => c.parsed.y === null ? "Belum ada data" : ` KPI: ${c.parsed.y}%` }
+                }
+            },
+            scales: {
+                y: {
+                    min: 0, max: 100,
+                    ticks: { callback: (v) => v + "%", font: { size: 10 }, color: "#94a3b8" },
+                    grid: { color: "#f1f5f9" }
+                },
+                x: {
+                    grid: { display: false },
+                    ticks: { font: { size: 10, weight: "bold" }, color: "#94a3b8" }
+                }
+            }
+        }
+    });
 }
 
 function tsMillis(ts) {
@@ -5276,6 +5429,20 @@ function excelCellToDate(v) {
     return isNaN(d) ? null : d;
 }
 
+// Nama bulan (huruf kecil) sesuai urutan index array 0-11, dipakai buat mencocokkan header
+// kolom KPI di Excel ("KPI Januari", "KPI Februari", ...) ke nomor bulan 1-12.
+const KPI_MONTH_NAMES = ["januari", "februari", "maret", "april", "mei", "juni", "juli", "agustus", "september", "oktober", "november", "desember"];
+
+// Normalisasi nilai persentase KPI dari sel Excel. Terima format desimal (0.85 = 85%) MAUPUN
+// format angka persen langsung (85 = 85%) — kalau nilainya lebih besar dari 1, dianggap sudah
+// dalam skala 0-100 dan dikonversi ke skala 0-1 biar konsisten disimpan.
+function excelCellToKpiValue(v) {
+    if (v === undefined || v === null || v === "") return null;
+    const n = Number(v);
+    if (isNaN(n)) return null;
+    return n > 1 ? n / 100 : n;
+}
+
 // Parse file Excel data karyawan. Robust terhadap baris kosong/judul di atas header asli
 // (auto-detect baris header dengan mencari baris yang punya kolom "Nama Karyawan" & "Nama Pengguna").
 function parseEmployeeWorkbook(file, callback) {
@@ -5308,6 +5475,15 @@ function parseEmployeeWorkbook(file, callback) {
                         if (c.includes("tgl bergabung") || c.includes("tanggal bergabung")) colIdx.tglBergabung = i;
                         if (c.includes("no kontak") || c.includes("kontak")) colIdx.kontak = i;
                         if (c.includes("tanggal lahir")) colIdx.tglLahir = i;
+                        // Kolom KPI bulanan (mis. "KPI Januari", "KPI Februari", dst) — dicocokkan
+                        // ke nomor bulan 1-12 supaya urutan kolom di Excel bebas (gak harus Jan→Des).
+                        if (c.includes("kpi")) {
+                            const bulanIdx = KPI_MONTH_NAMES.findIndex(nm => c.includes(nm));
+                            if (bulanIdx !== -1) {
+                                colIdx.kpiCols = colIdx.kpiCols || {};
+                                colIdx.kpiCols[bulanIdx + 1] = i;
+                            }
+                        }
                     });
                     break;
                 }
@@ -5326,6 +5502,16 @@ function parseEmployeeWorkbook(file, callback) {
                 const username = normalizeUsername(row[colIdx.username]);
                 if (!nama && !username) continue;
                 if (!nama || !username) { skipped++; continue; }
+                // Kumpulkan nilai KPI per bulan (kalau kolomnya ada di file & selnya terisi) jadi
+                // object { "1": 0.85, "8": 0.92, ... } — bulan yang belum ada datanya tidak dimasukkan
+                // (bukan 0), supaya nanti bisa dibedakan antara "belum ada data" vs "KPI 0%".
+                let kpi = null;
+                if (colIdx.kpiCols) {
+                    Object.entries(colIdx.kpiCols).forEach(([bulan, ci]) => {
+                        const val = excelCellToKpiValue(row[ci]);
+                        if (val !== null) { kpi = kpi || {}; kpi[bulan] = val; }
+                    });
+                }
                 employees.push({
                     no: row[colIdx.no] ?? null,
                     nama,
@@ -5341,6 +5527,7 @@ function parseEmployeeWorkbook(file, callback) {
                     tglBergabung: excelCellToDate(row[colIdx.tglBergabung]),
                     kontak: excelCellToString(row[colIdx.kontak]),
                     tglLahir: excelCellToDate(row[colIdx.tglLahir]),
+                    kpi,
                 });
             }
             callback(employees, skipped);
@@ -5371,16 +5558,21 @@ window.uploadEmployeeExcel = function () {
             if (!employees.length) { window.toast("Tidak ada data karyawan valid yang terbaca dari file ini.", "warn"); return; }
             const existingByUsername = {};
             window.STATE.users.forEach(u => { existingByUsername[normalizeUsername(u.username)] = u; });
+            const existingEmployeeByUsername = {};
+            window.STATE.employees.forEach(e => { existingEmployeeByUsername[normalizeUsername(e.username)] = e; });
 
             const willCreate = employees.filter(emp => !existingByUsername[emp.username]).length;
             const willUpdate = employees.length - willCreate;
+            const hasKpiCols = employees.some(emp => emp.kpi);
             const msg = `${employees.length} data karyawan terbaca` + (skipped ? ` (${skipped} baris dilewati karena data tidak lengkap)` : "") +
-                `.\n\n${willCreate} akun BARU akan dibuat (aktif, password default "pembelajar").\n${willUpdate} akun yang sudah ada akan disinkron nama/departemen/emailnya (password tidak diubah).\n\nLanjutkan impor?`;
+                `.\n\n${willCreate} akun BARU akan dibuat (aktif, password default "pembelajar").\n${willUpdate} akun yang sudah ada akan disinkron nama/departemen/emailnya (password tidak diubah).` +
+                (hasKpiCols ? `\n\nData KPI bulanan terdeteksi di file ini dan akan digabung ke data KPI karyawan yang sudah ada (bulan lain yang sudah tersimpan sebelumnya tidak akan hilang).` : "") +
+                `\n\nLanjutkan impor?`;
             if (!confirm(msg)) return;
 
             window.toast("Mengimpor data karyawan...", "info");
             try {
-                await window.commitEmployeeImport(employees, existingByUsername);
+                await window.commitEmployeeImport(employees, existingByUsername, existingEmployeeByUsername);
                 window.toast(`Impor selesai: ${willCreate} akun baru, ${willUpdate} akun disinkron.`, "success");
                 window.navigate("/admin/employees");
             } catch (err) {
@@ -5394,20 +5586,26 @@ window.uploadEmployeeExcel = function () {
 
 // Commit import ke Firestore pakai writeBatch, dipecah per 200 baris (maks ~400 operasi/batch,
 // aman di bawah limit 500 operasi per batch Firestore).
-window.commitEmployeeImport = async function (employees, existingByUsername) {
+window.commitEmployeeImport = async function (employees, existingByUsername, existingEmployeeByUsername) {
     const { ref, writeBatch, db, serverTimestamp } = window.LMS_DB;
     const CHUNK = 200;
     const processedUsernames = new Set();
+    existingEmployeeByUsername = existingEmployeeByUsername || {};
     for (let i = 0; i < employees.length; i += CHUNK) {
         const chunk = employees.slice(i, i + CHUNK);
         const batch = writeBatch(db);
         chunk.forEach(emp => {
             const empDocId = "emp_" + emp.username;
+            // KPI bulanan digabung (bukan ditimpa total) dengan data lama, supaya import KPI
+            // bulan baru tidak menghapus KPI bulan-bulan sebelumnya yang sudah tersimpan.
+            const existingEmp = existingEmployeeByUsername[emp.username];
+            const mergedKpi = (existingEmp && existingEmp.kpi) || emp.kpi ? { ...(existingEmp && existingEmp.kpi), ...(emp.kpi || {}) } : null;
             batch.set(ref("employees", empDocId), {
                 no: emp.no, nama: emp.nama, username: emp.username, dept: emp.dept,
                 designation: emp.designation, rm: emp.rm, bm: emp.bm, mentor: emp.mentor,
                 posisi: emp.posisi, masaKerja: emp.masaKerja, keterangan: emp.keterangan,
                 tglBergabung: emp.tglBergabung, kontak: emp.kontak, tglLahir: emp.tglLahir,
+                kpi: mergedKpi,
                 updatedAt: serverTimestamp()
             }, { merge: true });
 
@@ -5432,8 +5630,10 @@ window.commitEmployeeImport = async function (employees, existingByUsername) {
 window.downloadEmployeeTemplate = function () {
     if (typeof XLSX === "undefined") { window.toast("Modul Excel belum siap, coba lagi sesaat.", "warn"); return; }
     const wsData = [
-        ["No", "Nama Karyawan", "Nama Pengguna", "Departemen", "Designation", "RM", "BM", "Mentor/SPV", "Posisi", "Masa Kerja", "Keterangan", "Tgl Bergabung", "No Kontak", "Tanggal Lahir"],
-        [1, "Ahmad Hanafi", "hanafi", "After Sales", "Pelaksana After Sales", "", "", "", "Officer", 7.0, "Non Sales", new Date(2019, 8, 4), "6289660719900", new Date(1993, 11, 22)],
+        ["No", "Nama Karyawan", "Nama Pengguna", "Departemen", "Designation", "RM", "BM", "Mentor/SPV", "Posisi", "Masa Kerja", "Keterangan", "Tgl Bergabung", "No Kontak", "Tanggal Lahir",
+            "KPI Januari", "KPI Februari", "KPI Maret", "KPI April", "KPI Mei", "KPI Juni", "KPI Juli", "KPI Agustus", "KPI September", "KPI Oktober", "KPI November", "KPI Desember"],
+        [1, "Ahmad Hanafi", "hanafi", "After Sales", "Pelaksana After Sales", "", "", "", "Officer", 7.0, "Non Sales", new Date(2019, 8, 4), "6289660719900", new Date(1993, 11, 22),
+            0.85, 0.9, 0.92, "", "", "", "", "", "", "", "", ""],
     ];
     const ws = XLSX.utils.aoa_to_sheet(wsData);
     ws["!cols"] = wsData[0].map(() => ({ wch: 18 }));
