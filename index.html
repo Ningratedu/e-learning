@@ -760,9 +760,10 @@ window.openModal = function (id) {
 };
 window.closeModal = function (id) {
     document.getElementById(id)?.classList.add("hide");
-    if (id === "modal-lesson" && window._pptTimerId) {
-        clearInterval(window._pptTimerId);
-        window._pptTimerId = null;
+    if (id === "modal-lesson") {
+        if (window._pptTimerId) { clearInterval(window._pptTimerId); window._pptTimerId = null; }
+        stopLessonPositionTracking(); // simpan posisi terakhir (video/ppt) sebelum modal ditutup
+        window._currentYtPlayer = null;
     }
     if (id === "modal-qr-scan" && window.stopQrScan) window.stopQrScan();
 };
@@ -986,6 +987,14 @@ function renderUserDashboard() {
     const myRegs = window.STATE.trainingRegs.filter(r => r.userId === u.id);
     const myCerts = window.STATE.certificates.filter(c => c.userId === u.id);
 
+    // Target Training by TNA dihitung dari PENUGASAN ADMIN (scope peserta training: semua
+    // karyawan / departemen / posisi / manual) — BUKAN dari jumlah training yang sudah
+    // didaftar sendiri oleh user. Kalau training-nya untuk "semua departemen", otomatis
+    // semua user termasuk jadi target training itu (dipakai sebagai penyebut keterlaksanaan).
+    const myTargetTrainings = window.STATE.trainings.filter(t => window.trainingAllowedForUser(t));
+    // "Selesai" Training by TNA = sudah lulus (sertifikat terbit) untuk training yang jadi target.
+    const myCompletedTnaTrainings = myTargetTrainings.filter(t => myCerts.some(c => c.trainingId === t.id)).length;
+
     const upcoming = window.STATE.trainings
         .filter(t => myRegs.some(r => r.trainingId === t.id) && new Date(t.date).getTime() >= Date.now() - 86400000)
         .sort((a, b) => new Date(a.date) - new Date(b.date)).slice(0, 3);
@@ -1020,9 +1029,9 @@ function renderUserDashboard() {
             <p class="text-sm text-slate-500">Ini ringkasan progres belajar kamu.</p>
         </div>
         <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-            ${clickableStatCard("fa-book-open", "indigo", myAssignedCourses.length, "Training Diikuti", "window.openDashboardDetail('enrolled')")}
+            ${clickableStatCardProgress("fa-book-open", "indigo", completedCourses, myAssignedCourses.length, "Training Onboarding", "window.openDashboardDetail('enrolled')")}
             ${clickableStatCard("fa-circle-check", "emerald", completedCourses, "Training Selesai", "window.openDashboardDetail('completed')")}
-            ${clickableStatCard("fa-chalkboard-user", "amber", myRegs.length, "Training Terdaftar", "window.openDashboardDetail('registered')")}
+            ${clickableStatCardProgress("fa-chalkboard-user", "amber", myCompletedTnaTrainings, myTargetTrainings.length, "Training by TNA", "window.openDashboardDetail('registered')")}
             ${clickableStatCard("fa-award", "rose", myCerts.length, "Sertifikat", "window.openDashboardDetail('certificates')")}
         </div>
         <div class="grid grid-cols-1 lg:grid-cols-2 gap-5">
@@ -1235,6 +1244,25 @@ function clickableStatCard(icon, color, value, label, onclick) {
     </button>`;
 }
 
+// Varian clickableStatCard yang menampilkan PERSENTASE sebagai angka utama, plus nilai
+// "x/y" (selesai/target) di bawah label. Dipakai untuk kartu "Training Onboarding" dan
+// "Training by TNA" di dashboard user, di mana "y" (target) dihitung dari penugasan admin
+// (departemen/scope training), BUKAN dari jumlah user yang sudah mendaftar sendiri.
+function clickableStatCardProgress(icon, color, doneCount, totalCount, label, onclick) {
+    const map = { indigo: "bg-indigo-50 text-indigo-600", emerald: "bg-emerald-50 text-emerald-600", amber: "bg-amber-50 text-amber-600", rose: "bg-rose-50 text-rose-600", violet: "bg-violet-50 text-violet-600" };
+    const pct = totalCount ? Math.round((doneCount / totalCount) * 100) : 0;
+    return `
+    <button type="button" onclick="${onclick}" class="text-left w-full bg-white rounded-3xl border border-slate-100 shadow-sm p-4 flex items-center gap-3 hover:shadow-md hover:border-indigo-200 hover:-translate-y-0.5 active:translate-y-0 transition-all cursor-pointer">
+        <div class="w-11 h-11 rounded-2xl ${map[color]} flex items-center justify-center shrink-0"><i class="fas ${icon}"></i></div>
+        <div class="flex-1 min-w-0">
+            <p class="text-xl font-black text-slate-800 leading-none">${pct}%</p>
+            <p class="text-[11px] text-slate-400 font-semibold mt-1">${label}</p>
+            <p class="text-[10px] text-slate-400 font-bold mt-0.5">${doneCount}/${totalCount} selesai</p>
+        </div>
+        <i class="fas fa-chevron-right text-slate-300 text-xs shrink-0"></i>
+    </button>`;
+}
+
 // Item kosong (dipakai di dalam modal detail dashboard kalau datanya belum ada).
 function dashboardEmptyState(icon, text, link, linkText) {
     return `
@@ -1258,7 +1286,7 @@ window.openDashboardDetail = function (type) {
     if (type === "enrolled") {
         const myEnr = window.STATE.enrollments.filter(e => e.userId === u.id);
         const assignedCourses = window.STATE.courses.filter(c => c.published && window.deptAllowed(c));
-        titleEl.innerHTML = `<i class="fas fa-book-open mr-1"></i> Training Diikuti`;
+        titleEl.innerHTML = `<i class="fas fa-book-open mr-1"></i> Training Onboarding`;
         bodyEl.innerHTML = assignedCourses.length ? assignedCourses.map(c => {
             const e = myEnr.find(x => x.courseId === c.id) || null;
             const started = !!e;
@@ -1306,12 +1334,28 @@ window.openDashboardDetail = function (type) {
     }
 
     else if (type === "registered") {
-        const myRegs = window.STATE.trainingRegs.filter(r => r.userId === u.id);
-        titleEl.innerHTML = `<i class="fas fa-chalkboard-user mr-1"></i> Training Terdaftar`;
-        bodyEl.innerHTML = myRegs.length ? myRegs.map(r => {
-            const t = window.STATE.trainings.find(x => x.id === r.trainingId);
-            if (!t) return "";
-            const isPast = new Date(t.date).getTime() < Date.now() - 86400000;
+        // Daftar training TNA yang ditampilkan = SEMUA training yang jadi target penugasan
+        // admin buat user ini (lewat scope peserta: semua/departemen/posisi/manual), bukan
+        // cuma yang sudah didaftar sendiri. Tampilannya disamakan dengan modal "Training
+        // Onboarding" di atas: cover/ikon, progress bar, status teks, info pre/post-test,
+        // dan tombol aksi kontekstual.
+        const myTargetTrainings = window.STATE.trainings.filter(t => window.trainingAllowedForUser(t));
+        titleEl.innerHTML = `<i class="fas fa-chalkboard-user mr-1"></i> Training by TNA`;
+        bodyEl.innerHTML = myTargetTrainings.length ? myTargetTrainings.map(t => {
+            const reg = window.sel.myRegForTraining(t.id);
+            const started = !!reg;
+            const progress = started ? window.sel.trainingProgress(t.id) : 0;
+            const cert = window.STATE.certificates.find(c => c.userId === u.id && c.trainingId === t.id);
+            const done = !!cert;
+            const hasQuiz = t.quiz && (t.quiz.questions || []).length > 0;
+            const pre = hasQuiz ? window.sel.myPretestAttempt("training", t.id) : null;
+            const postAttempts = hasQuiz ? window.sel.myPostTestAttempts("training", t.id) : [];
+            const post = postAttempts[0] || null;
+            const testInfo = hasQuiz ? `
+                <p class="text-[11px] text-slate-500 font-semibold mt-1">
+                    <span class="mr-2"><i class="fas fa-list-check text-sky-400 mr-0.5"></i>Pre-test: ${pre ? pre.score : '-'}</span>
+                    <span><i class="fas fa-clipboard-question text-violet-400 mr-0.5"></i>Post-test: ${post ? `${post.score} ${post.passed ? '<span class="text-emerald-500 font-bold">(Lulus)</span>' : '<span class="text-rose-500 font-bold">(Belum)</span>'}` : '-'}</span>
+                </p>` : "";
             return `
             <div class="flex items-center gap-3 p-3 rounded-2xl border border-slate-100 hover:bg-amber-50/40 transition">
                 <div class="w-12 h-12 rounded-xl bg-amber-50 text-amber-600 flex flex-col items-center justify-center shrink-0">
@@ -1320,11 +1364,13 @@ window.openDashboardDetail = function (type) {
                 </div>
                 <div class="flex-1 min-w-0">
                     <p class="text-sm font-bold text-slate-700 truncate">${window.escapeHtml(t.title)}</p>
-                    <p class="text-[11px] text-slate-400 font-semibold truncate">${window.escapeHtml(t.location||'-')}</p>
+                    <div class="h-1.5 bg-slate-100 rounded-full overflow-hidden mt-1.5"><div class="h-full ${done ? 'bg-emerald-500' : 'bg-amber-500'}" style="width:${progress}%"></div></div>
+                    <p class="text-[11px] text-slate-400 font-semibold mt-1">${done ? 'Selesai (Lulus)' : (started ? progress + '% selesai' : 'Belum dimulai')}</p>
+                    ${testInfo}
                 </div>
-                <button onclick="window.closeModal('modal-dashboard-detail'); window.navigate('/trainings/${t.id}')" class="shrink-0 text-[11px] font-black px-3 py-2 rounded-xl bg-amber-500 text-white hover:bg-amber-600 transition">${isPast ? 'Lihat Detail' : 'Lihat Jadwal'}</button>
+                <button onclick="window.closeModal('modal-dashboard-detail'); window.navigate('/trainings/${t.id}')" class="shrink-0 text-[11px] font-black px-3 py-2 rounded-xl ${done ? 'bg-emerald-50 text-emerald-600 hover:bg-emerald-100' : 'bg-amber-500 text-white hover:bg-amber-600'} transition">${done ? 'Lihat Kembali' : (started ? 'Lanjutkan' : 'Lihat / Daftar')}</button>
             </div>`;
-        }).join("") : dashboardEmptyState("fa-chalkboard-user", "Kamu belum terdaftar di training mana pun.", "/trainings", "Lihat Jadwal Training");
+        }).join("") : dashboardEmptyState("fa-chalkboard-user", "Belum ada training TNA yang ditugaskan untukmu.", "/trainings", "Lihat Jadwal Training");
     }
 
     else if (type === "certificates") {
@@ -1819,6 +1865,63 @@ window.enrollCourse = async function (courseId) {
 
 // ================= HELPER GENERIK: MODUL/LESSON/KUIS UNTUK COURSE & TRAINING TNA =================
 // kind: 'course' (Onboarding Training) atau 'training' (Training By TNA)
+// ================= RESUME MATERI (VIDEO & PPT) =================
+// Menyimpan posisi terakhir user belajar sebuah lesson (video: detik terakhir ditonton;
+// ppt: detik terakhir dari timer wajib-belajar, karena viewer PPT dari Office Online
+// berjalan cross-origin sehingga slide aslinya tidak bisa dilacak dari sini) supaya kalau
+// modal ditutup lalu dibuka lagi, materinya lanjut dari posisi itu, bukan dari awal lagi.
+// Disimpan di field "lastPositions" pada dokumen progress (enrollment/trainingReg),
+// contoh: { "<lessonId>": 128 }.
+window._lessonPosTracker = null; // { kind, refId, lessonId, getSeconds }
+
+function getSavedLessonPosition(kind, refId, lessonId) {
+    const prog = getProgressDoc(kind, refId);
+    const positions = (prog && prog.lastPositions) || {};
+    const secs = positions[lessonId];
+    return typeof secs === "number" && secs > 0 ? Math.floor(secs) : 0;
+}
+
+function startLessonPositionTracking(kind, refId, lessonId, getSecondsFn) {
+    stopLessonPositionTracking(); // pastikan tidak ada tracker lama yang masih nyala
+    window._lessonPosTracker = { kind, refId, lessonId, getSeconds: getSecondsFn };
+    window._lessonPosTrackerTimer = setInterval(saveLessonPositionNow, 10000);
+}
+
+function stopLessonPositionTracking() {
+    if (window._lessonPosTrackerTimer) { clearInterval(window._lessonPosTrackerTimer); window._lessonPosTrackerTimer = null; }
+    if (window._lessonPosTracker) { saveLessonPositionNow(); }
+    window._lessonPosTracker = null;
+}
+
+async function saveLessonPositionNow() {
+    const tr = window._lessonPosTracker;
+    if (!tr) return;
+    let seconds = 0;
+    try { seconds = Math.floor(tr.getSeconds() || 0); } catch (e) { return; }
+    if (!seconds || seconds < 3) return; // belum ada progres berarti, gak usah disimpan
+    const prog = getProgressDoc(tr.kind, tr.refId);
+    if (!prog) return;
+    const { ref, updateDoc } = window.LMS_DB;
+    const positions = { ...(prog.lastPositions || {}) };
+    positions[tr.lessonId] = seconds;
+    try {
+        await updateDoc(ref(progressCollectionName(tr.kind), prog.id), { lastPositions: positions });
+    } catch (e) { console.error("Gagal menyimpan posisi terakhir materi", e); }
+}
+
+// Hapus posisi tersimpan untuk sebuah lesson (dipanggil saat lesson ditandai selesai,
+// supaya kalau dibuka ulang buat review, mulai dari awal lagi, bukan dari posisi lama).
+async function clearSavedLessonPosition(kind, refId, lessonId) {
+    const prog = getProgressDoc(kind, refId);
+    if (!prog || !prog.lastPositions || !(lessonId in prog.lastPositions)) return;
+    const { ref, updateDoc } = window.LMS_DB;
+    const positions = { ...prog.lastPositions };
+    delete positions[lessonId];
+    try {
+        await updateDoc(ref(progressCollectionName(kind), prog.id), { lastPositions: positions });
+    } catch (e) { console.error("Gagal menghapus posisi tersimpan materi", e); }
+}
+
 function getContentItem(kind, refId) {
     return kind === "training" ? window.STATE.trainings.find(x => x.id === refId) : window.STATE.courses.find(x => x.id === refId);
 }
@@ -1963,13 +2066,16 @@ window.openLesson = function (kind, refId, lessonId) {
     let body = "";
     let requireFullWatch = false;
 
+    const savedSeconds = getSavedLessonPosition(kind, refId, lessonId);
+
     if (lesson.type === "video" && lesson.videoUrl) {
         const embed = toEmbedUrl(lesson.videoUrl);
         if (embed) {
             requireFullWatch = !done;
-            const embedSrc = `${embed}?enablejsapi=1&origin=${encodeURIComponent(location.origin)}`;
+            const resumeParam = (!done && savedSeconds > 3) ? `&start=${savedSeconds}` : "";
+            const embedSrc = `${embed}?enablejsapi=1&origin=${encodeURIComponent(location.origin)}${resumeParam}`;
             body = `<div class="aspect-video rounded-2xl overflow-hidden bg-black"><iframe id="lesson-video-frame" class="w-full h-full" src="${embedSrc}" allow="autoplay; encrypted-media" allowfullscreen></iframe></div>
-            ${requireFullWatch ? `<p id="lesson-video-hint" class="text-xs text-amber-600 font-semibold mt-2"><i class="fas fa-circle-info mr-1"></i> Tonton video sampai selesai untuk mengaktifkan tombol "Tandai Selesai".</p>` : ""}`;
+            ${requireFullWatch ? `<p id="lesson-video-hint" class="text-xs text-amber-600 font-semibold mt-2"><i class="fas fa-circle-info mr-1"></i> ${resumeParam ? "Video dilanjutkan dari posisi terakhir kamu menonton. " : ""}Tonton video sampai selesai untuk mengaktifkan tombol "Tandai Selesai".</p>` : ""}`;
         } else {
             body = `<div class="aspect-video rounded-2xl bg-rose-50 border border-dashed border-rose-200 flex flex-col items-center justify-center text-center px-4"><i class="fas fa-triangle-exclamation text-2xl text-rose-300 mb-2"></i><p class="text-sm text-rose-500 font-semibold">Link video tidak dikenali sebagai URL YouTube yang valid.</p><p class="text-xs text-rose-400 mt-1">Hubungi admin untuk memperbaiki URL video pada materi ini.</p></div>`;
         }
@@ -1978,6 +2084,8 @@ window.openLesson = function (kind, refId, lessonId) {
     } else if (lesson.type === "ppt" && lesson.pptUrl) {
         requireFullWatch = !done;
         const totalSlides = lesson.slideCount || 1;
+        const pptTotalSecs = pptRequiredSeconds(totalSlides);
+        const pptResumeSecs = (!done && savedSeconds > 3) ? Math.min(savedSeconds, pptTotalSecs - 1) : 0;
         const officeEmbedSrc = `https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(lesson.pptUrl)}`;
         const officeViewSrc = `https://view.officeapps.live.com/op/view.aspx?src=${encodeURIComponent(lesson.pptUrl)}`;
         body = `
@@ -1994,11 +2102,11 @@ window.openLesson = function (kind, refId, lessonId) {
                 <a href="${officeViewSrc}" target="_blank" rel="noopener" class="text-[11px] font-bold text-indigo-500 hover:text-indigo-700 bg-indigo-50 px-3 py-1.5 rounded-lg"><i class="fas fa-up-right-from-square mr-1"></i> Buka di Tab Baru</a>
                 <a href="${lesson.pptUrl}" target="_blank" rel="noopener" class="text-[11px] font-bold text-slate-500 hover:text-slate-700 bg-slate-100 px-3 py-1.5 rounded-lg"><i class="fas fa-download mr-1"></i> Unduh File PPT</a>
             </div>
-            <p class="text-[11px] text-slate-400 mt-1">Kalau tampilan slide di atas tidak muncul (kadang tergantung koneksi/jaringan kantor), pakai tombol "Buka di Tab Baru" ya.</p>
+            <p class="text-[11px] text-slate-400 mt-1">Kalau tampilan slide di atas tidak muncul (kadang tergantung koneksi/jaringan kantor), pakai tombol "Buka di Tab Baru" ya. Catatan: karena viewer PPT ini dari domain lain, posisi slide persisnya tidak bisa disimpan — tapi progres waktu belajarmu tetap dilanjutkan dari terakhir kali dibuka.</p>
             ${requireFullWatch ? `
             <div class="mt-2 bg-slate-50 rounded-xl px-3 py-2">
-                <div class="h-1.5 bg-slate-200 rounded-full overflow-hidden"><div id="ppt-timer-bar" class="h-full bg-amber-400 transition-all" style="width:0%"></div></div>
-                <p id="lesson-ppt-hint" class="text-xs text-amber-600 font-semibold mt-2"><i class="fas fa-hourglass-half mr-1"></i> Pelajari materi ini selama <span id="ppt-timer-secs">${pptRequiredSeconds(totalSlides)}</span> detik untuk mengaktifkan tombol "Tandai Selesai".</p>
+                <div class="h-1.5 bg-slate-200 rounded-full overflow-hidden"><div id="ppt-timer-bar" class="h-full bg-amber-400 transition-all" style="width:${Math.round((pptResumeSecs / pptTotalSecs) * 100)}%"></div></div>
+                <p id="lesson-ppt-hint" class="text-xs text-amber-600 font-semibold mt-2"><i class="fas fa-hourglass-half mr-1"></i> ${pptResumeSecs ? "Dilanjutkan dari sesi belajar sebelumnya. " : ""}Pelajari materi ini selama <span id="ppt-timer-secs">${pptTotalSecs - pptResumeSecs}</span> detik lagi untuk mengaktifkan tombol "Tandai Selesai".</p>
             </div>` : ""}
         </div>`;
     } else if (lesson.type === "ppt" && !lesson.pptUrl) {
@@ -2017,9 +2125,11 @@ window.openLesson = function (kind, refId, lessonId) {
 
     if (lesson.type === "video" && requireFullWatch) {
         setTimeout(() => attachVideoEndWatcher(lesson.videoUrl, () => enableCompleteBtn()), 300);
+        startLessonPositionTracking(kind, refId, lessonId, () => window._currentYtPlayer && window._currentYtPlayer.getCurrentTime && window._currentYtPlayer.getCurrentTime());
     }
     if (lesson.type === "ppt" && requireFullWatch) {
-        startPptTimer(totalSlidesSafe(lesson));
+        startPptTimer(totalSlidesSafe(lesson), savedSeconds);
+        startLessonPositionTracking(kind, refId, lessonId, () => window._pptElapsedSeconds || 0);
     }
 };
 
@@ -2032,14 +2142,16 @@ function pptRequiredSeconds(totalSlides) {
     return Math.max(15, Math.min(300, totalSlides * 6));
 }
 
-function startPptTimer(totalSlides) {
+function startPptTimer(totalSlides, initialElapsed = 0) {
     if (window._pptTimerId) { clearInterval(window._pptTimerId); window._pptTimerId = null; }
     const totalSecs = pptRequiredSeconds(totalSlides);
-    let elapsed = 0;
+    let elapsed = Math.max(0, Math.min(initialElapsed || 0, totalSecs - 1));
+    window._pptElapsedSeconds = elapsed; // dibaca oleh tracker posisi (resume)
     const secsEl = document.getElementById("ppt-timer-secs");
     const barEl = document.getElementById("ppt-timer-bar");
     window._pptTimerId = setInterval(() => {
         elapsed++;
+        window._pptElapsedSeconds = elapsed;
         const remaining = totalSecs - elapsed;
         if (secsEl) secsEl.textContent = Math.max(0, remaining);
         if (barEl) barEl.style.width = `${Math.min(100, Math.round((elapsed / totalSecs) * 100))}%`;
@@ -2075,7 +2187,7 @@ function attachVideoEndWatcher(videoUrl) {
 }
 function bindYtPlayer(frame) {
     try {
-        new YT.Player(frame, {
+        window._currentYtPlayer = new YT.Player(frame, {
             events: {
                 onStateChange: (e) => { if (e.data === YT.PlayerState.ENDED) enableCompleteBtn(); }
             }
@@ -2131,7 +2243,12 @@ async function markLessonComplete(kind, refId, lessonId) {
     if (!prog) return;
     const ids = new Set(prog.completedLessonIds || []);
     ids.add(lessonId);
+    // Hentikan tracker dulu TANPA menyimpan posisi (biar gak nimpa completedLessonIds di
+    // updateDoc bawah), lalu bersihkan posisi tersimpan karena materinya sudah tuntas.
+    window._lessonPosTracker = null;
+    if (window._lessonPosTrackerTimer) { clearInterval(window._lessonPosTrackerTimer); window._lessonPosTrackerTimer = null; }
     await updateDoc(ref(progressCollectionName(kind), prog.id), { completedLessonIds: Array.from(ids) });
+    await clearSavedLessonPosition(kind, refId, lessonId);
     window.toast("Materi ditandai selesai", "success");
     window.closeModal("modal-lesson");
     if (kind === "training") renderTrainingDetail(refId); else renderCourseDetail(refId);
@@ -3744,9 +3861,12 @@ function renderTrainingReport(id) {
     const attendancePct = targetCount ? Math.round((attendedCount / targetCount) * 100) : 0;
 
     // ---- Kelulusan (berdasarkan sertifikat terbit = lulus seluruh rangkaian training) ----
+    // Beda dengan Keterlaksanaan & Kehadiran (penyebutnya = jumlah target peserta sesuai
+    // penugasan admin), Kelulusan penyebutnya = jumlah yang HADIR saja (attendedCount) —
+    // karena kelulusan cuma relevan dihitung dari peserta yang benar-benar ikut trainingnya.
     const certs = window.STATE.certificates.filter(c => c.trainingId === id);
     const passCount = certs.length;
-    const passPct = targetCount ? Math.round((passCount / targetCount) * 100) : 0;
+    const passPct = attendedCount ? Math.round((passCount / attendedCount) * 100) : 0;
 
     // ---- Rata-rata nilai Pre-test & Post-test ----
     const preAttempts = window.STATE.quizAttempts.filter(a => a.trainingId === id && a.attemptType === "pretest");
@@ -3884,7 +4004,7 @@ function renderTrainingReport(id) {
         <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
             ${statCard("fa-users", "indigo", targetCount, hasScope ? "Jumlah Target Peserta" : "Jumlah Peserta Terdaftar")}
             ${statCard("fa-user-check", "emerald", `${attendedCount} (${attendancePct}%)`, "Kehadiran (Jumlah & %)")}
-            ${statCard("fa-graduation-cap", "amber", `${passCount} (${passPct}%)`, "Kelulusan (Jumlah & %)")}
+            ${statCard("fa-graduation-cap", "amber", `${passCount} (${passPct}%)`, "Kelulusan (dari yang Hadir)")}
             ${statCard("fa-star", "rose", avgRating !== null ? avgRating + "/5" : "-", "Rata-rata Rating Feedback")}
         </div>
         <div class="grid grid-cols-2 gap-4 mb-4">
