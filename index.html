@@ -38,20 +38,94 @@ tailwind.config = { darkMode: "class" };
 
 #boot-loader {
     position: fixed; inset: 0; z-index: 99999;
-    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px;
-    background: #0f172a; transition: opacity .35s ease;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px;
+    background: radial-gradient(circle at 50% 40%, #16213e 0%, #0b0f1e 65%, #060810 100%);
+    transition: opacity .35s ease;
+    overflow: hidden;
 }
+#boot-loader::before {
+    content: ""; position: absolute; inset: 0; z-index: 0;
+    background-image:
+        linear-gradient(rgba(99,102,241,.10) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(99,102,241,.10) 1px, transparent 1px);
+    background-size: 34px 34px;
+    animation: bootGridDrift 12s linear infinite;
+    -webkit-mask-image: radial-gradient(circle at 50% 45%, black 0%, transparent 70%);
+    mask-image: radial-gradient(circle at 50% 45%, black 0%, transparent 70%);
+}
+@keyframes bootGridDrift { to { background-position: 34px 34px; } }
 #boot-loader.boot-loader-hide { opacity: 0; pointer-events: none; }
-#boot-loader .boot-spinner {
-    width: 42px; height: 42px; border-radius: 50%;
-    border: 3px solid rgba(255,255,255,0.2); border-top-color: #818cf8;
-    animation: boot-spin .8s linear infinite;
+
+@property --boot-angle { syntax: '<angle>'; inherits: false; initial-value: 0deg; }
+.boot-orbit { position: relative; width: 64px; height: 64px; z-index: 1; }
+.boot-orbit-ring {
+    --boot-angle: 0deg;
+    position: absolute; inset: 0; border-radius: 18px;
+    background:
+        linear-gradient(#0b0f1e, #0b0f1e) padding-box,
+        conic-gradient(from var(--boot-angle),
+            rgba(99,102,241,0) 0deg, rgba(99,102,241,0) 250deg,
+            #a5b4fc 285deg, #6366f1 310deg, #4338ca 325deg, #a5b4fc 335deg,
+            rgba(99,102,241,0) 350deg, rgba(99,102,241,0) 360deg) border-box;
+    border: 2px solid transparent;
+    animation: bootSpin 1.6s linear infinite;
+    box-shadow: 0 0 22px -4px rgba(99,102,241,.65);
 }
+@keyframes bootSpin { to { --boot-angle: 360deg; } }
+.boot-orbit::after {
+    content: ""; position: absolute; inset: -9px; border-radius: 22px;
+    border: 1px dashed rgba(129,140,248,.35);
+    animation: bootSpinReverse 6s linear infinite;
+}
+@keyframes bootSpinReverse { to { transform: rotate(-360deg); } }
+.boot-orbit-core {
+    position: absolute; inset: 9px; border-radius: 12px;
+    background: linear-gradient(135deg,#312e81,#1e1b4b);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 18px;
+    animation: bootPulse 1.6s ease-in-out infinite;
+}
+@keyframes bootPulse {
+    0%, 100% { color: #818cf8; text-shadow: 0 0 6px rgba(129,140,248,.5); }
+    50%      { color: #e0e7ff; text-shadow: 0 0 16px rgba(199,210,254,.9); }
+}
+
+.boot-bars { display: flex; align-items: flex-end; gap: 4px; height: 14px; z-index: 1; }
+.boot-bars span { width: 3px; height: 100%; border-radius: 2px; background: #4338ca; transform-origin: bottom; animation: bootBar 1.1s ease-in-out infinite; }
+.boot-bars span:nth-child(1) { animation-delay: 0s; }
+.boot-bars span:nth-child(2) { animation-delay: .08s; }
+.boot-bars span:nth-child(3) { animation-delay: .16s; }
+.boot-bars span:nth-child(4) { animation-delay: .24s; }
+.boot-bars span:nth-child(5) { animation-delay: .32s; }
+.boot-bars span:nth-child(6) { animation-delay: .4s; }
+.boot-bars span:nth-child(7) { animation-delay: .48s; }
+.boot-bars span:nth-child(8) { animation-delay: .56s; }
+@keyframes bootBar {
+    0%, 100% { transform: scaleY(.3); background: #4338ca; }
+    50%      { transform: scaleY(1); background: #818cf8; }
+}
+
 #boot-loader .boot-label {
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-    font-size: 13px; font-weight: 600; color: #cbd5e1; letter-spacing: .02em;
+    position: relative; z-index: 1;
+    font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    font-size: 11px; font-weight: 700; letter-spacing: .28em; text-transform: uppercase;
+    color: #64748b;
+    display: flex; align-items: baseline; gap: 6px;
 }
-@keyframes boot-spin { to { transform: rotate(360deg); } }
+#boot-loader .boot-brand {
+    background: linear-gradient(90deg, #818cf8, #e0e7ff, #818cf8);
+    background-size: 200% auto;
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+    animation: bootShimmer 2.2s linear infinite;
+    letter-spacing: .12em;
+}
+@keyframes bootShimmer { to { background-position: -200% center; } }
+#boot-loader .boot-cursor { color: #818cf8; animation: bootBlink 1s steps(1) infinite; }
+@keyframes bootBlink { 50% { opacity: 0; } }
+
+@media (prefers-reduced-motion: reduce) {
+    #boot-loader, #boot-loader * { animation: none !important; }
+}
 
 body { font-family: 'Plus Jakarta Sans', sans-serif; background: #dbe8fb; }
 
@@ -234,12 +308,16 @@ html.dark .corevalue-wire { background: rgba(96, 165, 250, .2); }
     .corevalue-item { opacity: 1; transform: none; }
 }
 
-/* Versi ringkas untuk layar HP: badge & teks ticker diperkecil supaya header tetap rapi */
+/* Versi ringkas untuk layar HP: label "Core Value" TETAP ditampilkan (sebelumnya cuma
+   angka & teks poinnya doang yang muncul), disusun 2 baris (label kecil di atas, badge+teks
+   ticker di bawah) supaya tetap muat rapi di header yang sempit tanpa kepotong. */
 @media (max-width: 639px) {
-    .corevalue-badge { width: 1.05rem; height: 1.05rem; border-radius: .25rem; font-size: 9px; }
-    .corevalue-text { font-size: .68rem; letter-spacing: 0; }
-    #corevalue-ticker { height: 1.1rem; }
+    .corevalue-badge { width: 1.1rem; height: 1.1rem; border-radius: .28rem; font-size: 9px; }
+    .corevalue-text { font-size: .72rem; letter-spacing: 0; }
+    #corevalue-ticker { height: 1.15rem; }
     .corevalue-item { gap: .35rem; }
+    .corevalue-label-row { justify-content: center; }
+    .corevalue-label { font-size: 7px !important; letter-spacing: .14em !important; }
 }
 
 </style>
@@ -248,8 +326,12 @@ html.dark .corevalue-wire { background: rgba(96, 165, 250, .2); }
 
 <!-- ================= BOOT LOADER ================= -->
 <div id="boot-loader">
-    <div class="boot-spinner"></div>
-    <div class="boot-label">Memuat NingratEdu…</div>
+    <div class="boot-orbit">
+        <div class="boot-orbit-ring"></div>
+        <div class="boot-orbit-core"><i class="fas fa-bolt"></i></div>
+    </div>
+    <div class="boot-bars"><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span></div>
+    <div class="boot-label">Memuat <span class="boot-brand">NingratEdu</span><span class="boot-cursor">_</span></div>
 </div>
 
 <!-- ================= TOAST ================= -->
@@ -319,6 +401,26 @@ html.dark .corevalue-wire { background: rgba(96, 165, 250, .2); }
     </div>
 </div>
 
+<!-- ================= MODAL: POPUP REMINDER SAAT LOGIN ================= -->
+<div id="modal-login-reminder" class="fixed inset-0 z-[10001] hide modal-overlay flex items-center justify-center p-4">
+    <div class="bg-white w-full max-w-md rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[85vh]">
+        <div class="p-4 border-b flex justify-between items-start bg-amber-50 shrink-0">
+            <div class="flex items-start gap-3 min-w-0">
+                <div class="w-10 h-10 rounded-2xl bg-amber-100 text-amber-600 flex items-center justify-center shrink-0"><i class="fas fa-bell"></i></div>
+                <div class="min-w-0">
+                    <h3 class="text-sm font-black text-amber-700">Pengingat</h3>
+                    <p id="login-reminder-subtitle" class="text-xs text-amber-600/80 mt-0.5"></p>
+                </div>
+            </div>
+            <button onclick="window.closeModal('modal-login-reminder')" class="text-slate-400 hover:text-slate-700 shrink-0"><i class="fas fa-times"></i></button>
+        </div>
+        <div id="login-reminder-body" class="p-4 overflow-y-auto space-y-2"></div>
+        <div class="p-4 border-t shrink-0">
+            <button onclick="window.closeModal('modal-login-reminder')" class="w-full bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold py-2.5 rounded-2xl transition text-sm">Tutup</button>
+        </div>
+    </div>
+</div>
+
 <!-- ================= APP SHELL ================= -->
 <div id="app-shell" class="hide min-h-screen lg:flex">
 
@@ -345,10 +447,12 @@ html.dark .corevalue-wire { background: rgba(96, 165, 250, .2); }
             <button id="sidebar-toggle-btn" class="text-slate-500 hover:text-indigo-600 transition" onclick="window.toggleSidebar()"><i class="fas fa-bars text-lg"></i></button>
             <div class="flex flex-1 items-center justify-center px-1.5 sm:px-4 min-w-0">
                 <div class="corevalue-shell flex flex-col gap-1 pl-2 pr-2.5 py-1 sm:pl-3.5 sm:pr-4 sm:py-1.5">
-                    <div class="flex items-center gap-1.5 sm:gap-3">
-                        <i class="fas fa-bolt text-[9px] sm:text-[11px] corevalue-icon shrink-0"></i>
-                        <span class="hidden sm:inline text-[9px] font-black uppercase tracking-[0.2em] text-slate-400 shrink-0">Core Value<span class="corevalue-cursor">_</span></span>
-                        <div id="corevalue-ticker" class="relative w-[135px] sm:w-[230px] shrink min-w-0">
+                    <div class="flex flex-col gap-0.5 sm:flex-row sm:items-center sm:gap-3">
+                        <div class="corevalue-label-row flex items-center gap-1.5 sm:gap-2 shrink-0">
+                            <i class="fas fa-bolt text-[9px] sm:text-[11px] corevalue-icon shrink-0"></i>
+                            <span class="corevalue-label text-[9px] font-black uppercase tracking-[0.2em] text-slate-400 shrink-0">Core Value<span class="corevalue-cursor">_</span></span>
+                        </div>
+                        <div id="corevalue-ticker" class="relative w-[160px] sm:w-[230px] shrink min-w-0">
                             <span class="corevalue-item" style="animation-delay:0s">
                                 <span class="corevalue-badge" style="--cv-c:#2563EB">1</span>
                                 <span class="corevalue-text" style="--cv-g1:#93C5FD;--cv-g2:#1E3A8A">PROAKTIF</span>
@@ -1367,6 +1471,10 @@ window.doRegister = async function () {
 window.doLogout = function () {
     localStorage.removeItem(SESSION_KEY);
     window.STATE.user = null;
+    window._pendingReminderCheck = false;
+    clearTimeout(window._reminderDebounceTimer);
+    clearTimeout(window._reminderFallbackTimer);
+    window.closeModal("modal-login-reminder");
     document.getElementById("app-shell").classList.add("hide");
     document.getElementById("auth-screen").classList.remove("hide");
 };
@@ -1404,6 +1512,20 @@ window.enterApp = function () {
         window.openMobileSidebar();
     }
     window.scheduleBrandTextAdjust ? window.scheduleBrandTextAdjust() : (window.adjustBrandTextSize && window.adjustBrandTextSize());
+
+    // Popup reminder (tugas/target training yang sudah waktunya) ditampilkan setiap kali user
+    // masuk ke aplikasi. Data dari Firestore listener kadang belum lengkap tepat di momen ini
+    // (terutama waktu sesi baru di-restore setelah refresh), jadi pengecekan ditunda sampai
+    // data selesai "settle" lewat event lms-state-changed (lihat listener di bagian bawah),
+    // dengan fallback timer supaya tetap tampil walau tidak ada event tambahan yang masuk.
+    window._pendingReminderCheck = true;
+    clearTimeout(window._reminderFallbackTimer);
+    window._reminderFallbackTimer = setTimeout(() => {
+        if (window._pendingReminderCheck) {
+            window._pendingReminderCheck = false;
+            window.showLoginReminderPopup();
+        }
+    }, 1500);
 };
 
 window.renderSidebar = function () {
@@ -2375,6 +2497,204 @@ window.getAssignmentDeadline = function (kind, refId) {
     const u = window.STATE.user;
     if (!u) return null;
     return window.getAssignmentDeadlineFor(kind, refId, u.id);
+};
+
+// ================= POPUP REMINDER SAAT LOGIN =================
+// Menampilkan modal pengingat begitu user (karyawan) atau admin masuk ke aplikasi,
+// KALAU MEMANG ADA tugas/target training yang sudah waktunya (deadline sudah tiba
+// atau tinggal H-1, sesi training hari ini, atau target batch onboarding sudah lewat).
+// Kalau tidak ada apa-apa yang perlu diperhatikan, popup TIDAK ditampilkan sama sekali.
+window.fmtDateTimeShort = function (d) {
+    return d.toLocaleString('id-ID', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+};
+function reminderTodayDateOnly() {
+    const d = new Date();
+    d.setHours(0, 0, 0, 0);
+    return d;
+}
+const REMINDER_H1_MS = 24 * 60 * 60 * 1000; // dianggap "sudah waktunya" mulai H-1 sebelum deadline
+
+// ---- Kumpulan reminder untuk USER (karyawan) yang sedang login ----
+window.buildUserReminders = function () {
+    const u = window.STATE.user;
+    if (!u) return [];
+    const items = [];
+    const today = reminderTodayDateOnly();
+
+    // 1) Tugas Training Onboarding: belum dikumpulkan & deadline (otomatis 7 hari sejak lulus
+    //    Post-test) sudah tinggal H-1 atau sudah lewat.
+    (window.STATE.courses || []).filter(c => c.published && window.deptAllowed(c) && c.assignment && c.assignment.enabled).forEach(c => {
+        const sub = window.sel.myAssignmentSubmission("course", c.id);
+        if (sub) return;
+        const dl = window.getAssignmentDeadline("course", c.id);
+        if (!dl) return;
+        const diff = dl.getTime() - Date.now();
+        if (diff <= REMINDER_H1_MS) {
+            items.push({
+                icon: "fa-file-signature",
+                color: diff <= 0 ? "rose" : "amber",
+                title: `Tugas "${c.assignment.title || c.title}"`,
+                subtitle: diff <= 0
+                    ? `Batas waktu pengumpulan sudah lewat (${window.fmtDateTimeShort(dl)})`
+                    : `Batas waktu pengumpulan hari ini/besok (${window.fmtDateTimeShort(dl)})`,
+                link: `#/courses/${c.id}`
+            });
+        }
+    });
+
+    // 2) Tugas Training By TNA: belum dikumpulkan & deadline manual dari admin sudah tinggal
+    //    H-1 atau sudah lewat.
+    (window.STATE.trainings || []).filter(t => window.trainingAllowedForUser(t) && t.assignment && t.assignment.enabled).forEach(t => {
+        const sub = window.sel.myAssignmentSubmission("training", t.id);
+        if (sub) return;
+        const dl = window.getAssignmentDeadline("training", t.id);
+        if (!dl) return;
+        const diff = dl.getTime() - Date.now();
+        if (diff <= REMINDER_H1_MS) {
+            items.push({
+                icon: "fa-file-signature",
+                color: diff <= 0 ? "rose" : "amber",
+                title: `Tugas "${t.assignment.title || t.title}"`,
+                subtitle: diff <= 0
+                    ? `Batas waktu pengumpulan sudah lewat (${window.fmtDateTimeShort(dl)})`
+                    : `Batas waktu pengumpulan hari ini/besok (${window.fmtDateTimeShort(dl)})`,
+                link: `#/trainings/${t.id}`
+            });
+        }
+    });
+
+    // 3) Training By TNA yang sesinya HARI INI: user terdaftar tapi belum presensi.
+    (window.STATE.trainings || []).filter(t => window.trainingAllowedForUser(t) && t.date).forEach(t => {
+        const td = dateOnlySafe(t.date);
+        if (!td || td.getTime() !== today.getTime()) return;
+        const reg = window.sel.myRegForTraining(t.id);
+        if (!reg) return;
+        const att = window.sel.myAttendance(t.id);
+        if (att) return;
+        items.push({
+            icon: "fa-chalkboard-user",
+            color: "indigo",
+            title: `Training "${t.title}" hari ini`,
+            subtitle: `Jangan lupa presensi${t.location ? " di " + t.location : ""}.`,
+            link: `#/trainings/${t.id}`
+        });
+    });
+
+    // 4) Target Training Onboarding (batch berdasarkan tanggal join): deadline batch sudah
+    //    tinggal H-1 atau sudah lewat, dan masih ada training yang belum tuntas.
+    const emp = window.sel.employeeOfUser(u);
+    if (emp) {
+        const batch = window.onboardingBatchFor(emp);
+        if (batch) {
+            const ordered = orderedPublishedCoursesForDept((emp.dept || "").trim());
+            const doneCount = ordered.filter(c => certOfUser(c.id, u.id)).length;
+            const isDone = ordered.length === 0 || doneCount === ordered.length;
+            const diff = batch.deadline.getTime() - Date.now();
+            if (!isDone && diff <= REMINDER_H1_MS) {
+                items.push({
+                    icon: "fa-graduation-cap",
+                    color: diff <= 0 ? "rose" : "amber",
+                    title: "Target Training Onboarding",
+                    subtitle: diff <= 0
+                        ? `Batas waktu (${batch.windowLabel}) sudah lewat. Baru selesai ${doneCount}/${ordered.length} training.`
+                        : `Batas waktu (${batch.windowLabel}) hari ini/besok. Baru selesai ${doneCount}/${ordered.length} training.`,
+                    link: "#/courses"
+                });
+            }
+        }
+    }
+
+    return items;
+};
+
+// ---- Kumpulan reminder untuk ADMIN yang sedang login ----
+window.buildAdminReminders = function () {
+    if (!window.sel.isAdmin()) return [];
+    const items = [];
+    const today = reminderTodayDateOnly();
+
+    // 1) Batch onboarding yang deadline-nya sudah lewat tapi masih ada karyawan yang belum tuntas.
+    const batches = (window.buildOnboardingBatches && window.buildOnboardingBatches()) || [];
+    let overdueEmployees = 0, overdueBatchCount = 0;
+    batches.forEach(b => {
+        if (b.deadline.getTime() < Date.now()) {
+            const notDone = b.members.filter(m => !m.isDone);
+            if (notDone.length) { overdueEmployees += notDone.length; overdueBatchCount++; }
+        }
+    });
+    if (overdueEmployees) {
+        items.push({
+            icon: "fa-calendar-week",
+            color: "rose",
+            title: "Target Onboarding Lewat Deadline",
+            subtitle: `${overdueEmployees} karyawan di ${overdueBatchCount} batch belum menyelesaikan onboarding sesuai jadwalnya.`,
+            link: "#/admin/onboarding-schedule"
+        });
+    }
+
+    // 2) Training By TNA yang sesinya hari ini.
+    const todays = (window.STATE.trainings || []).filter(t => {
+        const td = dateOnlySafe(t.date);
+        return td && td.getTime() === today.getTime();
+    });
+    if (todays.length) {
+        items.push({
+            icon: "fa-chalkboard-user",
+            color: "indigo",
+            title: "Training By TNA Hari Ini",
+            subtitle: todays.map(t => t.title).join(", "),
+            link: "#/admin/trainings"
+        });
+    }
+
+    // 3) Tugas peserta (Onboarding & TNA) yang sudah dikumpulkan tapi belum dinilai admin.
+    const pending = (window.STATE.assignmentSubmissions || []).filter(s => s.status !== "graded");
+    if (pending.length) {
+        items.push({
+            icon: "fa-file-signature",
+            color: "amber",
+            title: "Tugas Menunggu Dinilai",
+            subtitle: `${pending.length} tugas peserta belum dinilai.`,
+            link: "#/admin/assignments"
+        });
+    }
+
+    return items;
+};
+
+const REMINDER_COLOR_CLASS = { rose: "bg-rose-50 text-rose-600", amber: "bg-amber-50 text-amber-600", indigo: "bg-indigo-50 text-indigo-600" };
+window.renderLoginReminderList = function (items) {
+    return items.map(it => `
+        <a href="${it.link}" onclick="window.closeModal('modal-login-reminder')" class="flex items-start gap-3 p-3 rounded-2xl border border-slate-100 hover:bg-slate-50 transition">
+            <div class="w-10 h-10 rounded-xl ${REMINDER_COLOR_CLASS[it.color] || REMINDER_COLOR_CLASS.indigo} flex items-center justify-center shrink-0"><i class="fas ${it.icon}"></i></div>
+            <div class="min-w-0 flex-1">
+                <p class="text-sm font-bold text-slate-700">${window.escapeHtml(it.title)}</p>
+                <p class="text-xs text-slate-400 mt-0.5">${window.escapeHtml(it.subtitle)}</p>
+            </div>
+            <i class="fas fa-chevron-right text-slate-300 text-xs shrink-0 mt-3"></i>
+        </a>`).join("");
+};
+
+// Dipanggil tiap kali user masuk ke aplikasi (habis login / register / sesi ke-restore
+// waktu refresh). Popup cuma tampil kalau memang ada item yang perlu diperhatikan.
+window.showLoginReminderPopup = function () {
+    try {
+        const u = window.STATE.user;
+        if (!u) return;
+        const isAdmin = window.sel.isAdmin();
+        const items = isAdmin ? window.buildAdminReminders() : window.buildUserReminders();
+        if (!items.length) return;
+        const subtitleEl = document.getElementById("login-reminder-subtitle");
+        const bodyEl = document.getElementById("login-reminder-body");
+        if (!subtitleEl || !bodyEl) return;
+        subtitleEl.textContent = isAdmin
+            ? "Ada target/tugas training yang sudah waktunya ditindaklanjuti:"
+            : "Ada tugas/training kamu yang sudah waktunya dikerjakan:";
+        bodyEl.innerHTML = window.renderLoginReminderList(items);
+        window.openModal("modal-login-reminder");
+    } catch (e) {
+        console.error("Gagal menampilkan reminder login", e);
+    }
 };
 
 // Menghitung status "terkunci/terbuka" tiap lesson secara berurutan lintas semua modul,
@@ -6375,6 +6695,15 @@ window.addEventListener("lms-firebase-ready", async () => {
         window.resolveRoute();
         if (document.getElementById("app-shell") && !document.getElementById("app-shell").classList.contains("hide")) {
             window.renderSidebar();
+        }
+        // Popup reminder: tunggu data selesai "settle" (debounce) baru dicek, biar gak nge-cek
+        // pas datanya masih kosong/separuh dari koleksi lain yang baru selesai sinkron.
+        if (window._pendingReminderCheck) {
+            clearTimeout(window._reminderDebounceTimer);
+            window._reminderDebounceTimer = setTimeout(() => {
+                window._pendingReminderCheck = false;
+                window.showLoginReminderPopup();
+            }, 700);
         }
     });
 });
