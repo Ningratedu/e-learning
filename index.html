@@ -1205,7 +1205,10 @@ function trainingProgressRowHtml(t, userId) {
     const post = postAttempts[0] || null;
     return `
     <div class="mt-2">
-        <div class="h-1.5 bg-slate-100 rounded-full overflow-hidden"><div class="h-full ${done ? 'bg-emerald-500' : 'bg-amber-500'} transition-all" style="width:${progress}%"></div></div>
+        <div class="relative pt-3">
+            <span class="absolute top-0 -translate-x-1/2 text-[9px] font-black ${done ? 'text-emerald-600' : 'text-amber-600'} transition-all" style="left:${progress}%">${progress}%</span>
+            <div class="h-1.5 bg-slate-100 rounded-full overflow-hidden"><div class="h-full ${done ? 'bg-emerald-500' : 'bg-amber-500'} transition-all" style="width:${progress}%"></div></div>
+        </div>
         <div class="flex items-center justify-between gap-2 mt-1.5">
             <span class="text-[11px] font-semibold text-slate-500 shrink-0"><i class="fas fa-list-check text-sky-400 mr-0.5"></i>Pre-test: ${pre ? pre.score : '-'}</span>
             <span class="text-[11px] font-semibold text-slate-500 shrink-0"><i class="fas fa-clipboard-question text-violet-400 mr-0.5"></i>Post-test: ${post ? post.score : '-'}</span>
@@ -3295,7 +3298,7 @@ function renderTrainingCatalog() {
         const full = t.quota && count >= t.quota;
         return `
         <a href="#/trainings/${t.id}" class="bg-white rounded-3xl border border-slate-100 shadow-sm hover:shadow-xl transition p-4 flex gap-3">
-            <div class="w-16 shrink-0 rounded-2xl bg-cover bg-center relative overflow-hidden" style="${trainingCoverStyleSafe(t)}">
+            <div class="w-20 shrink-0 rounded-2xl bg-cover bg-center relative overflow-hidden" style="${trainingCoverStyleSafe(t)}">
                 <div class="absolute inset-0 bg-black/25 flex flex-col items-center justify-center text-white">
                     <span class="text-lg font-black leading-none">${new Date(t.date).getDate()}</span>
                     <span class="text-[10px] font-bold uppercase">${new Date(t.date).toLocaleDateString('id-ID',{month:'short'})}</span>
