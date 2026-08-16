@@ -4890,7 +4890,7 @@ function onboardingWeekBucket(date) {
     const rangeEndDay = Math.min(rangeStartDay + 6, lastDayOfMonth);
     const key = `${year}-${String(month).padStart(2, "0")}-w${weekNum}`;
     return {
-        key, weekNum, monthName, year,
+        key, weekNum, monthNum: month + 1, monthName, year,
         label: `Minggu ${weekNum} ${monthName} ${year}`,
         rangeLabel: `${rangeStartDay}–${rangeEndDay} ${monthName} ${year}`,
         sortDate: new Date(year, month, rangeStartDay)
@@ -4908,6 +4908,45 @@ function groupOnboardingBatchesByWeek(batches) {
     return Object.values(weeks).sort((a, b) => a.sortDate - b.sortDate);
 }
 
+// ---- Filter dropdown (Departemen / Tahun / Bulan / Minggu) — semua multiple choice, tiap
+// grup punya opsi "Semua". Array kosong = "Semua" (gak difilter berdasar dimensi itu). Default
+// cuma "Bulan" yang diisi (bulan berjalan), sisanya dibiarkan "Semua". ----
+const ONBOARDING_MONTH_NAMES = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
+function defaultOnboardingScheduleFilters() {
+    const now = new Date();
+    return { depts: [], years: [], months: [String(now.getMonth() + 1)], weeks: [] };
+}
+let onboardingScheduleFilters = null; // null = belum diinit
+let onboardingScheduleOpenFilter = null; // key filter yang dropdown-nya lagi dibuka, atau null
+
+function renderOnboardingFilterDropdown(key, label, options) {
+    const selected = onboardingScheduleFilters[key];
+    const isOpen = onboardingScheduleOpenFilter === key;
+    const badgeLabel = selected.length === 0 ? "Semua"
+        : selected.length === 1 ? (options.find(o => o.value === selected[0])?.label || selected[0])
+        : `${selected.length} dipilih`;
+    const panelItems = [
+        `<label class="flex items-center gap-2 px-2.5 py-1.5 rounded-lg hover:bg-slate-50 cursor-pointer text-xs font-bold text-slate-600">
+            <input type="checkbox" class="accent-violet-600" ${selected.length === 0 ? "checked" : ""} onchange="window.setOnboardingFilterAll('${key}')"> Semua
+        </label>`,
+        `<div class="border-t border-slate-50 my-1"></div>`,
+        ...options.map(o => `
+            <label class="flex items-center gap-2 px-2.5 py-1.5 rounded-lg hover:bg-slate-50 cursor-pointer text-xs text-slate-600">
+                <input type="checkbox" class="accent-violet-600" ${selected.includes(o.value) ? "checked" : ""} onchange="window.toggleOnboardingFilterValue('${key}','${o.value}')"> ${window.escapeHtml(o.label)}
+            </label>`)
+    ].join("");
+    return `
+    <div class="relative">
+        <button type="button" onclick="window.toggleOnboardingFilterDropdown('${key}')" class="flex items-center gap-2 text-xs font-bold px-3 py-2 rounded-xl border transition ${selected.length ? 'border-violet-300 bg-violet-50 text-violet-700' : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300'}">
+            ${window.escapeHtml(label)}: <span class="font-black">${window.escapeHtml(badgeLabel)}</span>
+            <i class="fas fa-chevron-down text-[9px] ${isOpen ? 'rotate-180' : ''} transition-transform"></i>
+        </button>
+        ${isOpen ? `
+        <div class="fixed inset-0 z-10" onclick="window.closeOnboardingFilterDropdown()"></div>
+        <div class="absolute z-20 mt-2 w-56 bg-white border border-slate-100 rounded-2xl shadow-xl p-2 max-h-72 overflow-y-auto">${panelItems}</div>` : ""}
+    </div>`;
+}
+
 function renderOnboardingSchedule() {
     if (onboardingScheduleDeptDraft === null) {
         onboardingScheduleDeptDraft = [...window.onboardingScheduleConfig().salesMarketingDepts];
@@ -4916,9 +4955,44 @@ function renderOnboardingSchedule() {
     if (onboardingScheduleOpenWeeks === null) {
         onboardingScheduleOpenWeeks = new Set([onboardingWeekBucket(today).key]); // default: buka minggu berjalan
     }
+    if (onboardingScheduleFilters === null) {
+        onboardingScheduleFilters = defaultOnboardingScheduleFilters();
+    }
     const allDepts = window.sel.allDeptNames();
     const batches = window.buildOnboardingBatches();
-    const weeks = groupOnboardingBatchesByWeek(batches);
+    const allWeeks = groupOnboardingBatchesByWeek(batches);
+
+    // Opsi tahun diambil dari data batch yang ada (biar gak nampilin tahun kosong), fallback ke
+    // tahun berjalan kalau belum ada data batch sama sekali.
+    const yearOptions = Array.from(new Set(allWeeks.map(w => w.year))).sort((a, b) => a - b);
+    if (!yearOptions.length) yearOptions.push(today.getFullYear());
+
+    const filterBarHtml = `
+    <div class="bg-white rounded-3xl border border-slate-100 shadow-sm p-4 mb-4 flex items-center flex-wrap gap-2">
+        <span class="text-[11px] font-black text-slate-400 uppercase tracking-wide mr-1"><i class="fas fa-filter mr-1"></i> Filter</span>
+        ${renderOnboardingFilterDropdown("depts", "Departemen", allDepts.map(d => ({ value: d, label: d })))}
+        ${renderOnboardingFilterDropdown("years", "Tahun", yearOptions.map(y => ({ value: String(y), label: String(y) })))}
+        ${renderOnboardingFilterDropdown("months", "Bulan", ONBOARDING_MONTH_NAMES.map((m, i) => ({ value: String(i + 1), label: m })))}
+        ${renderOnboardingFilterDropdown("weeks", "Minggu", [1, 2, 3, 4, 5].map(n => ({ value: String(n), label: `Minggu ${n}` })))}
+        <button type="button" onclick="window.resetOnboardingFilters()" class="text-[11px] font-bold text-slate-400 hover:text-rose-500 ml-1"><i class="fas fa-rotate-left mr-1"></i>Reset</button>
+    </div>`;
+
+    // Terapkan filter Tahun/Bulan/Minggu ke level minggu, lalu filter Departemen ke level
+    // anggota (member) tiap batch di dalamnya — batch yang jadi kosong setelah difilter dept
+    // di-drop, dan minggu yang jadi kosong (semua batch-nya kosong) juga di-drop.
+    const f = onboardingScheduleFilters;
+    const weeks = allWeeks
+        .filter(w => (!f.years.length || f.years.includes(String(w.year)))
+            && (!f.months.length || f.months.includes(String(w.monthNum)))
+            && (!f.weeks.length || f.weeks.includes(String(w.weekNum))))
+        .map(w => {
+            const filteredBatches = w.batches.map(b => {
+                const members = f.depts.length ? b.members.filter(m => f.depts.includes((m.employee.dept || "").trim())) : b.members;
+                return { ...b, members };
+            }).filter(b => b.members.length > 0);
+            return { ...w, batches: filteredBatches };
+        })
+        .filter(w => w.batches.length > 0);
 
     const configHtml = `
     <div class="bg-white rounded-3xl border border-slate-100 shadow-sm p-5 mb-6">
@@ -5022,8 +5096,9 @@ function renderOnboardingSchedule() {
         <p class="text-sm text-slate-500 mb-5">Target &amp; progres peserta training onboarding, dikelompokkan per minggu. Klik satu minggu untuk lihat rincian nama peserta.</p>
         ${configHtml}
         ${bulkCompleteHtml}
+        ${filterBarHtml}
         <div class="text-xs text-slate-400 mb-3"><i class="fas fa-circle-info mr-1"></i> Sales &amp; Marketing: siklus Selasa-Sabtu (join setelah Selasa masuk batch minggu depan). Departemen lain: 2 siklus/minggu — Rabu-Jumat &amp; Sabtu-Selasa.</div>
-        ${weekCards || '<div class="bg-white rounded-3xl border border-slate-100 shadow-sm p-10 text-center text-slate-400 text-sm">Belum ada karyawan dengan tanggal join yang valid.</div>'}
+        ${weekCards || '<div class="bg-white rounded-3xl border border-slate-100 shadow-sm p-10 text-center text-slate-400 text-sm">Tidak ada data yang cocok dengan filter saat ini.</div>'}
     `);
 }
 window.ROUTES["admin/onboarding-schedule"] = requireAdmin(function () { renderOnboardingSchedule(); });
@@ -5035,6 +5110,29 @@ window.toggleOnboardingScheduleDept = function (dep) {
 window.toggleOnboardingWeek = function (weekKey) {
     if (onboardingScheduleOpenWeeks.has(weekKey)) onboardingScheduleOpenWeeks.delete(weekKey);
     else onboardingScheduleOpenWeeks.add(weekKey);
+    renderOnboardingSchedule();
+};
+window.toggleOnboardingFilterDropdown = function (key) {
+    onboardingScheduleOpenFilter = (onboardingScheduleOpenFilter === key) ? null : key;
+    renderOnboardingSchedule();
+};
+window.closeOnboardingFilterDropdown = function () {
+    onboardingScheduleOpenFilter = null;
+    renderOnboardingSchedule();
+};
+window.setOnboardingFilterAll = function (key) {
+    onboardingScheduleFilters[key] = [];
+    renderOnboardingSchedule();
+};
+window.toggleOnboardingFilterValue = function (key, value) {
+    const arr = onboardingScheduleFilters[key];
+    const idx = arr.indexOf(value);
+    if (idx >= 0) arr.splice(idx, 1); else arr.push(value);
+    renderOnboardingSchedule();
+};
+window.resetOnboardingFilters = function () {
+    onboardingScheduleFilters = defaultOnboardingScheduleFilters();
+    onboardingScheduleOpenFilter = null;
     renderOnboardingSchedule();
 };
 
