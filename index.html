@@ -1598,12 +1598,18 @@ window.avatarInnerHTML = function (u) {
 
 window.renderTopbar = function () {
     const u = window.STATE.user;
+    // Keterangan di bawah nama (topbar & dropdown profil) sekarang nampilin JABATAN/DESIGNATION
+    // dari Data Karyawan (dicocokkan lewat username), bukan lagi label role (Admin/Peserta/dst).
+    // Kalau usernya tidak ketemu di Data Karyawan (mis. akun admin yang belum diimpor sebagai
+    // karyawan), tetap fallback ke label role supaya baris ini tidak kosong.
     const roleLabel = u.role === "superadmin" ? "Super Admin" : (u.role === "admin" ? "Admin" : "Peserta");
+    const emp = window.sel.employeeOfUser(u);
+    const designationLabel = (emp && (emp.posisi || emp.designation) && String(emp.posisi || emp.designation).trim()) || roleLabel;
     document.getElementById("topbar-username").textContent = u.name || u.username;
-    document.getElementById("topbar-role").textContent = roleLabel;
+    document.getElementById("topbar-role").textContent = designationLabel;
     document.getElementById("topbar-avatar").innerHTML = window.avatarInnerHTML(u);
     document.getElementById("profile-menu-name").textContent = u.name || u.username;
-    document.getElementById("profile-menu-role").textContent = roleLabel;
+    document.getElementById("profile-menu-role").textContent = designationLabel;
 };
 
 // ================= PROFILE MENU (dropdown di avatar/nama) =================
