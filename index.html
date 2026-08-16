@@ -186,12 +186,12 @@ button:disabled, input[type="submit"]:disabled {
    that stays pinned to the left edge; clicking that rail re-opens the full menu. */
 @media (min-width: 1024px) {
     #sidebar { width: var(--sidebar-w, 260px); transform: translateX(0); }
-    #sidebar.sidebar-mini { width: var(--sidebar-mini-w, 76px); }
+    #sidebar.sidebar-mini { width: var(--sidebar-mini-w, 64px); }
     #sidebar.sidebar-mini .brand-label, #sidebar.sidebar-mini .nav-label { display: none; }
     #sidebar.sidebar-mini #sidebar-brand { justify-content: center; padding-left: 0; padding-right: 0; }
     #sidebar.sidebar-mini .nav-item { justify-content: center; padding-left: 0; padding-right: 0; }
     #main-wrapper { margin-left: var(--sidebar-w, 260px); transition: margin-left .2s ease; }
-    #sidebar.sidebar-mini ~ #main-wrapper { margin-left: var(--sidebar-mini-w, 76px); }
+    #sidebar.sidebar-mini ~ #main-wrapper { margin-left: var(--sidebar-mini-w, 64px); }
 }
 
 /* Mobile: sidebar is fully hidden off-canvas by default so it never covers the
