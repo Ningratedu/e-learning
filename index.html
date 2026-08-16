@@ -233,6 +233,14 @@ html.dark .corevalue-wire { background: rgba(96, 165, 250, .2); }
     .corevalue-item { opacity: 1; transform: none; }
 }
 
+/* Versi ringkas untuk layar HP: badge & teks ticker diperkecil supaya header tetap rapi */
+@media (max-width: 639px) {
+    .corevalue-badge { width: 1.05rem; height: 1.05rem; border-radius: .25rem; font-size: 9px; }
+    .corevalue-text { font-size: .68rem; letter-spacing: 0; }
+    #corevalue-ticker { height: 1.1rem; }
+    .corevalue-item { gap: .35rem; }
+}
+
 </style>
 </head>
 <body>
@@ -334,12 +342,12 @@ html.dark .corevalue-wire { background: rgba(96, 165, 250, .2); }
     <div id="main-wrapper" class="flex-1 min-w-0 flex flex-col">
         <header class="bg-white border-b border-slate-100 px-4 lg:px-6 py-3 flex items-center justify-between sticky top-0 z-20">
             <button id="sidebar-toggle-btn" class="text-slate-500 hover:text-indigo-600 transition" onclick="window.toggleSidebar()"><i class="fas fa-bars text-lg"></i></button>
-            <div class="hidden md:flex flex-1 items-center justify-center px-4 min-w-0">
-                <div class="corevalue-shell flex flex-col gap-1 pl-3.5 pr-4 py-1.5">
-                    <div class="flex items-center gap-3">
-                        <i class="fas fa-bolt text-[11px] corevalue-icon shrink-0"></i>
-                        <span class="text-[9px] font-black uppercase tracking-[0.2em] text-slate-400 shrink-0">Core Value<span class="corevalue-cursor">_</span></span>
-                        <div id="corevalue-ticker" class="relative flex-1 max-w-[230px]">
+            <div class="flex flex-1 items-center justify-center px-1.5 sm:px-4 min-w-0">
+                <div class="corevalue-shell flex flex-col gap-1 pl-2 pr-2.5 py-1 sm:pl-3.5 sm:pr-4 sm:py-1.5">
+                    <div class="flex items-center gap-1.5 sm:gap-3">
+                        <i class="fas fa-bolt text-[9px] sm:text-[11px] corevalue-icon shrink-0"></i>
+                        <span class="hidden sm:inline text-[9px] font-black uppercase tracking-[0.2em] text-slate-400 shrink-0">Core Value<span class="corevalue-cursor">_</span></span>
+                        <div id="corevalue-ticker" class="relative flex-1 max-w-[110px] sm:max-w-[230px]">
                             <span class="corevalue-item" style="animation-delay:0s">
                                 <span class="corevalue-badge" style="--cv-c:#2563EB">1</span>
                                 <span class="corevalue-text" style="--cv-g1:#93C5FD;--cv-g2:#1E3A8A">PROAKTIF</span>
