@@ -4812,10 +4812,153 @@ window.reRenderEmployeeList = function () {
     }
 };
 
+// ================= KARTU STATISTIK DIAGRAM DONAT (Data Karyawan) =================
+// Kartu ring/donut kecil: irisan berwarna = persentase (x/y), sisanya abu-abu.
+// Dipakai buat kartu "Selesai Onboarding", "Training TNA", "On Progress", "Belum Mulai".
+const DONUT_STAT_COLORS = {
+    indigo: { text: "text-indigo-600", track: "text-indigo-100", hex: "#4f46e5" },
+    emerald: { text: "text-emerald-600", track: "text-emerald-100", hex: "#10b981" },
+    amber: { text: "text-amber-600", track: "text-amber-100", hex: "#f59e0b" },
+    rose: { text: "text-rose-600", track: "text-rose-100", hex: "#f43f5e" },
+    violet: { text: "text-violet-600", track: "text-violet-100", hex: "#8b5cf6" },
+    sky: { text: "text-sky-600", track: "text-sky-100", hex: "#0ea5e9" },
+};
+function donutStatCard(icon, color, x, y, label, onclick) {
+    const c = DONUT_STAT_COLORS[color] || DONUT_STAT_COLORS.indigo;
+    const pct = y > 0 ? Math.round((x / y) * 100) : 0;
+    const dash = Math.max(0, Math.min(100, pct));
+    const tag = onclick ? "button" : "div";
+    const attrs = onclick ? ` type="button" onclick="${onclick}"` : "";
+    return `
+    <${tag}${attrs} class="text-left w-full bg-white rounded-3xl border border-slate-100 shadow-sm p-4 flex items-center gap-3${onclick ? " hover:shadow-md hover:border-indigo-200 hover:-translate-y-0.5 active:translate-y-0 transition-all cursor-pointer" : ""}">
+        <div class="relative w-14 h-14 shrink-0">
+            <svg viewBox="0 0 36 36" class="w-14 h-14 -rotate-90">
+                <circle class="${c.track}" stroke="currentColor" stroke-width="4" fill="none" cx="18" cy="18" r="15.9155"></circle>
+                <circle stroke="${c.hex}" stroke-width="4" fill="none" stroke-linecap="round" stroke-dasharray="${dash} ${100 - dash}" stroke-dashoffset="25" cx="18" cy="18" r="15.9155"></circle>
+            </svg>
+            <div class="absolute inset-0 flex items-center justify-center"><i class="fas ${icon} text-[11px] ${c.text}"></i></div>
+        </div>
+        <div class="min-w-0">
+            <p class="text-xl font-black text-slate-800 leading-none">${pct}%</p>
+            <p class="text-[11px] text-slate-400 font-semibold mt-1 truncate">${label}</p>
+            <p class="text-[10px] ${c.text} font-bold mt-0.5">${x}/${y} karyawan</p>
+        </div>
+    </${tag}>`;
+}
+// Hitung status onboarding SETIAP karyawan (Selesai / On Progress / Belum Mulai), pakai
+// logika sama seperti window.buildOnboardingBatches: "selesai" = punya sertifikat untuk
+// SEMUA training onboarding yang ditargetkan ke departemennya (atau memang tidak ada
+// training onboarding buat departemen itu). "On Progress" = sudah selesai sebagian.
+// "Belum Mulai" = belum ada satupun sertifikat (termasuk karyawan yang belum punya akun).
+// Selain total per kategori, disertakan juga daftar karyawannya (dipakai buat modal detail
+// waktu kartunya diklik, lihat window.openEmployeeStatDetail).
+function computeEmployeeOnboardingStats() {
+    const usersByUsername = {};
+    window.STATE.users.forEach(u => { usersByUsername[normalizeUsername(u.username)] = u; });
+    const orderedCache = {};
+    let done = 0, progress = 0, notStarted = 0;
+    const doneList = [], progressList = [], notStartedList = [];
+    window.STATE.employees.forEach(e => {
+        const dept = (e.dept || "").trim();
+        if (!(dept in orderedCache)) orderedCache[dept] = orderedPublishedCoursesForDept(dept);
+        const ordered = orderedCache[dept];
+        const user = usersByUsername[normalizeUsername(e.username)];
+        const completedCount = user ? ordered.filter(c => certOfUser(c.id, user.id)).length : 0;
+        const entry = { emp: e, completedCount, orderedLength: ordered.length };
+        if (ordered.length === 0 || completedCount === ordered.length) { done++; doneList.push(entry); }
+        else if (completedCount > 0) { progress++; progressList.push(entry); }
+        else { notStarted++; notStartedList.push(entry); }
+    });
+    return { done, progress, notStarted, total: window.STATE.employees.length, doneList, progressList, notStartedList };
+}
+// Hitung karyawan yang PERNAH jadi target/undangan Training TNA (union dari semua training,
+// sesuai scope peserta masing-masing) sebagai penyebut (y), lalu berapa dari mereka yang
+// SUDAH IKUT (punya presensi/hadir di minimal satu training TNA yang jadi targetnya) sebagai
+// pembilang (x). Karyawan yang belum punya akun otomatis tidak terhitung "sudah ikut".
+// targetedList berisi SEMUA karyawan target (lengkap flag isAttended) buat modal detail.
+function computeEmployeeTnaStats() {
+    const usersByUsername = {};
+    window.STATE.users.forEach(u => { usersByUsername[normalizeUsername(u.username)] = u; });
+    const trainings = window.STATE.trainings || [];
+    let targeted = 0, attended = 0;
+    const targetedList = [];
+    window.STATE.employees.forEach(e => {
+        const targetTrainings = trainings.filter(t => window.trainingParticipantMatch(t, e, null));
+        if (!targetTrainings.length) return;
+        targeted++;
+        const user = usersByUsername[normalizeUsername(e.username)];
+        const isAttended = !!(user && targetTrainings.some(t => window.STATE.attendance.some(a => a.trainingId === t.id && a.userId === user.id)));
+        if (isAttended) attended++;
+        targetedList.push({ emp: e, isAttended, targetCount: targetTrainings.length });
+    });
+    return { attended, targeted, targetedList };
+}
+// Isi & buka modal detail (reuse "modal-dashboard-detail") waktu salah satu dari 4 kartu
+// donat di halaman Data Karyawan diklik. type: 'onboarding-done' | 'onboarding-progress' |
+// 'onboarding-notstarted' | 'tna-attended'. Tiap baris karyawan bisa diklik buat langsung
+// buka modal Detail Karyawan yang sudah ada (window.showEmployeeDetail).
+window.openEmployeeStatDetail = function (type) {
+    const titleEl = document.getElementById("dashboard-detail-title");
+    const bodyEl = document.getElementById("dashboard-detail-body");
+    if (!titleEl || !bodyEl) return;
+
+    const empRow = (e, badgeHtml) => `
+        <button type="button" onclick="window.closeModal('modal-dashboard-detail'); window.showEmployeeDetail('${e.id}')" class="w-full flex items-center justify-between gap-3 p-3 rounded-2xl border border-slate-100 hover:bg-indigo-50/40 transition text-left">
+            <div class="min-w-0">
+                <p class="text-sm font-bold text-slate-700 truncate">${window.escapeHtml(e.nama)}</p>
+                <p class="text-[11px] text-slate-400 truncate">@${window.escapeHtml(e.username)} • ${window.escapeHtml(e.dept || "-")}</p>
+            </div>
+            ${badgeHtml}
+        </button>`;
+
+    if (type === "onboarding-done") {
+        titleEl.innerHTML = `<i class="fas fa-user-check mr-1"></i> Karyawan Selesai Onboarding`;
+        const stats = computeEmployeeOnboardingStats();
+        const list = [...stats.doneList].sort((a, b) => String(a.emp.nama||"").localeCompare(String(b.emp.nama||"")));
+        bodyEl.innerHTML = list.length ? list.map(({ emp, completedCount, orderedLength }) =>
+            empRow(emp, `<span class="shrink-0 text-[10px] font-black px-2 py-1 rounded-full bg-emerald-50 text-emerald-600">${completedCount}/${orderedLength}</span>`)
+        ).join("") : dashboardEmptyState("fa-user-check", "Belum ada karyawan yang selesai onboarding.", "/admin/employees", "Kembali");
+    }
+
+    else if (type === "onboarding-progress") {
+        titleEl.innerHTML = `<i class="fas fa-spinner mr-1"></i> Karyawan On Progress Onboarding`;
+        const stats = computeEmployeeOnboardingStats();
+        const list = [...stats.progressList].sort((a, b) => String(a.emp.nama||"").localeCompare(String(b.emp.nama||"")));
+        bodyEl.innerHTML = list.length ? list.map(({ emp, completedCount, orderedLength }) =>
+            empRow(emp, `<span class="shrink-0 text-[10px] font-black px-2 py-1 rounded-full bg-sky-50 text-sky-600">${completedCount}/${orderedLength}</span>`)
+        ).join("") : dashboardEmptyState("fa-spinner", "Tidak ada karyawan yang sedang on progress onboarding.", "/admin/employees", "Kembali");
+    }
+
+    else if (type === "onboarding-notstarted") {
+        titleEl.innerHTML = `<i class="fas fa-hourglass-half mr-1"></i> Karyawan Belum Mulai Onboarding`;
+        const stats = computeEmployeeOnboardingStats();
+        const list = [...stats.notStartedList].sort((a, b) => String(a.emp.nama||"").localeCompare(String(b.emp.nama||"")));
+        bodyEl.innerHTML = list.length ? list.map(({ emp, orderedLength }) =>
+            empRow(emp, `<span class="shrink-0 text-[10px] font-black px-2 py-1 rounded-full bg-rose-50 text-rose-500">0/${orderedLength}</span>`)
+        ).join("") : dashboardEmptyState("fa-hourglass-half", "Semua karyawan sudah mulai onboarding.", "/admin/employees", "Kembali");
+    }
+
+    else if (type === "tna-attended") {
+        titleEl.innerHTML = `<i class="fas fa-chalkboard-user mr-1"></i> Target Peserta Training TNA`;
+        const stats = computeEmployeeTnaStats();
+        const list = [...stats.targetedList].sort((a, b) => String(a.emp.nama||"").localeCompare(String(b.emp.nama||"")));
+        bodyEl.innerHTML = list.length ? list.map(({ emp, isAttended }) =>
+            empRow(emp, isAttended
+                ? `<span class="shrink-0 text-[10px] font-black px-2 py-1 rounded-full bg-emerald-50 text-emerald-600"><i class="fas fa-check mr-1"></i>Sudah Ikut</span>`
+                : `<span class="shrink-0 text-[10px] font-black px-2 py-1 rounded-full bg-slate-100 text-slate-500">Belum Ikut</span>`)
+        ).join("") : dashboardEmptyState("fa-chalkboard-user", "Belum ada karyawan yang jadi target Training TNA.", "/admin/trainings", "Kelola Training TNA");
+    }
+
+    window.openModal("modal-dashboard-detail");
+};
+
+
 function renderEmployeeAdminList() {
     const depts = [...new Set(window.STATE.employees.map(e => e.dept).filter(Boolean))].sort((a, b) => a.localeCompare(b));
     const usersByUsername = {};
     window.STATE.users.forEach(u => { usersByUsername[normalizeUsername(u.username)] = u; });
+    const onboardingStats = computeEmployeeOnboardingStats();
+    const tnaStats = computeEmployeeTnaStats();
 
     const term = employeeSearch.trim().toLowerCase();
     const list = [...window.STATE.employees]
@@ -4855,10 +4998,10 @@ function renderEmployeeAdminList() {
             </div>
         </div>
         <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-5">
-            ${statCard("fa-id-card-clip", "indigo", window.STATE.employees.length, "Total Karyawan")}
-            ${statCard("fa-user-check", "emerald", window.STATE.employees.filter(e => usersByUsername[e.username]).length, "Sudah Ada Akun")}
-            ${statCard("fa-sitemap", "amber", depts.length, "Departemen")}
-            ${statCard("fa-user-xmark", "rose", window.STATE.employees.filter(e => !usersByUsername[e.username]).length, "Belum Ada Akun")}
+            ${donutStatCard("fa-user-check", "emerald", onboardingStats.done, onboardingStats.total, "Selesai Onboarding", "window.openEmployeeStatDetail('onboarding-done')")}
+            ${donutStatCard("fa-chalkboard-user", "amber", tnaStats.attended, tnaStats.targeted, "Sudah Ikut Training TNA", "window.openEmployeeStatDetail('tna-attended')")}
+            ${donutStatCard("fa-spinner", "sky", onboardingStats.progress, onboardingStats.total, "On Progress Onboarding", "window.openEmployeeStatDetail('onboarding-progress')")}
+            ${donutStatCard("fa-hourglass-half", "rose", onboardingStats.notStarted, onboardingStats.total, "Belum Mulai Onboarding", "window.openEmployeeStatDetail('onboarding-notstarted')")}
         </div>
         <div class="flex items-center gap-2 mb-4 flex-wrap">
             <input id="employee-search-input" value="${window.escapeHtml(employeeSearch)}" oninput="employeeSearch=this.value; window.reRenderEmployeeList()" placeholder="Cari nama / username..." class="border border-slate-200 rounded-xl px-3 py-2 text-sm flex-1 min-w-[180px]">
