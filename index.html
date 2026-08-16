@@ -129,10 +129,10 @@ tailwind.config = { darkMode: "class" };
 
 body {
     font-family: 'Plus Jakarta Sans', sans-serif;
-    background-color: #f4f5fa;
+    background-color: #e4e6f0;
     background-image:
-        radial-gradient(circle at 12% 0%, rgba(99,102,241,.07), transparent 42%),
-        radial-gradient(circle at 100% 100%, rgba(129,140,248,.06), transparent 45%);
+        radial-gradient(circle at 12% 0%, rgba(79,70,229,.09), transparent 42%),
+        radial-gradient(circle at 100% 100%, rgba(99,102,241,.08), transparent 45%);
     background-attachment: fixed;
 }
 
@@ -1843,12 +1843,12 @@ function clickableStatCard(icon, color, value, label, onclick) {
     return `
     <${tag}${attrs} class="text-left w-full bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden flex items-stretch${onclick ? " hover:shadow-md hover:border-indigo-200 hover:-translate-y-0.5 active:translate-y-0 transition-all cursor-pointer" : ""}">
         <div class="shrink-0 w-[72px] bg-slate-900 flex items-center justify-center py-3">
-            <div class="w-11 h-11 rounded-2xl flex items-center justify-center" style="background:${c.hex}26;"><i class="fas ${icon} text-lg" style="color:${c.hex}"></i></div>
+            <span class="text-xl font-black leading-none" style="color:${c.hex}">${value}</span>
         </div>
         <div class="flex-1 min-w-0 p-3.5 flex items-center justify-between gap-2">
-            <div class="min-w-0">
-                <p class="text-xl font-black text-slate-800 leading-none">${value}</p>
-                <p class="text-[11px] text-slate-400 font-semibold mt-1 truncate">${label}</p>
+            <div class="min-w-0 flex items-center gap-2">
+                <div class="w-8 h-8 rounded-lg ${c.bg} flex items-center justify-center shrink-0"><i class="fas ${icon} ${c.text} text-[12px]"></i></div>
+                <p class="text-[11px] text-slate-400 font-semibold truncate">${label}</p>
             </div>
             ${onclick ? '<i class="fas fa-chevron-right text-slate-300 text-xs shrink-0"></i>' : ""}
         </div>
