@@ -66,6 +66,11 @@ button:disabled, input[type="submit"]:disabled {
 .nav-item:hover { background: rgba(255,255,255,0.06); color: #fff; }
 .nav-item.nav-active { background: #4f46e5; color: #fff; box-shadow: 0 4px 14px rgba(79,70,229,.4); }
 
+#sidebar { transition: transform .2s ease, width .2s ease, min-width .2s ease, opacity .2s ease; }
+@media (min-width: 1024px) {
+    #sidebar.sidebar-collapsed { width: 0; min-width: 0; opacity: 0; overflow: hidden; border: 0; pointer-events: none; }
+}
+
 @keyframes toast-in { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: translateY(0); } }
 .animate-toast-in { animation: toast-in .25s ease; transition: opacity .3s ease, transform .3s ease; }
 
@@ -172,7 +177,7 @@ button:disabled, input[type="submit"]:disabled {
     <!-- Main -->
     <div class="flex-1 min-w-0 flex flex-col">
         <header class="bg-white border-b border-slate-100 px-4 lg:px-6 py-3 flex items-center justify-between sticky top-0 z-20">
-            <button class="lg:hidden text-slate-500" onclick="document.getElementById('sidebar').classList.remove('-translate-x-full'); document.getElementById('sidebar-overlay').classList.remove('hide')"><i class="fas fa-bars text-lg"></i></button>
+            <button class="text-slate-500 hover:text-indigo-600 transition" onclick="window.toggleSidebar()"><i class="fas fa-bars text-lg"></i></button>
             <div class="hidden lg:block"></div>
             <div class="flex items-center gap-3">
                 <div class="text-right hidden sm:block">
@@ -525,14 +530,63 @@ window.sel = {
         if (!u) return null;
         return window.STATE.enrollments.find(e => e.courseId === courseId && e.userId === u.id) || null;
     },
+    // Progress dihitung dari SEMUA tahapan yang berlaku buat training ini (bukan cuma materi
+    // yang dilihat): lesson yang sudah dibuka, pre-test dikerjakan, post-test lulus, dan tugas
+    // sudah dinilai (kalau training-nya punya tugas). 100% baru tercapai setelah semua tahapan
+    // itu benar-benar tuntas, termasuk pengumpulan & penilaian tugas.
     courseProgress(courseId) {
         const course = window.STATE.courses.find(c => c.id === courseId);
         const enr = window.sel.myEnrollment(courseId);
         if (!course || !enr) return 0;
         const totalLessons = (course.modules || []).reduce((s, m) => s + (m.lessons || []).length, 0);
-        if (!totalLessons) return 0;
-        const done = (enr.completedLessonIds || []).length;
-        return Math.round((done / totalLessons) * 100);
+        const doneLessons = Math.min(totalLessons, (enr.completedLessonIds || []).length);
+        const hasQuiz = course.quiz && (course.quiz.questions || []).length > 0;
+        const hasAssignment = !!(course.assignment && course.assignment.enabled);
+
+        let totalUnits = totalLessons;
+        let doneUnits = doneLessons;
+        if (hasQuiz) {
+            totalUnits += 2; // pre-test dikerjakan + post-test lulus
+            if (window.sel.myPretestAttempt("course", courseId)) doneUnits += 1;
+            const post = (window.sel.myPostTestAttempts("course", courseId) || [])[0] || null;
+            if (post && post.passed) doneUnits += 1;
+        }
+        if (hasAssignment) {
+            totalUnits += 1; // tugas sudah dikumpulkan (sinkron dengan syarat kelulusan/sertifikat)
+            const u = window.STATE.user;
+            const asub = u ? window.STATE.assignmentSubmissions.find(s => s.courseId === courseId && s.userId === u.id) : null;
+            if (asub) doneUnits += 1;
+        }
+        if (!totalUnits) return 0;
+        return Math.round((doneUnits / totalUnits) * 100);
+    },
+    // Sama seperti courseProgress tapi buat Training By TNA: materi (lesson) + pre-test +
+    // post-test lulus + tugas dikumpulkan (kalau ada). 100% baru tercapai setelah tugas juga
+    // benar-benar dikumpulkan, bukan cuma setelah materi selesai dilihat.
+    trainingProgress(trainingId) {
+        const t = window.STATE.trainings.find(x => x.id === trainingId);
+        const reg = window.sel.myRegForTraining(trainingId);
+        if (!t || !reg) return 0;
+        const totalLessons = (t.modules || []).reduce((s, m) => s + (m.lessons || []).length, 0);
+        const doneLessons = Math.min(totalLessons, (reg.completedLessonIds || []).length);
+        const hasQuiz = t.quiz && (t.quiz.questions || []).length > 0;
+        const hasAssignment = !!(t.assignment && t.assignment.enabled);
+
+        let totalUnits = totalLessons;
+        let doneUnits = doneLessons;
+        if (hasQuiz) {
+            totalUnits += 2;
+            if (window.sel.myPretestAttempt("training", trainingId)) doneUnits += 1;
+            const post = (window.sel.myPostTestAttempts("training", trainingId) || [])[0] || null;
+            if (post && post.passed) doneUnits += 1;
+        }
+        if (hasAssignment) {
+            totalUnits += 1;
+            const asub = window.sel.myAssignmentSubmission("training", trainingId);
+            if (asub) doneUnits += 1;
+        }
+        if (!totalUnits) return 0;
+        return Math.round((doneUnits / totalUnits) * 100);
     },
     myQuizAttempt(courseId) {
         const u = window.STATE.user;
@@ -711,6 +765,28 @@ window.closeModal = function (id) {
         window._pptTimerId = null;
     }
     if (id === "modal-qr-scan" && window.stopQrScan) window.stopQrScan();
+};
+
+// ================= TOGGLE SIDEBAR (garis tiga) =================
+// Di layar kecil (mobile/tablet): buka/tutup sidebar dengan animasi slide + overlay gelap.
+// Di layar besar (desktop): sidebar bisa dilipat (collapse) supaya area konten lebih lega.
+window.toggleSidebar = function () {
+    const sidebar = document.getElementById("sidebar");
+    const overlay = document.getElementById("sidebar-overlay");
+    if (!sidebar) return;
+    const isDesktop = window.matchMedia("(min-width: 1024px)").matches;
+    if (isDesktop) {
+        sidebar.classList.toggle("sidebar-collapsed");
+    } else {
+        const isOpen = !sidebar.classList.contains("-translate-x-full");
+        if (isOpen) {
+            sidebar.classList.add("-translate-x-full");
+            overlay?.classList.add("hide");
+        } else {
+            sidebar.classList.remove("-translate-x-full");
+            overlay?.classList.remove("hide");
+        }
+    }
 };
 
 // ================= ROUTER (hash based) =================
@@ -1453,6 +1529,13 @@ function courseCoverStyle(c) {
     if (c.coverImage) return `background-image:url('${c.coverImage}')`;
     return `background:linear-gradient(135deg,${c.accent1 || "#4f46e5"},${c.accent2 || "#818cf8"})`;
 }
+// Sama seperti courseCoverStyle, tapi buat Training By TNA — default gradiennya oranye/amber
+// biar konsisten sama warna tema Training TNA di seluruh aplikasi.
+function trainingCoverStyle(t) {
+    if (t.coverImage) return `background-image:url('${t.coverImage}')`;
+    return `background:linear-gradient(135deg,${t.accent1 || "#f59e0b"},${t.accent2 || "#fbbf24"})`;
+}
+function trainingCoverStyleSafe(t) { return trainingCoverStyle(t); }
 
 // Urutan resmi Onboarding Training (dipakai buat aturan "harus training sebelumnya selesai
 // dulu"), diurut berdasarkan field "order" yang diatur admin di menu Kelola Onboarding
@@ -1627,18 +1710,17 @@ function renderCourseDetail(id) {
     let ctaBlock = "";
     if (!enr) {
         ctaBlock = `<button onclick="window.guardedClick(this, () => window.enrollCourse('${c.id}'))" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-2xl transition"><i class="fas fa-play mr-1"></i> Mulai Training</button>`;
-    } else if (cert) {
-        ctaBlock = `<button onclick="window.navigate('/certificates')" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 rounded-2xl transition"><i class="fas fa-award mr-1"></i> Lihat Sertifikat</button>`;
     } else if (!pretestDone) {        ctaBlock = `<button onclick="openQuiz('course','${c.id}','pretest')" class="w-full bg-sky-500 hover:bg-sky-600 text-white font-bold py-3 rounded-2xl transition"><i class="fas fa-list-check mr-1"></i> Kerjakan Pre-test</button>
         <p class="text-center text-xs text-slate-400">Pre-test wajib dikerjakan dulu sebelum materi bisa dibuka.</p>`;
-    } else if (!evalReady) {
+    } else if (!evalReady && !cert) {
         ctaBlock = `<div class="text-center text-sm text-slate-500 bg-slate-50 rounded-2xl py-3">Selesaikan semua materi secara berurutan untuk lanjut${(hasQuiz||hasAssignment) ? ' ke evaluasi' : ''}.</div>`;
     } else {
         const parts = [];
         if (hasQuiz) {
             // Sudah lulus -> gak boleh ulangi lagi, tombolnya diganti preview biar peserta bisa
             // lihat soal mana yang benar/salah dari percobaan terakhir. Belum lulus -> tetap
-            // tombol ulangi/kerjakan seperti biasa (dibatasi MAX_POSTTEST_ATTEMPTS).
+            // tombol ulangi/kerjakan seperti biasa (dibatasi MAX_POSTTEST_ATTEMPTS). Tombol
+            // preview ini tetap tampil walau training sudah lulus & sertifikat sudah terbit.
             if (quizPassed) {
                 parts.push(`<button onclick="previewPostTest('course','${c.id}')" class="w-full bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold py-3 rounded-2xl transition"><i class="fas fa-eye mr-1"></i> Lihat Preview Post-test</button>`);
             } else if (quizLocked) {
@@ -1652,11 +1734,15 @@ function renderCourseDetail(id) {
             if (!assignmentUnlocked) {
                 parts.push(`<button disabled class="w-full bg-slate-100 text-slate-400 font-bold py-3 rounded-2xl cursor-not-allowed"><i class="fas fa-lock mr-1"></i> Lulus Post-test dulu untuk buka tugas</button>`);
             } else {
+                // "Lihat Status Tugas" ini juga tetap tampil walau training sudah lulus, biar
+                // peserta bisa cek lagi tugas yang pernah dikumpulkan & nilainya kapan saja.
                 parts.push(`<button onclick="openAssignment('course','${c.id}')" class="w-full ${assignmentDone ? 'bg-slate-100 text-slate-500' : 'bg-violet-500 hover:bg-violet-600 text-white'} font-bold py-3 rounded-2xl transition"><i class="fas fa-file-signature mr-1"></i> ${assignmentSub ? 'Lihat Status Tugas' : 'Kerjakan Tugas'}</button>`);
                 if (assignmentSub) parts.push(`<p class="text-center text-xs text-slate-400">${assignmentSub.status === 'graded' ? `Dinilai: skor ${assignmentSub.score}` : 'Menunggu penilaian admin'}</p>`);
             }
         }
-        if (allDone) {
+        if (cert) {
+            parts.push(`<button onclick="window.navigate('/certificates')" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 rounded-2xl transition"><i class="fas fa-award mr-1"></i> Lihat Sertifikat</button>`);
+        } else if (allDone) {
             parts.push(`<button onclick="window.guardedClick(this, () => window.finishCourseFlow('${c.id}'))" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 rounded-2xl transition"><i class="fas fa-flag-checkered mr-1"></i> Selesaikan & Ambil Sertifikat</button>`);
         }
         ctaBlock = parts.join("");
@@ -2216,9 +2302,11 @@ function renderTrainingCatalog() {
         const full = t.quota && count >= t.quota;
         return `
         <a href="#/trainings/${t.id}" class="bg-white rounded-3xl border border-slate-100 shadow-sm hover:shadow-xl transition p-5 flex gap-4">
-            <div class="w-16 shrink-0 rounded-2xl bg-amber-50 text-amber-600 flex flex-col items-center justify-center py-2">
-                <span class="text-lg font-black leading-none">${new Date(t.date).getDate()}</span>
-                <span class="text-[10px] font-bold uppercase">${new Date(t.date).toLocaleDateString('id-ID',{month:'short'})}</span>
+            <div class="w-16 shrink-0 rounded-2xl bg-cover bg-center relative overflow-hidden" style="${trainingCoverStyleSafe(t)}">
+                <div class="absolute inset-0 bg-black/25 flex flex-col items-center justify-center text-white">
+                    <span class="text-lg font-black leading-none">${new Date(t.date).getDate()}</span>
+                    <span class="text-[10px] font-bold uppercase">${new Date(t.date).toLocaleDateString('id-ID',{month:'short'})}</span>
+                </div>
             </div>
             <div class="flex-1 min-w-0">
                 <p class="text-[11px] font-bold text-amber-500 uppercase">${window.escapeHtml(t.category || "Training")}</p>
@@ -2357,19 +2445,51 @@ function renderTrainingDetail(id) {
         ctaBlock = `<button onclick="window.navigate('/certificates')" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 rounded-2xl transition"><i class="fas fa-award mr-1"></i> Lihat Sertifikat</button>`;
     }
 
+    const progress = reg ? window.sel.trainingProgress(t.id) : 0;
+
+    // Ringkasan nilai Pre-test, Post-test, dan Penugasan — ditempatkan persis seperti di halaman
+    // Onboarding Training (di bawah tombol CTA di sidebar), tetap tampil meski training sudah
+    // selesai & lulus, dan "Belum dinilai" ditampilkan kalau tugas sudah dikumpulkan tapi admin
+    // belum menilainya.
+    const scoreSummary = (reg && (hasQuiz || hasAssignment)) ? `
+        <div class="border-t border-slate-100 pt-3 space-y-2">
+            <p class="text-[10px] font-black uppercase text-slate-400">Ringkasan Nilai</p>
+            ${hasQuiz ? `
+            <div class="flex justify-between items-center text-xs">
+                <span class="text-slate-500"><i class="fas fa-list-check text-sky-400 mr-1"></i>Pre-test</span>
+                <span class="font-bold text-slate-700">${pretestAttempt ? pretestAttempt.score : '-'}</span>
+            </div>
+            <div class="flex justify-between items-center text-xs">
+                <span class="text-slate-500"><i class="fas fa-clipboard-question text-violet-400 mr-1"></i>Post-test</span>
+                <span class="font-bold ${quizAttempt ? (quizAttempt.passed ? 'text-emerald-600' : 'text-rose-500') : 'text-slate-700'}">${quizAttempt ? `${quizAttempt.score} (${quizAttempt.passed ? 'Lulus' : 'Belum lulus'})` : '-'}</span>
+            </div>` : ""}
+            ${hasAssignment ? `
+            <div class="flex justify-between items-center text-xs">
+                <span class="text-slate-500"><i class="fas fa-file-signature text-violet-400 mr-1"></i>Penugasan</span>
+                <span class="font-bold ${assignmentSub && assignmentSub.status === 'graded' ? 'text-emerald-600' : 'text-amber-500'}">${assignmentSub ? (assignmentSub.status === 'graded' ? assignmentSub.score : 'Belum dinilai') : '-'}</span>
+            </div>` : ""}
+        </div>` : "";
+
     window.setPage(`
         <a href="#/trainings" class="text-xs font-bold text-slate-400 hover:text-indigo-600"><i class="fas fa-arrow-left mr-1"></i> Kembali ke Jadwal</a>
-        <div class="bg-white rounded-3xl border border-slate-100 shadow-sm p-6 mt-3 grid grid-cols-1 lg:grid-cols-3 gap-6">
-            <div class="order-1 lg:order-2 space-y-3">
-                <div class="bg-slate-50 rounded-2xl p-4 text-center">
-                    <p class="text-2xl font-black text-slate-800">${count}${t.quota ? '/'+t.quota : ''}</p>
-                    <p class="text-[10px] font-bold text-slate-400 uppercase">Peserta Terdaftar</p>
+        <div class="mt-3 rounded-3xl overflow-hidden h-44 bg-cover bg-center relative" style="${trainingCoverStyle(t)}">
+            <div class="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent flex items-end p-6">
+                <div>
+                    <p class="text-amber-200 text-[11px] font-bold uppercase">${window.escapeHtml(t.category || "Training")}</p>
+                    <h1 class="text-white text-2xl font-black">${window.escapeHtml(t.title)}</h1>
                 </div>
-                ${ctaBlock}
+            </div>
+        </div>
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mt-6">
+            <div class="order-1 lg:order-2 space-y-4">
+                <div class="bg-white border border-slate-100 rounded-3xl p-5 shadow-sm space-y-3">
+                    <div class="flex justify-between text-xs text-slate-500"><span>Peserta Terdaftar</span><span class="font-bold text-slate-700">${count}${t.quota ? '/'+t.quota : ''}</span></div>
+                    ${reg ? `<div><div class="h-2 bg-slate-100 rounded-full overflow-hidden"><div class="h-full bg-amber-500" style="width:${progress}%"></div></div><p class="text-[11px] text-slate-400 mt-1 font-semibold">${progress}% selesai</p></div>` : ""}
+                    ${ctaBlock}
+                    ${scoreSummary}
+                </div>
             </div>
             <div class="order-2 lg:order-1 lg:col-span-2 space-y-3">
-                <p class="text-[11px] font-bold text-amber-500 uppercase">${window.escapeHtml(t.category || "Training")}</p>
-                <h1 class="text-2xl font-black text-slate-800">${window.escapeHtml(t.title)}</h1>
                 <p class="text-sm text-slate-600 leading-relaxed">${window.escapeHtml(t.description || "")}</p>
                 <div class="grid grid-cols-2 gap-3 pt-3">
                     <div class="bg-slate-50 rounded-2xl p-3"><p class="text-[10px] text-slate-400 font-bold uppercase">Tanggal</p><p class="text-sm font-bold text-slate-700">${window.fmtDate(t.date)}</p></div>
@@ -2752,6 +2872,38 @@ window.uploadCoverImage = async function (inputEl) {
         courseDraft.coverImage = url;
         window.toast(`Gambar "${file.name}" berhasil diupload`, "success");
         window.rerenderBuilder();
+    } catch (e) {
+        console.error(e);
+        window.toast("Gagal upload gambar: " + (e.message || e), "error");
+        if (progressBox) progressBox.classList.add("hide");
+        inputEl.disabled = false;
+    }
+};
+
+// ================= UPLOAD GAMBAR COVER (TRAINING BY TNA) =================
+window.uploadTrainingCoverImage = async function (inputEl) {
+    const file = inputEl.files[0];
+    if (!file) return;
+    if (!file.type.startsWith("image/")) { window.toast("File harus berupa gambar", "warn"); return; }
+    if (file.size > 8 * 1024 * 1024) { window.toast("Ukuran gambar maksimal 8MB", "warn"); return; }
+
+    const progressBox = document.getElementById("training-cover-progress");
+    const progressBar = document.getElementById("training-cover-progress-bar");
+    const progressPct = document.getElementById("training-cover-progress-pct");
+
+    inputEl.disabled = true;
+    if (progressBox) progressBox.classList.remove("hide");
+    if (progressBar) progressBar.style.width = "0%";
+    if (progressPct) progressPct.textContent = "0%";
+
+    try {
+        const url = await window.LMS_DB.uploadFileWithProgress(file, "training-cover", (pct) => {
+            if (progressBar) progressBar.style.width = pct + "%";
+            if (progressPct) progressPct.textContent = pct + "%";
+        });
+        trainingDraft.coverImage = url;
+        window.toast(`Gambar "${file.name}" berhasil diupload`, "success");
+        window.rerenderTrainingBuilder();
     } catch (e) {
         console.error(e);
         window.toast("Gagal upload gambar: " + (e.message || e), "error");
@@ -3267,11 +3419,12 @@ function renderTrainingBuilder(id) {
         const existing = id ? window.STATE.trainings.find(t => t.id === id) : null;
         trainingDraft = existing ? JSON.parse(JSON.stringify(existing)) : {
             title: "", description: "", category: "", trainer: "", location: "",
-            date: "", startTime: "", endTime: "", quota: "", attendanceCode: genCode(),
+            date: "", startTime: "", endTime: "", quota: "", attendanceCode: genCode(), coverImage: "",
             modules: [], quiz: { passingScore: 70, questions: [] },
             assignment: { enabled: false, title: "", description: "", deadline: "" },
             participants: { mode: "all", departments: [], positions: [], employeeUsernames: [] }
         };
+        if (trainingDraft.coverImage === undefined) trainingDraft.coverImage = "";
         if (!trainingDraft.assignment) trainingDraft.assignment = { enabled: false, title: "", description: "", deadline: "" };
         if (!trainingDraft.participants) trainingDraft.participants = { mode: "all", departments: [], positions: [], employeeUsernames: [] };
         if (!trainingDraft.participants.mode) trainingDraft.participants.mode = "all";
@@ -3365,6 +3518,22 @@ function renderTrainingBuilder(id) {
                         <input type="number" value="${window.escapeHtml(d.quota)}" oninput="trainingDraft.quota=this.value" placeholder="Kuota (opsional)" class="border border-slate-200 rounded-xl px-3 py-2 text-sm">
                         <input value="${window.escapeHtml(d.attendanceCode)}" oninput="trainingDraft.attendanceCode=this.value.toUpperCase()" placeholder="Kode presensi" class="border border-slate-200 rounded-xl px-3 py-2 text-sm font-mono uppercase">
                     </div>
+                    <div class="flex items-center gap-2">
+                        <input value="${window.escapeHtml(d.coverImage)}" oninput="trainingDraft.coverImage=this.value" placeholder="URL gambar cover (opsional)" class="flex-1 border border-slate-200 rounded-xl px-3 py-2 text-sm">
+                        <label class="shrink-0 text-[11px] font-bold text-amber-600 hover:text-amber-800 bg-amber-50 px-3 py-2.5 rounded-xl cursor-pointer whitespace-nowrap">
+                            <i class="fas fa-upload mr-1"></i> Upload
+                            <input type="file" accept="image/*" class="hidden" onchange="window.uploadTrainingCoverImage(this)">
+                        </label>
+                    </div>
+                    <div id="training-cover-progress" class="hide">
+                        <div class="flex items-center justify-between text-[10px] font-bold text-amber-600 mb-1"><span><i class="fas fa-spinner fa-spin mr-1"></i>Mengupload gambar...</span><span id="training-cover-progress-pct">0%</span></div>
+                        <div class="h-1.5 bg-slate-200 rounded-full overflow-hidden"><div id="training-cover-progress-bar" class="h-full bg-amber-500 transition-all" style="width:0%"></div></div>
+                    </div>
+                    ${d.coverImage ? `
+                    <div class="flex items-center gap-2 text-[11px] font-bold text-emerald-600 bg-emerald-50 rounded-xl px-3 py-2">
+                        <i class="fas fa-circle-check"></i> Gambar cover terpasang
+                        <img src="${d.coverImage}" class="w-10 h-10 rounded-lg object-cover ml-auto border border-emerald-200" onerror="this.style.display='none'">
+                    </div>` : ""}
                 </div>
 
                 <div class="bg-white rounded-3xl border border-slate-100 shadow-sm p-5 space-y-3">
@@ -3522,6 +3691,7 @@ window.saveTrainingDraft = async function () {
         title: d.title, description: d.description, category: d.category, trainer: d.trainer,
         location: d.location, date: d.date, startTime: d.startTime, endTime: d.endTime,
         quota: parseInt(d.quota) || null, attendanceCode: (d.attendanceCode || genCode()).toUpperCase(),
+        coverImage: d.coverImage || "",
         modules: d.modules, quiz: d.quiz, assignment: d.assignment,
         participants: {
             mode: d.participants.mode || "all",
