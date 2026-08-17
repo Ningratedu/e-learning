@@ -1258,7 +1258,7 @@ window.trainingUserStatus = function (t, userId) {
 function trainingUserStatusBadgeHtml(t, userId) {
     const s = window.trainingUserStatus(t, userId);
     if (!s) return "";
-    return `<span class="text-[10px] font-black px-2 py-1 rounded-full ${s.cls} inline-flex items-center gap-1 shrink-0"><i class="fas ${s.icon}"></i>${s.label}</span>`;
+    return `<span class="text-[10px] font-black px-2 py-1 rounded-full ${s.cls} inline-flex items-center gap-1 whitespace-nowrap"><i class="fas ${s.icon}"></i>${s.label}</span>`;
 }
 // Baris progress bar + info pre-test/post-test/status untuk kartu Training By TNA — dipakai di
 // SEMUA tampilan jadwal training by TNA milik user (katalog jadwal & modal detail dashboard) biar
@@ -1278,9 +1278,9 @@ function trainingProgressRowHtml(t, userId) {
             <span class="absolute top-0 -translate-x-full text-[9px] font-black ${done ? 'text-emerald-600' : 'text-amber-600'} transition-all" style="left:${progress}%">${progress}%</span>
             <div class="h-1.5 bg-slate-100 rounded-full overflow-hidden"><div class="h-full ${done ? 'bg-emerald-500' : 'bg-amber-500'} transition-all" style="width:${progress}%"></div></div>
         </div>
-        <div class="flex items-center justify-between gap-2 mt-1.5">
-            <span class="text-[11px] font-semibold text-slate-500 shrink-0"><i class="fas fa-list-check text-sky-400 mr-0.5"></i>Pre-test: ${pre ? pre.score : '-'}</span>
-            <span class="text-[11px] font-semibold text-slate-500 shrink-0"><i class="fas fa-clipboard-question text-violet-400 mr-0.5"></i>Post-test: ${post ? post.score : '-'}</span>
+        <div class="flex flex-wrap items-center gap-x-2 gap-y-1 mt-1.5">
+            <span class="text-[10px] sm:text-[11px] font-semibold text-slate-500 whitespace-nowrap"><i class="fas fa-list-check text-sky-400 mr-0.5"></i>Pre-test: ${pre ? pre.score : '-'}</span>
+            <span class="text-[10px] sm:text-[11px] font-semibold text-slate-500 whitespace-nowrap"><i class="fas fa-clipboard-question text-violet-400 mr-0.5"></i>Post-test: ${post ? post.score : '-'}</span>
             ${trainingUserStatusBadgeHtml(t, userId)}
         </div>
     </div>`;
@@ -2193,6 +2193,283 @@ function renderKpiMonthlyChart(stats, token) {
         } catch (err) {
             console.error("Gagal render chart KPI:", err);
             showKpiChartError("Terjadi kesalahan saat menggambar grafik.");
+        }
+    });
+}
+
+// ================= KPI PERFORMANCE BULANAN — COMPANY WIDE (Dashboard Admin) =================
+// Rata-rata KPI SELURUH karyawan per bulan (tahun berjalan) buat dashboard admin/management.
+// Reuse skema data yang sama persis dengan kpiPerformanceCard di dashboard user (employee.kpi),
+// jadi angkanya otomatis konsisten — tinggal di-aggregate per bulan (dan opsional per departemen).
+function computeCompanyKpiStats() {
+    const year = new Date().getFullYear();
+    const employees = window.STATE.employees || [];
+    const withKpi = employees.filter(e => e && e.kpi && Object.keys(e.kpi).length);
+
+    const monthly = [];       // rata-rata company-wide per bulan (null kalau belum ada data)
+    const monthlyCount = [];  // jumlah karyawan yang punya data KPI di bulan itu (buat tooltip transparansi)
+    const deptMonthly = {};   // { "Nama Departemen": [avg per bulan, 12 elemen] } — dipakai mode "Per Departemen"
+
+    for (let m = 1; m <= 12; m++) {
+        const values = [];
+        withKpi.forEach(e => {
+            const raw = e.kpi[m] ?? e.kpi[String(m)];
+            if (typeof raw === "number") values.push({ v: raw, dept: (e.dept && e.dept.trim()) || "Tanpa Departemen" });
+        });
+        monthly.push(values.length ? Math.round((values.reduce((s, x) => s + x.v, 0) / values.length) * 1000) / 10 : null);
+        monthlyCount.push(values.length);
+
+        const byDept = {};
+        values.forEach(x => { (byDept[x.dept] = byDept[x.dept] || []).push(x.v); });
+        Object.entries(byDept).forEach(([dept, arr]) => {
+            deptMonthly[dept] = deptMonthly[dept] || new Array(12).fill(null);
+            deptMonthly[dept][m - 1] = Math.round((arr.reduce((s, v) => s + v, 0) / arr.length) * 1000) / 10;
+        });
+    }
+
+    const filled = monthly.map((v, i) => ({ v, i })).filter(x => typeof x.v === "number");
+    if (!filled.length) {
+        return { monthly, monthlyCount, deptMonthly, topDepts: [], year, hasData: false, totalEmployees: employees.length, employeesWithKpi: withKpi.length };
+    }
+
+    const avg = Math.round((filled.reduce((s, x) => s + x.v, 0) / filled.length) * 10) / 10;
+    const best = filled.reduce((a, b) => (b.v > a.v ? b : a));
+    const worst = filled.reduce((a, b) => (b.v < a.v ? b : a));
+    const latest = filled[filled.length - 1];
+    const prev = filled.length > 1 ? filled[filled.length - 2] : null;
+    let trend = "stabil";
+    if (prev) trend = latest.v > prev.v ? "naik" : (latest.v < prev.v ? "turun" : "stabil");
+
+    // Top 5 departemen dengan data KPI paling lengkap — biar mode "Per Departemen" gak penuh
+    // sesak garis kalau departemennya banyak.
+    const topDepts = Object.keys(deptMonthly)
+        .map(d => ({ d, n: deptMonthly[d].filter(v => typeof v === "number").length }))
+        .sort((a, b) => b.n - a.n)
+        .slice(0, 5)
+        .map(x => x.d);
+
+    return {
+        monthly, monthlyCount, deptMonthly, topDepts, year, hasData: true,
+        avg, best, worst, latest, prev, trend,
+        totalEmployees: employees.length, employeesWithKpi: withKpi.length
+    };
+}
+
+function buildCompanyKpiResumeSentence(stats) {
+    if (!stats.hasData) {
+        return `Belum ada data KPI karyawan untuk tahun ${stats.year} yang tercatat. Data KPI bisa dimasukkan lewat menu <b>Data Karyawan → Upload Data Karyawan</b>.`;
+    }
+    const { avg, best, worst, latest, prev, trend, year, employeesWithKpi, totalEmployees } = stats;
+    let s = `Sepanjang tahun ${year}, rata-rata KPI perusahaan (dari <b>${employeesWithKpi}/${totalEmployees}</b> karyawan yang punya data) berada di angka <b>${avg}%</b>. `;
+    if (best.i !== worst.i) {
+        s += `Performa terbaik company-wide ada di bulan <b>${KPI_MONTH_NAMES_FULL[best.i]}</b> (${best.v}%), sementara bulan <b>${KPI_MONTH_NAMES_FULL[worst.i]}</b> (${worst.v}%) masih paling perlu perhatian. `;
+    } else {
+        s += `Baru ada satu bulan data KPI yang tercatat, yaitu <b>${KPI_MONTH_NAMES_FULL[best.i]}</b> (${best.v}%). `;
+    }
+    if (prev) {
+        const diff = Math.round((latest.v - prev.v) * 10) / 10;
+        if (trend === "naik") s += `Dibanding bulan <b>${KPI_MONTH_NAMES_FULL[prev.i]}</b>, KPI bulan <b>${KPI_MONTH_NAMES_FULL[latest.i]}</b> naik <b>${diff}%</b> — momentum bagus buat dibawa ke rapat manajemen. 📈`;
+        else if (trend === "turun") s += `Dibanding bulan <b>${KPI_MONTH_NAMES_FULL[prev.i]}</b>, KPI bulan <b>${KPI_MONTH_NAMES_FULL[latest.i]}</b> turun <b>${Math.abs(diff)}%</b>. Coba cek breakdown per departemen buat lihat penyumbang penurunannya.`;
+        else s += `KPI bulan <b>${KPI_MONTH_NAMES_FULL[latest.i]}</b> stabil dibanding bulan sebelumnya.`;
+    } else {
+        s += `Terus lengkapi data KPI bulanan biar tren perusahaannya makin kelihatan.`;
+    }
+    return s;
+}
+
+function companyKpiPerformanceCard(stats) {
+    const resume = buildCompanyKpiResumeSentence(stats);
+    const avgBadge = stats.hasData
+        ? `<span class="text-xs font-black px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-600">Rata² ${stats.avg}%</span>`
+        : "";
+    const deptToggle = (stats.hasData && stats.topDepts && stats.topDepts.length > 1)
+        ? `<div class="flex items-center gap-1 bg-slate-100 rounded-full p-0.5 text-[11px] font-bold">
+                <button id="company-kpi-view-overall" onclick="window.setCompanyKpiView('overall')" class="px-2.5 py-1 rounded-full transition bg-white text-emerald-600 shadow-sm">Semua</button>
+                <button id="company-kpi-view-dept" onclick="window.setCompanyKpiView('dept')" class="px-2.5 py-1 rounded-full transition text-slate-500">Per Departemen</button>
+           </div>`
+        : "";
+    return `
+    <div class="bg-white rounded-3xl border border-slate-100 shadow-sm p-4 mb-3">
+        <div class="flex flex-wrap items-center justify-between gap-2 mb-2">
+            <h3 class="font-black text-slate-700 text-sm"><i class="fas fa-chart-line text-emerald-500 mr-1"></i> Tren KPI Perusahaan ${stats.year || new Date().getFullYear()}</h3>
+            <div class="flex items-center gap-2">${avgBadge}${deptToggle}</div>
+        </div>
+        ${stats.hasData
+            ? `<div class="relative h-56 sm:h-72" id="company-kpi-chart-wrap"><canvas id="company-kpi-chart"></canvas></div>
+               <div id="company-kpi-dept-legend" class="hide flex flex-wrap gap-2 mt-2"></div>`
+            : `<div class="h-40 flex flex-col items-center justify-center text-center gap-1">
+                    <i class="fas fa-chart-simple text-3xl text-slate-200"></i>
+                    <p class="text-sm text-slate-400 max-w-xs">Belum ada data KPI karyawan tahun ini.</p>
+               </div>`}
+        <div class="mt-3 bg-emerald-50/60 rounded-2xl p-3.5 flex items-start gap-2.5">
+            <i class="fas fa-sparkles text-emerald-500 mt-0.5 shrink-0"></i>
+            <p class="text-[13px] text-slate-600 leading-relaxed">${resume}</p>
+        </div>
+    </div>`;
+}
+
+window.__companyKpiRenderToken = window.__companyKpiRenderToken || 0;
+window.__companyKpiStats = null;
+window.__companyKpiView = "overall";
+
+function waitForChartJsThenRenderCompany(stats, attempt, token) {
+    attempt = attempt || 0;
+    if (token !== window.__companyKpiRenderToken) return; // sudah ada render halaman yang lebih baru
+    const canvas = document.getElementById("company-kpi-chart");
+    if (!canvas) return; // halaman sudah berpindah, gak perlu render lagi
+
+    if (typeof Chart === "undefined") {
+        if (attempt < 20) {
+            setTimeout(() => waitForChartJsThenRenderCompany(stats, attempt + 1, token), 100);
+        } else {
+            console.error("Chart.js tidak tersedia, chart KPI perusahaan tidak bisa ditampilkan.");
+            showCompanyKpiChartError("Grafik gagal dimuat. Coba muat ulang halaman.");
+        }
+        return;
+    }
+    renderCompanyKpiChart(stats, token);
+}
+
+function showCompanyKpiChartError(message) {
+    const wrap = document.getElementById("company-kpi-chart-wrap");
+    if (!wrap) return;
+    wrap.innerHTML = `
+        <div class="h-full flex flex-col items-center justify-center text-center gap-2">
+            <i class="fas fa-triangle-exclamation text-2xl text-amber-300"></i>
+            <p class="text-xs text-slate-400 max-w-[240px]">${window.escapeHtml(message)}</p>
+            <button onclick="window.location.reload()" class="text-xs font-black text-indigo-500 hover:underline">Muat ulang halaman</button>
+        </div>`;
+}
+
+// Ganti tampilan chart antara "rata-rata company-wide" (1 garis) dan "per departemen"
+// (multi-garis, top 5 departemen dengan data KPI paling lengkap) — dipanggil dari toggle di kartu.
+window.setCompanyKpiView = function (mode) {
+    window.__companyKpiView = mode;
+    const btnOverall = document.getElementById("company-kpi-view-overall");
+    const btnDept = document.getElementById("company-kpi-view-dept");
+    if (btnOverall && btnDept) {
+        btnOverall.className = "px-2.5 py-1 rounded-full transition " + (mode === "overall" ? "bg-white text-emerald-600 shadow-sm" : "text-slate-500");
+        btnDept.className = "px-2.5 py-1 rounded-full transition " + (mode === "dept" ? "bg-white text-emerald-600 shadow-sm" : "text-slate-500");
+    }
+    if (window.__companyKpiStats) renderCompanyKpiChart(window.__companyKpiStats, window.__companyKpiRenderToken);
+};
+
+const COMPANY_KPI_DEPT_COLORS = ["#4f46e5", "#f59e0b", "#10b981", "#ec4899", "#0ea5e9"];
+
+let __companyKpiChartInstance = null;
+function renderCompanyKpiChart(stats, token) {
+    if (!stats.hasData) return;
+    if (typeof token !== "undefined" && token !== window.__companyKpiRenderToken) return;
+    const canvas = document.getElementById("company-kpi-chart");
+    if (!canvas || typeof Chart === "undefined") return;
+    window.__companyKpiStats = stats;
+
+    // Sama seperti chart KPI user: tunggu 1 frame biar layout (termasuk class Tailwind tinggi
+    // kartu) udah kelar duluan, supaya canvas gak kebaca tinggi 0 pas render pertama.
+    requestAnimationFrame(() => {
+        if (typeof token !== "undefined" && token !== window.__companyKpiRenderToken) return;
+        const liveCanvas = document.getElementById("company-kpi-chart");
+        if (!liveCanvas) return;
+
+        try {
+            if (__companyKpiChartInstance) { __companyKpiChartInstance.destroy(); __companyKpiChartInstance = null; }
+            const ctx = liveCanvas.getContext("2d");
+            const legendEl = document.getElementById("company-kpi-dept-legend");
+            const view = window.__companyKpiView || "overall";
+
+            let datasets;
+            if (view === "dept" && stats.topDepts && stats.topDepts.length) {
+                datasets = stats.topDepts.map((dept, i) => ({
+                    label: dept,
+                    data: stats.deptMonthly[dept],
+                    spanGaps: true,
+                    tension: 0.4,
+                    borderColor: COMPANY_KPI_DEPT_COLORS[i % COMPANY_KPI_DEPT_COLORS.length],
+                    backgroundColor: "transparent",
+                    borderWidth: 2.5,
+                    pointRadius: 3,
+                    pointHoverRadius: 6,
+                    fill: false,
+                }));
+                if (legendEl) {
+                    legendEl.classList.remove("hide");
+                    legendEl.innerHTML = stats.topDepts.map((dept, i) => `
+                        <span class="text-[10px] font-bold px-2 py-1 rounded-full bg-slate-50 text-slate-600 inline-flex items-center gap-1.5">
+                            <span class="w-2 h-2 rounded-full inline-block" style="background:${COMPANY_KPI_DEPT_COLORS[i % COMPANY_KPI_DEPT_COLORS.length]}"></span>${window.escapeHtml(dept)}
+                        </span>`).join("");
+                }
+            } else {
+                const h = liveCanvas.clientHeight || (document.getElementById("company-kpi-chart-wrap") || {}).clientHeight || 220;
+                const gradient = ctx.createLinearGradient(0, 0, 0, h);
+                gradient.addColorStop(0, "rgba(16,185,129,.30)");
+                gradient.addColorStop(1, "rgba(16,185,129,0)");
+                const pointColors = stats.monthly.map((v, i) => {
+                    if (v === null) return "transparent";
+                    if (stats.best && i === stats.best.i) return "#10b981";
+                    if (stats.worst && i === stats.worst.i) return "#f43f5e";
+                    return "#059669";
+                });
+                const pointRadii = stats.monthly.map((v, i) => v === null ? 0 : ((stats.best && i === stats.best.i) || (stats.worst && i === stats.worst.i) ? 6 : 3.5));
+                datasets = [{
+                    label: "Rata-rata KPI Perusahaan",
+                    data: stats.monthly,
+                    spanGaps: true,
+                    fill: true,
+                    tension: 0.4,
+                    borderColor: "#059669",
+                    backgroundColor: gradient,
+                    borderWidth: 2.5,
+                    pointBackgroundColor: pointColors,
+                    pointBorderColor: "#fff",
+                    pointBorderWidth: 2,
+                    pointRadius: pointRadii,
+                    pointHoverRadius: 7,
+                }];
+                if (legendEl) { legendEl.classList.add("hide"); legendEl.innerHTML = ""; }
+            }
+
+            __companyKpiChartInstance = new Chart(ctx, {
+                type: "line",
+                data: { labels: KPI_MONTH_NAMES_SHORT, datasets },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    layout: { padding: { top: 14 } },
+                    interaction: { intersect: false, mode: "index" },
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            backgroundColor: "#0f172a",
+                            titleFont: { weight: "bold" },
+                            padding: 10,
+                            cornerRadius: 10,
+                            callbacks: {
+                                label: (c) => c.parsed.y === null ? ` ${c.dataset.label}: belum ada data` : ` ${c.dataset.label}: ${c.parsed.y}%`,
+                                afterBody: (items) => {
+                                    if (view !== "overall" || !items.length) return "";
+                                    const idx = items[0].dataIndex;
+                                    const n = stats.monthlyCount[idx] || 0;
+                                    return n ? `Dari ${n} karyawan` : "";
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        y: {
+                            min: 0, max: 100,
+                            ticks: { callback: (v) => v + "%", font: { size: 10 }, color: "#94a3b8" },
+                            grid: { color: "#f1f5f9" }
+                        },
+                        x: {
+                            grid: { display: false },
+                            ticks: { font: { size: 10, weight: "bold" }, color: "#94a3b8" }
+                        }
+                    }
+                }
+            });
+        } catch (err) {
+            console.error("Gagal render chart KPI perusahaan:", err);
+            showCompanyKpiChartError("Terjadi kesalahan saat menggambar grafik.");
         }
     });
 }
@@ -7457,6 +7734,8 @@ window.ROUTES["admin/reports"] = requireAdmin(function () {
     const pendingAssignments = S.assignmentSubmissions.filter(s => s.status !== "graded").length;
     const onboardingStats = computeEmployeeOnboardingStats();
     const tnaStats = computeEmployeeTnaStats();
+    const companyKpiStats = computeCompanyKpiStats();
+    window.__companyKpiView = "overall"; // reset ke tampilan default tiap kali halaman ini dibuka
 
     const topCourses = [...S.courses].map(c => ({
         c, count: S.enrollments.filter(e => e.courseId === c.id).length
@@ -7546,6 +7825,8 @@ window.ROUTES["admin/reports"] = requireAdmin(function () {
             ${clickableStatCard("fa-hourglass-half", "amber", pendingAssignments, "Tugas Menunggu Nilai", "window.openReportDetail('assignments-pending')")}
         </div>
 
+        ${companyKpiPerformanceCard(companyKpiStats)}
+
         <div class="grid grid-cols-1 lg:grid-cols-3 gap-3 mb-3">
             <div class="bg-white rounded-3xl border border-slate-100 shadow-sm p-4 lg:col-span-2">
                 <h3 class="font-black text-sm text-slate-700 mb-3">Training Terpopuler</h3>
@@ -7578,6 +7859,9 @@ window.ROUTES["admin/reports"] = requireAdmin(function () {
             </div>
         </div>
     `);
+
+    const companyKpiToken = ++window.__companyKpiRenderToken;
+    waitForChartJsThenRenderCompany(companyKpiStats, 0, companyKpiToken);
 });
 
 // Mengisi & membuka modal detail (reuse "modal-dashboard-detail") untuk tiap kartu di halaman
