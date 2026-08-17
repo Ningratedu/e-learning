@@ -224,6 +224,10 @@ button:disabled, input[type="submit"]:disabled {
     #sidebar.sidebar-mini .brand-label, #sidebar.sidebar-mini .nav-label { display: none; }
     #sidebar.sidebar-mini #sidebar-brand { justify-content: center; padding-left: 0; padding-right: 0; }
     #sidebar.sidebar-mini .nav-item { justify-content: center; padding-left: 0; padding-right: 0; position: relative; }
+    /* Label section "Admin" di atas menu admin: pas sidebar dilipat (mini) rail-nya
+       cuma selebar ikon, jadi padding kiri tetap (px-4) bikin teksnya nempel/nggak
+       center. Di-override supaya teksnya center horizontal sesuai lebar sidebar mini. */
+    #sidebar.sidebar-mini .nav-section-label { padding-left: 0; padding-right: 0; text-align: center; }
     /* Catatan: tooltip nama menu saat sidebar dilipat (mini) TIDAK dibuat pakai CSS
        ::after lagi, karena #sidebar-nav punya overflow-x-hidden (buat scroll vertikal
        daftar menu yang panjang) yang otomatis MEMOTONG elemen absolute yang nongol
@@ -1704,7 +1708,7 @@ window.renderSidebar = function () {
         </a>`;
     document.getElementById("sidebar-nav").innerHTML =
         nav.map(item).join("") +
-        (isAdmin ? `<div class="px-4 pt-5 pb-2 text-[10px] font-black uppercase tracking-wider text-indigo-300/60">Admin</div>` + adminNav.map(item).join("") : "");
+        (isAdmin ? `<div class="nav-section-label px-4 pt-5 pb-2 text-[10px] font-black uppercase tracking-wider text-indigo-300/60">Admin</div>` + adminNav.map(item).join("") : "");
 };
 
 // Avatar: foto profil kalau ada (photoUrl), fallback ke inisial nama.
