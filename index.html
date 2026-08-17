@@ -1215,6 +1215,22 @@ window.sel = {
         (window.STATE.employees || []).forEach(e => { const p = (e.posisi || "").trim(); if (p) set.add(p); });
         return [...set].sort((a, b) => a.localeCompare(b));
     },
+    // Daftar nama posisi/level yang ADA di antara karyawan pada departemen-departemen yang
+    // diberikan (cascading filter: posisi dipersempit sesuai departemen terpilih). Kalau
+    // "depts" kosong (belum ada departemen dipilih), balikin SEMUA posisi seperti biasa.
+    posisiNamesForDepts(depts) {
+        const deptsLower = (Array.isArray(depts) ? depts : []).map(d => String(d).trim().toLowerCase()).filter(Boolean);
+        const set = new Set();
+        (window.STATE.employees || []).forEach(e => {
+            if (deptsLower.length) {
+                const dept = (e.dept || "").trim().toLowerCase();
+                if (!dept || !deptsLower.includes(dept)) return;
+            }
+            const p = (e.posisi || "").trim();
+            if (p) set.add(p);
+        });
+        return [...set].sort((a, b) => a.localeCompare(b));
+    },
     // Cari data karyawan (dept/posisi lengkap) milik akun user yang sedang login, dicocokkan
     // lewat username (dipakai buat cek target peserta Training TNA).
     employeeOfUser(user) {
@@ -2488,7 +2504,7 @@ function companyKpiPerformanceCard(stats) {
     return `
     <div class="bg-white rounded-3xl border border-slate-100 shadow-sm p-4 mb-3">
         <div class="flex flex-wrap items-center justify-between gap-2 mb-2">
-            <h3 class="font-black text-slate-700 text-sm"><i class="fas fa-chart-line text-emerald-500 mr-1"></i> Tren KPI Perusahaan ${stats.year || new Date().getFullYear()}</h3>
+            <h3 class="font-black text-slate-700 text-sm"><i class="fas fa-chart-line text-emerald-500 mr-1"></i> Tren Avg KPI All Karyawan ${stats.year || new Date().getFullYear()}</h3>
             <div class="flex items-center gap-2">${avgBadge}${deptToggle}</div>
         </div>
         ${stats.hasData
@@ -3611,8 +3627,8 @@ function renderCourseDetail(id) {
             </div>
             <div class="order-2 lg:order-1 lg:col-span-2 space-y-3">
                 <p class="text-sm text-slate-600 leading-relaxed">${window.escapeHtml(c.description || "")}</p>
-                ${!enr ? `<div class="bg-slate-50 border border-dashed border-slate-200 rounded-2xl p-4 flex items-center gap-3"><i class="fas fa-lock text-slate-300"></i><p class="text-xs text-slate-400 font-semibold">Klik "Mulai Training" di atas untuk membuka akses ke semua materi di bawah ini.</p></div>` : ""}
-                ${enr && !pretestDone ? `<div class="bg-sky-50 border border-dashed border-sky-200 rounded-2xl p-4 flex items-center gap-3"><i class="fas fa-list-check text-sky-400"></i><p class="text-xs text-sky-600 font-semibold">Kerjakan Pre-test dulu (tombol di samping) untuk membuka materi di bawah ini.</p></div>` : ""}
+                ${!enr ? `<div class="bg-slate-50 border border-dashed border-slate-200 rounded-2xl p-4 flex items-center gap-3"><i class="fas fa-lock text-slate-300"></i><p class="text-xs text-slate-400 font-semibold">Klik "Mulai Training" untuk membuka akses ke semua materi di bawah ini.</p></div>` : ""}
+                ${enr && !pretestDone ? `<div class="bg-sky-50 border border-dashed border-sky-200 rounded-2xl p-4 flex items-center gap-3"><i class="fas fa-list-check text-sky-400"></i><p class="text-xs text-sky-600 font-semibold">Kerjakan Pre-test dulu untuk membuka materi di bawah ini.</p></div>` : ""}
                 <div class="space-y-3">${modulesHtml || '<p class="text-sm text-slate-400">Belum ada modul.</p>'}</div>
             </div>
         </div>
@@ -4509,8 +4525,8 @@ function renderTrainingDetail(id) {
             </div>`;
         } else {
             const lockMsg = !reg
-                ? 'Daftar training di atas untuk membuka materi, kuis, dan penugasan.'
-                : 'Lakukan presensi dengan kode dari trainer (lihat kotak di atas) untuk membuka materi, kuis, dan penugasan.';
+                ? 'Daftar training untuk membuka materi, kuis, dan penugasan.'
+                : 'Lakukan presensi dengan kode dari trainer untuk membuka materi, kuis, dan penugasan.';
             materiArea = `<div class="mt-3 bg-slate-50 border border-dashed border-slate-200 rounded-2xl p-4 flex items-center gap-3"><i class="fas fa-lock text-slate-300"></i><p class="text-xs text-slate-400 font-semibold">${lockMsg}</p></div>`;
         }
     }
@@ -5175,6 +5191,8 @@ window.deleteCourse = async function (id) {
 
 let courseDraft = null;
 let courseParticipantSearch = "";
+let courseDeptFilterSearch = "";
+let coursePosFilterSearch = "";
 function renderCourseBuilder(id) {
     if (!courseDraft || courseDraft._loadedId !== (id || "new")) {
         const existing = id ? window.STATE.courses.find(c => c.id === id) : null;
@@ -5199,6 +5217,8 @@ function renderCourseBuilder(id) {
         courseDraft._loadedId = id || "new";
         courseDraft._id = id;
         courseParticipantSearch = "";
+        courseDeptFilterSearch = "";
+        coursePosFilterSearch = "";
     }
     const d = courseDraft;
 
@@ -5305,17 +5325,12 @@ function renderCourseBuilder(id) {
 
                             <div class="border border-slate-100 rounded-xl p-2.5">
                                 <label class="flex items-center justify-between">
-                                    <span class="text-[10px] font-bold uppercase text-slate-400 flex items-center gap-1"><i class="fas fa-building"></i> Filter Departemen ${d.departments.length ? `<span class="text-indigo-600">${d.departments.length} dipilih</span>` : ""}</span>
-                                    <button type="button" onclick="courseDraft.departments=[]; rerenderBuilder()" class="text-[10px] font-bold text-indigo-500 hover:text-indigo-700">Kosongkan</button>
+                                    <span class="text-[10px] font-bold uppercase text-slate-400 flex items-center gap-1"><i class="fas fa-building"></i> Filter Departemen ${d.departments.length ? `<span class="text-indigo-600">${d.departments.length} dipilih</span>` : `<span class="text-emerald-600">Semua</span>`}</span>
+                                    <button type="button" onclick="courseDraft.departments=[]; window.pruneCoursePositionsToDeptScope(); rerenderBuilder()" class="text-[10px] font-bold text-indigo-500 hover:text-indigo-700">Kosongkan</button>
                                 </label>
-                                <div class="w-full mt-1.5 max-h-[160px] overflow-y-auto grid grid-cols-1 sm:grid-cols-2 gap-1">
-                                    ${window.sel.allDeptNames().length ? window.sel.allDeptNames().map(dep => {
-                                        const active = d.departments.some(x => x.toLowerCase() === dep.toLowerCase());
-                                        return `<label class="flex items-center gap-2 text-sm px-1.5 py-1 rounded-lg hover:bg-slate-50 cursor-pointer">
-                                            <input type="checkbox" ${active ? 'checked' : ''} onchange="window.toggleCourseDept('${window.escapeHtml(dep).replace(/'/g, "\\'")}')" class="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500">
-                                            <span class="truncate">${window.escapeHtml(dep)}</span>
-                                        </label>`;
-                                    }).join("") : `<p class="text-xs text-slate-400 px-1 py-1">Belum ada departemen terdaftar dari akun pengguna.</p>`}
+                                <input id="course-dept-filter-search" value="${window.escapeHtml(courseDeptFilterSearch)}" oninput="courseDeptFilterSearch=this.value; window.reRenderCourseDeptFilter()" placeholder="Cari departemen..." class="w-full border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs mt-1.5">
+                                <div id="course-dept-filter-list" class="w-full mt-1.5 max-h-[160px] overflow-y-auto grid grid-cols-1 sm:grid-cols-2 gap-1">
+                                    ${renderCourseDeptFilterRows()}
                                 </div>
                                 <div class="flex items-center gap-2 mt-2">
                                     <input id="new-dept-input" placeholder="Tambah nama departemen baru..." class="flex-1 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs">
@@ -5325,12 +5340,14 @@ function renderCourseBuilder(id) {
                             </div>
 
                             <div class="border border-slate-100 rounded-xl p-2.5">
-                                <label class="text-[10px] font-bold uppercase text-slate-400 flex items-center gap-1"><i class="fas fa-id-badge"></i> Filter Posisi/Level ${d.positions.length ? `<span class="ml-auto text-indigo-600">${d.positions.length} dipilih</span>` : ""}</label>
-                                <div class="flex flex-wrap gap-1.5 mt-1.5">
-                                    ${window.sel.allPosisiNames().map(pos => {
-                                        const active = d.positions.some(x => x.toLowerCase() === pos.toLowerCase());
-                                        return `<button type="button" onclick="window.toggleCourseParticipantValue('positions','${window.escapeHtml(pos).replace(/'/g, "\\'")}')" class="text-[11px] font-bold px-2.5 py-1.5 rounded-full border transition ${active ? 'bg-indigo-600 border-indigo-600 text-white' : 'bg-white border-slate-200 text-slate-500 hover:border-indigo-300'}">${active ? '<i class="fas fa-check mr-1"></i>' : ''}${window.escapeHtml(pos)}</button>`;
-                                    }).join("") || '<p class="text-[11px] text-slate-400">Belum ada data posisi/jabatan dari karyawan. Import dulu lewat menu Kelola Karyawan.</p>'}
+                                <label class="flex items-center justify-between">
+                                    <span class="text-[10px] font-bold uppercase text-slate-400 flex items-center gap-1"><i class="fas fa-id-badge"></i> Filter Posisi/Level ${d.positions.length ? `<span class="text-indigo-600">${d.positions.length} dipilih</span>` : `<span class="text-emerald-600">Semua</span>`}</span>
+                                    <button type="button" onclick="courseDraft.positions=[]; rerenderBuilder()" class="text-[10px] font-bold text-indigo-500 hover:text-indigo-700">Kosongkan</button>
+                                </label>
+                                ${d.departments.length ? `<p class="text-[10px] text-indigo-500 mt-1"><i class="fas fa-filter mr-1"></i>Cuma nampilin posisi yang ada di departemen terpilih.</p>` : ""}
+                                <input id="course-pos-filter-search" value="${window.escapeHtml(coursePosFilterSearch)}" oninput="coursePosFilterSearch=this.value; window.reRenderCoursePosFilter()" placeholder="Cari posisi/level..." class="w-full border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs mt-1.5">
+                                <div id="course-pos-filter-list" class="flex flex-wrap gap-1.5 mt-1.5">
+                                    ${renderCoursePosFilterRows()}
                                 </div>
                             </div>
 
@@ -5414,6 +5431,7 @@ window.toggleCourseDept = function (dep) {
     const d = courseDraft;
     const idx = d.departments.findIndex(x => x.toLowerCase() === dep.toLowerCase());
     if (idx >= 0) d.departments.splice(idx, 1); else d.departments.push(dep);
+    window.pruneCoursePositionsToDeptScope();
     rerenderBuilder();
 };
 window.addCustomCourseDept = function () {
@@ -5423,6 +5441,54 @@ window.addCustomCourseDept = function () {
     const d = courseDraft;
     if (!d.departments.some(x => x.toLowerCase() === val.toLowerCase())) d.departments.push(val);
     rerenderBuilder();
+};
+// Buang posisi yang udah dicentang tapi gak lagi ada di antara karyawan pada departemen yang
+// terpilih sekarang (cascading filter: posisi ngikutin departemen). Kalau belum ada departemen
+// dipilih sama sekali, gak ada yang dibuang (semua posisi tetap valid).
+window.pruneCoursePositionsToDeptScope = function () {
+    const d = courseDraft;
+    if (!d.departments.length) return;
+    const scoped = new Set(window.sel.posisiNamesForDepts(d.departments).map(p => p.toLowerCase()));
+    d.positions = d.positions.filter(p => scoped.has(p.toLowerCase()));
+};
+// Render list checkbox departemen buat "Filter Departemen", difilter oleh pencarian.
+function renderCourseDeptFilterRows() {
+    const q = courseDeptFilterSearch.trim().toLowerCase();
+    const names = window.sel.allDeptNames().filter(dep => !q || dep.toLowerCase().includes(q));
+    if (!window.sel.allDeptNames().length) return `<p class="text-xs text-slate-400 px-1 py-1">Belum ada departemen terdaftar dari akun pengguna.</p>`;
+    if (!names.length) return `<p class="text-xs text-slate-400 px-1 py-1 col-span-2">Tidak ada departemen yang cocok dengan pencarian.</p>`;
+    return names.map(dep => {
+        const active = courseDraft.departments.some(x => x.toLowerCase() === dep.toLowerCase());
+        return `<label class="flex items-center gap-2 text-sm px-1.5 py-1 rounded-lg hover:bg-slate-50 cursor-pointer">
+            <input type="checkbox" ${active ? 'checked' : ''} onchange="window.toggleCourseDept('${window.escapeHtml(dep).replace(/'/g, "\\'")}')" class="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500">
+            <span class="truncate">${window.escapeHtml(dep)}</span>
+        </label>`;
+    }).join("");
+}
+// Re-render list departemen aja (tanpa render ulang seluruh builder) supaya fokus input
+// pencarian gak ke-reset tiap ketik.
+window.reRenderCourseDeptFilter = function () {
+    const el = document.getElementById("course-dept-filter-list");
+    if (el) el.innerHTML = renderCourseDeptFilterRows();
+};
+// Render list chip posisi/level buat "Filter Posisi/Level", dipersempit (cascading) sesuai
+// departemen yang udah dicentang di atas, dan difilter oleh pencarian.
+function renderCoursePosFilterRows() {
+    const q = coursePosFilterSearch.trim().toLowerCase();
+    const scoped = window.sel.posisiNamesForDepts(courseDraft.departments);
+    const names = scoped.filter(pos => !q || pos.toLowerCase().includes(q));
+    if (!scoped.length) return `<p class="text-[11px] text-slate-400">${courseDraft.departments.length ? 'Belum ada data posisi/jabatan di departemen yang dipilih.' : 'Belum ada data posisi/jabatan dari karyawan. Import dulu lewat menu Data Karyawan.'}</p>`;
+    if (!names.length) return `<p class="text-[11px] text-slate-400">Tidak ada posisi/jabatan yang cocok dengan pencarian.</p>`;
+    return names.map(pos => {
+        const active = courseDraft.positions.some(x => x.toLowerCase() === pos.toLowerCase());
+        return `<button type="button" onclick="window.toggleCourseParticipantValue('positions','${window.escapeHtml(pos).replace(/'/g, "\\'")}')" class="text-[11px] font-bold px-2.5 py-1.5 rounded-full border transition ${active ? 'bg-indigo-600 border-indigo-600 text-white' : 'bg-white border-slate-200 text-slate-500 hover:border-indigo-300'}">${active ? '<i class="fas fa-check mr-1"></i>' : ''}${window.escapeHtml(pos)}</button>`;
+    }).join("");
+}
+// Re-render list posisi aja (tanpa render ulang seluruh builder) supaya fokus input
+// pencarian gak ke-reset tiap ketik.
+window.reRenderCoursePosFilter = function () {
+    const el = document.getElementById("course-pos-filter-list");
+    if (el) el.innerHTML = renderCoursePosFilterRows();
 };
 // Set courseDraft.departments dari pilihan dropdown <select multiple>.
 window.setCourseDepts = function (selectEl) {
@@ -5722,6 +5788,8 @@ window.sendAttendanceReminder = function (trainingId, userId) {
 // ---- Training Builder (mirror Onboarding Builder): info + modul/lesson + kuis ----
 let trainingDraft = null;
 let trainingParticipantSearch = "";
+let trainingDeptFilterSearch = "";
+let trainingPosFilterSearch = "";
 function renderTrainingBuilder(id) {
     if (!trainingDraft || trainingDraft._loadedId !== (id || "new")) {
         const existing = id ? window.STATE.trainings.find(t => t.id === id) : null;
@@ -5869,25 +5937,25 @@ function renderTrainingBuilder(id) {
                     ${!trainingHasAnyParticipantFilter(d) ? `<p class="text-xs text-emerald-600 font-semibold bg-emerald-50 rounded-xl px-3 py-2"><i class="fas fa-globe mr-1"></i> Belum ada filter dicentang → training ini terbuka untuk SEMUA karyawan / semua departemen.</p>` : ""}
 
                     <div class="border border-slate-100 rounded-xl p-2.5">
-                        <label class="text-[10px] font-bold uppercase text-slate-400 flex items-center gap-1"><i class="fas fa-building"></i> Filter Departemen ${d.participants.departments.length ? `<span class="ml-auto text-amber-600">${d.participants.departments.length} dipilih</span>` : ""}</label>
-                        <div class="w-full mt-1.5 max-h-[160px] overflow-y-auto grid grid-cols-1 sm:grid-cols-2 gap-1">
-                            ${window.sel.allDeptNames().length ? window.sel.allDeptNames().map(dep => {
-                                const active = d.participants.departments.some(x => x.toLowerCase() === dep.toLowerCase());
-                                return `<label class="flex items-center gap-2 text-sm px-1.5 py-1 rounded-lg hover:bg-slate-50 cursor-pointer">
-                                    <input type="checkbox" ${active ? 'checked' : ''} onchange="window.toggleTrainingParticipantValue('departments','${window.escapeHtml(dep).replace(/'/g, "\\'")}')" class="rounded border-slate-300 text-amber-500 focus:ring-amber-500">
-                                    <span class="truncate">${window.escapeHtml(dep)}</span>
-                                </label>`;
-                            }).join("") : `<p class="text-xs text-slate-400 px-1 py-1">Belum ada departemen terdaftar dari akun pengguna.</p>`}
+                        <label class="flex items-center justify-between">
+                            <span class="text-[10px] font-bold uppercase text-slate-400 flex items-center gap-1"><i class="fas fa-building"></i> Filter Departemen ${d.participants.departments.length ? `<span class="text-amber-600">${d.participants.departments.length} dipilih</span>` : `<span class="text-emerald-600">Semua</span>`}</span>
+                            <button type="button" onclick="trainingDraft.participants.departments=[]; window.pruneTrainingPositionsToDeptScope(); rerenderTrainingBuilder()" class="text-[10px] font-bold text-amber-600 hover:text-amber-700">Kosongkan</button>
+                        </label>
+                        <input id="training-dept-filter-search" value="${window.escapeHtml(trainingDeptFilterSearch)}" oninput="trainingDeptFilterSearch=this.value; window.reRenderTrainingDeptFilter()" placeholder="Cari departemen..." class="w-full border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs mt-1.5">
+                        <div id="training-dept-filter-list" class="w-full mt-1.5 max-h-[160px] overflow-y-auto grid grid-cols-1 sm:grid-cols-2 gap-1">
+                            ${renderTrainingDeptFilterRows()}
                         </div>
                     </div>
 
                     <div class="border border-slate-100 rounded-xl p-2.5">
-                        <label class="text-[10px] font-bold uppercase text-slate-400 flex items-center gap-1"><i class="fas fa-id-badge"></i> Filter Posisi/Level ${d.participants.positions.length ? `<span class="ml-auto text-amber-600">${d.participants.positions.length} dipilih</span>` : ""}</label>
-                        <div class="flex flex-wrap gap-1.5 mt-1.5">
-                            ${window.sel.allPosisiNames().map(pos => {
-                                const active = d.participants.positions.some(x => x.toLowerCase() === pos.toLowerCase());
-                                return `<button type="button" onclick="window.toggleTrainingParticipantValue('positions','${window.escapeHtml(pos).replace(/'/g, "\\'")}')" class="text-[11px] font-bold px-2.5 py-1.5 rounded-full border transition ${active ? 'bg-amber-500 border-amber-500 text-white' : 'bg-white border-slate-200 text-slate-500 hover:border-amber-300'}">${active ? '<i class="fas fa-check mr-1"></i>' : ''}${window.escapeHtml(pos)}</button>`;
-                            }).join("") || '<p class="text-[11px] text-slate-400">Belum ada data posisi/jabatan dari karyawan. Import dulu lewat menu Kelola Karyawan.</p>'}
+                        <label class="flex items-center justify-between">
+                            <span class="text-[10px] font-bold uppercase text-slate-400 flex items-center gap-1"><i class="fas fa-id-badge"></i> Filter Posisi/Level ${d.participants.positions.length ? `<span class="text-amber-600">${d.participants.positions.length} dipilih</span>` : `<span class="text-emerald-600">Semua</span>`}</span>
+                            <button type="button" onclick="trainingDraft.participants.positions=[]; rerenderTrainingBuilder()" class="text-[10px] font-bold text-amber-600 hover:text-amber-700">Kosongkan</button>
+                        </label>
+                        ${d.participants.departments.length ? `<p class="text-[10px] text-amber-600 mt-1"><i class="fas fa-filter mr-1"></i>Cuma nampilin posisi yang ada di departemen terpilih.</p>` : ""}
+                        <input id="training-pos-filter-search" value="${window.escapeHtml(trainingPosFilterSearch)}" oninput="trainingPosFilterSearch=this.value; window.reRenderTrainingPosFilter()" placeholder="Cari posisi/level..." class="w-full border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs mt-1.5">
+                        <div id="training-pos-filter-list" class="flex flex-wrap gap-1.5 mt-1.5">
+                            ${renderTrainingPosFilterRows()}
                         </div>
                     </div>
 
@@ -5957,12 +6025,62 @@ window.toggleTrainingParticipantValue = function (field, val) {
     const arr = trainingDraft.participants[field];
     const idx = arr.findIndex(x => x.toLowerCase() === val.toLowerCase());
     if (idx >= 0) arr.splice(idx, 1); else arr.push(val);
+    if (field === "departments") window.pruneTrainingPositionsToDeptScope();
     rerenderTrainingBuilder();
 };
 // Set trainingDraft.participants.departments dari pilihan dropdown <select multiple>.
 window.setTrainingParticipantDepts = function (selectEl) {
     trainingDraft.participants.departments = Array.from(selectEl.selectedOptions).map(o => o.value);
+    window.pruneTrainingPositionsToDeptScope();
     rerenderTrainingBuilder();
+};
+// Buang posisi yang udah dicentang tapi gak lagi ada di antara karyawan pada departemen yang
+// terpilih sekarang (cascading filter: posisi ngikutin departemen). Kalau belum ada departemen
+// dipilih sama sekali, gak ada yang dibuang (semua posisi tetap valid).
+window.pruneTrainingPositionsToDeptScope = function () {
+    const p = trainingDraft.participants;
+    if (!p.departments.length) return;
+    const scoped = new Set(window.sel.posisiNamesForDepts(p.departments).map(x => x.toLowerCase()));
+    p.positions = p.positions.filter(x => scoped.has(x.toLowerCase()));
+};
+// Render list checkbox departemen buat "Filter Departemen" training TNA, difilter oleh pencarian.
+function renderTrainingDeptFilterRows() {
+    const q = trainingDeptFilterSearch.trim().toLowerCase();
+    const names = window.sel.allDeptNames().filter(dep => !q || dep.toLowerCase().includes(q));
+    if (!window.sel.allDeptNames().length) return `<p class="text-xs text-slate-400 px-1 py-1">Belum ada departemen terdaftar dari akun pengguna.</p>`;
+    if (!names.length) return `<p class="text-xs text-slate-400 px-1 py-1 col-span-2">Tidak ada departemen yang cocok dengan pencarian.</p>`;
+    return names.map(dep => {
+        const active = trainingDraft.participants.departments.some(x => x.toLowerCase() === dep.toLowerCase());
+        return `<label class="flex items-center gap-2 text-sm px-1.5 py-1 rounded-lg hover:bg-slate-50 cursor-pointer">
+            <input type="checkbox" ${active ? 'checked' : ''} onchange="window.toggleTrainingParticipantValue('departments','${window.escapeHtml(dep).replace(/'/g, "\\'")}')" class="rounded border-slate-300 text-amber-500 focus:ring-amber-500">
+            <span class="truncate">${window.escapeHtml(dep)}</span>
+        </label>`;
+    }).join("");
+}
+// Re-render list departemen aja (tanpa render ulang seluruh builder) supaya fokus input
+// pencarian gak ke-reset tiap ketik.
+window.reRenderTrainingDeptFilter = function () {
+    const el = document.getElementById("training-dept-filter-list");
+    if (el) el.innerHTML = renderTrainingDeptFilterRows();
+};
+// Render list chip posisi/level buat "Filter Posisi/Level" training TNA, dipersempit
+// (cascading) sesuai departemen yang udah dicentang di atas, dan difilter oleh pencarian.
+function renderTrainingPosFilterRows() {
+    const q = trainingPosFilterSearch.trim().toLowerCase();
+    const scoped = window.sel.posisiNamesForDepts(trainingDraft.participants.departments);
+    const names = scoped.filter(pos => !q || pos.toLowerCase().includes(q));
+    if (!scoped.length) return `<p class="text-[11px] text-slate-400">${trainingDraft.participants.departments.length ? 'Belum ada data posisi/jabatan di departemen yang dipilih.' : 'Belum ada data posisi/jabatan dari karyawan. Import dulu lewat menu Data Karyawan.'}</p>`;
+    if (!names.length) return `<p class="text-[11px] text-slate-400">Tidak ada posisi/jabatan yang cocok dengan pencarian.</p>`;
+    return names.map(pos => {
+        const active = trainingDraft.participants.positions.some(x => x.toLowerCase() === pos.toLowerCase());
+        return `<button type="button" onclick="window.toggleTrainingParticipantValue('positions','${window.escapeHtml(pos).replace(/'/g, "\\'")}')" class="text-[11px] font-bold px-2.5 py-1.5 rounded-full border transition ${active ? 'bg-amber-500 border-amber-500 text-white' : 'bg-white border-slate-200 text-slate-500 hover:border-amber-300'}">${active ? '<i class="fas fa-check mr-1"></i>' : ''}${window.escapeHtml(pos)}</button>`;
+    }).join("");
+}
+// Re-render list posisi aja (tanpa render ulang seluruh builder) supaya fokus input
+// pencarian gak ke-reset tiap ketik.
+window.reRenderTrainingPosFilter = function () {
+    const el = document.getElementById("training-pos-filter-list");
+    if (el) el.innerHTML = renderTrainingPosFilterRows();
 };
 // Toggle satu karyawan (by username) di daftar peserta manual trainingDraft.participants.employeeUsernames.
 window.toggleTrainingParticipantEmployee = function (username) {
@@ -6036,6 +6154,8 @@ window.saveTrainingDraft = async function () {
     }
     trainingDraft = null;
     trainingParticipantSearch = "";
+    trainingDeptFilterSearch = "";
+    trainingPosFilterSearch = "";
     window.toast("Training tersimpan", "success");
     window.navigate("/admin/trainings");
 };
