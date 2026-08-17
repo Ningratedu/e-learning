@@ -5143,6 +5143,8 @@ function renderCompetencyAdminList() {
                     <button onclick="window.setCompetencyViewMode('list')" class="text-[11px] font-bold px-3 py-2 rounded-xl transition ${competencyViewMode === 'list' ? 'bg-white shadow text-indigo-600' : 'text-slate-500 hover:text-slate-700'}"><i class="fas fa-list mr-1"></i>Daftar</button>
                     <button onclick="window.setCompetencyViewMode('matrix')" class="text-[11px] font-bold px-3 py-2 rounded-xl transition ${competencyViewMode === 'matrix' ? 'bg-white shadow text-indigo-600' : 'text-slate-500 hover:text-slate-700'}"><i class="fas fa-table-cells mr-1"></i>Peta Matriks</button>
                 </div>
+                <button onclick="window.downloadCompetencyTemplate()" class="bg-white border border-slate-200 hover:border-indigo-300 text-slate-500 hover:text-indigo-600 text-xs font-bold px-3 py-2.5 rounded-2xl whitespace-nowrap" title="Download template Excel"><i class="fas fa-file-arrow-down mr-1"></i> Template</button>
+                <button onclick="window.uploadCompetencyExcel()" class="bg-white border border-slate-200 hover:border-indigo-300 text-slate-500 hover:text-indigo-600 text-xs font-bold px-3 py-2.5 rounded-2xl whitespace-nowrap"><i class="fas fa-file-import mr-1"></i> Import Excel</button>
                 <a href="#/admin/competencies/new" class="bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold px-4 py-2.5 rounded-2xl whitespace-nowrap"><i class="fas fa-plus mr-1"></i> Kompetensi Baru</a>
             </div>
         </div>`;
@@ -5362,6 +5364,179 @@ window.saveCompetencyDraft = async function () {
     competencyDraft = null;
     window.toast("Kompetensi tersimpan", "success");
     window.navigate("/admin/competencies");
+};
+
+// ================= IMPORT KOMPETENSI DARI EXCEL =================
+// Format kolom (auto-detect header, urutan bebas): Kompetensi | Kategori (Hard Skill/Soft
+// Skill) | Deskripsi | Metode Penilaian (Tes Tertulis/Penilaian Atasan/Tes + Atasan) |
+// Jabatan/Posisi | Level Target (1-5). Satu kompetensi boleh muncul di banyak baris (satu
+// baris per jabatan yang di-mapping) — baris-baris dengan nama kompetensi sama akan
+// digabung jadi satu dokumen dengan banyak entri mapping.
+function slugifyCompetencyName(name) {
+    const slug = String(name || "").toLowerCase().trim()
+        .replace(/[^a-z0-9]+/g, "-").replace(/(^-+|-+$)/g, "").slice(0, 60);
+    return slug || ("comp-" + Date.now());
+}
+
+function parseCompetencyWorkbook(file, callback) {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+        try {
+            const data = new Uint8Array(e.target.result);
+            const wb = XLSX.read(data, { type: "array", cellDates: true });
+            const sheet = wb.Sheets[wb.SheetNames[0]];
+            const grid = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "", raw: true });
+
+            const norm = (s) => String(s || "").trim().toLowerCase();
+            let headerRowIdx = -1, colIdx = {};
+            for (let r = 0; r < Math.min(grid.length, 20); r++) {
+                const row = grid[r].map(norm);
+                if (row.some(c => c.includes("kompetensi")) && row.some(c => c.includes("jabatan") || c.includes("posisi"))) {
+                    headerRowIdx = r;
+                    row.forEach((c, i) => {
+                        if (c.includes("kompetensi") && colIdx.name === undefined) colIdx.name = i;
+                        if (c.includes("kategori")) colIdx.category = i;
+                        if (c.includes("deskripsi")) colIdx.description = i;
+                        if (c.includes("metode")) colIdx.method = i;
+                        if ((c.includes("jabatan") || c.includes("posisi")) && colIdx.posisi === undefined) colIdx.posisi = i;
+                        if (c.includes("level")) colIdx.level = i;
+                    });
+                    break;
+                }
+            }
+            if (headerRowIdx === -1) {
+                window.toast('Format file tidak dikenali. Pastikan ada kolom "Kompetensi" dan "Jabatan/Posisi".', "error");
+                return;
+            }
+
+            const byName = {};
+            let skippedMapping = 0;
+            for (let r = headerRowIdx + 1; r < grid.length; r++) {
+                const row = grid[r];
+                if (!row || !row.length) continue;
+                const name = excelCellToString(row[colIdx.name]);
+                if (!name) continue;
+                const key = name.trim().toLowerCase();
+                if (!byName[key]) {
+                    const catRaw = norm(row[colIdx.category]);
+                    const methodRaw = norm(row[colIdx.method]);
+                    const hasAtasan = methodRaw.includes("atasan");
+                    const hasTes = methodRaw.includes("tes");
+                    byName[key] = {
+                        name: name.trim(),
+                        category: catRaw.includes("soft") ? "soft" : "hard",
+                        description: excelCellToString(row[colIdx.description]),
+                        method: (hasAtasan && hasTes) ? "both" : hasAtasan ? "atasan" : "test",
+                        mapping: []
+                    };
+                }
+                const posisi = excelCellToString(row[colIdx.posisi]);
+                if (posisi) {
+                    const level = Math.min(5, Math.max(1, parseInt(row[colIdx.level]) || 1));
+                    byName[key].mapping.push({ posisi: posisi.trim(), level });
+                } else {
+                    skippedMapping++;
+                }
+            }
+            callback(Object.values(byName), skippedMapping);
+        } catch (err) {
+            console.error(err);
+            window.toast("Gagal membaca file Excel. Pastikan formatnya sesuai template.", "error");
+        }
+    };
+    reader.readAsArrayBuffer(file);
+}
+
+window.uploadCompetencyExcel = function () {
+    if (typeof XLSX === "undefined") { window.toast("Modul Excel belum siap, coba lagi sesaat.", "warn"); return; }
+    let input = document.getElementById("competency-excel-file-input");
+    if (!input) {
+        input = document.createElement("input");
+        input.type = "file";
+        input.accept = ".xlsx,.xls";
+        input.id = "competency-excel-file-input";
+        input.className = "hide";
+        document.body.appendChild(input);
+    }
+    input.value = "";
+    input.onchange = () => {
+        const file = input.files[0];
+        if (!file) return;
+        parseCompetencyWorkbook(file, async (list, skippedMapping) => {
+            if (!list.length) { window.toast("Tidak ada data kompetensi valid yang terbaca dari file ini.", "warn"); return; }
+            const totalMappings = list.reduce((s, c) => s + c.mapping.length, 0);
+            const msg = `${list.length} kompetensi terbaca (${totalMappings} mapping jabatan)` +
+                (skippedMapping ? `, ${skippedMapping} baris tanpa jabatan/posisi dilewati mapping-nya` : "") +
+                `.\n\nKompetensi yang namanya sudah ada di sistem akan digabung (mapping jabatan baru ditambahkan, level yang sudah ada untuk jabatan yang sama akan ditimpa dengan nilai dari file). Kompetensi dengan nama baru akan dibuat.\n\nLanjutkan impor?`;
+            if (!confirm(msg)) return;
+
+            window.toast("Mengimpor data kompetensi...", "info");
+            try {
+                await window.commitCompetencyImport(list);
+                window.toast(`Impor selesai: ${list.length} kompetensi diproses.`, "success");
+                window.navigate("/admin/competencies");
+            } catch (err) {
+                console.error(err);
+                window.toast("Impor gagal di tengah jalan: " + (err.message || err), "error");
+            }
+        });
+    };
+    input.click();
+};
+
+// Commit import ke Firestore. ID dokumen dibuat dari slug nama kompetensi ("comp_<slug>")
+// supaya import ulang (mis. update sebagian data) otomatis nge-upsert ke dokumen yang sama,
+// bukan bikin duplikat. Array "mapping" digabung manual di sisi client (bukan mengandalkan
+// {merge:true} Firestore yang akan MENIMPA seluruh array, bukan digabung per-elemen).
+window.commitCompetencyImport = async function (parsedList) {
+    const { ref, writeBatch, db, serverTimestamp } = window.LMS_DB;
+    const existingById = {};
+    (window.STATE.competencies || []).forEach(c => { existingById[c.id] = c; });
+
+    const CHUNK = 200;
+    for (let i = 0; i < parsedList.length; i += CHUNK) {
+        const chunk = parsedList.slice(i, i + CHUNK);
+        const batch = writeBatch(db);
+        chunk.forEach(item => {
+            const id = "comp_" + slugifyCompetencyName(item.name);
+            const existing = existingById[id];
+
+            const mergedMappingByPosisi = {};
+            (existing && existing.mapping || []).forEach(m => { if (m.posisi) mergedMappingByPosisi[m.posisi.trim().toLowerCase()] = m; });
+            (item.mapping || []).forEach(m => { if (m.posisi) mergedMappingByPosisi[m.posisi.trim().toLowerCase()] = m; });
+
+            const payload = {
+                name: item.name,
+                category: item.category || (existing && existing.category) || "hard",
+                description: item.description || (existing && existing.description) || "",
+                method: item.method || (existing && existing.method) || "test",
+                mapping: Object.values(mergedMappingByPosisi),
+                trainingIds: (existing && existing.trainingIds) || [],
+                updatedAt: serverTimestamp()
+            };
+            if (!existing) {
+                payload.createdAt = serverTimestamp();
+                payload.createdBy = window.STATE.user.id;
+            }
+            batch.set(ref("competencies", id), payload, { merge: true });
+        });
+        await batch.commit();
+    }
+};
+
+window.downloadCompetencyTemplate = function () {
+    if (typeof XLSX === "undefined") { window.toast("Modul Excel belum siap, coba lagi sesaat.", "warn"); return; }
+    const wsData = [
+        ["Kompetensi", "Kategori", "Deskripsi", "Metode Penilaian", "Jabatan/Posisi", "Level Target (1-5)"],
+        ["Komunikasi & Persuasi", "Soft Skill", "Kemampuan menyampaikan informasi dan meyakinkan calon konsumen secara jelas dan persuasif", "Penilaian Atasan", "Sales", 3],
+        ["Komunikasi & Persuasi", "Soft Skill", "Kemampuan menyampaikan informasi dan meyakinkan calon konsumen secara jelas dan persuasif", "Penilaian Atasan", "Sales Supervisor", 4],
+        ["Product Knowledge Properti & Skema Pembayaran", "Hard Skill", "Menguasai detail produk (cluster/unit/spesifikasi) dan skema pembayaran (KPR, cash bertahap, cash keras)", "Tes Tertulis", "Sales", 3],
+    ];
+    const ws = XLSX.utils.aoa_to_sheet(wsData);
+    ws["!cols"] = wsData[0].map(() => ({ wch: 30 }));
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Master Kompetensi");
+    XLSX.writeFile(wb, "Template_Import_Kompetensi_NingratEdu.xlsx");
 };
 
 // ================= ADMIN: LAPORAN KETERLAKSANAAN TRAINING BY TNA =================
