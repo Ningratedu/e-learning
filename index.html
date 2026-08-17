@@ -209,7 +209,21 @@ button:disabled, input[type="submit"]:disabled {
     #sidebar.sidebar-mini { width: var(--sidebar-mini-w, 64px); }
     #sidebar.sidebar-mini .brand-label, #sidebar.sidebar-mini .nav-label { display: none; }
     #sidebar.sidebar-mini #sidebar-brand { justify-content: center; padding-left: 0; padding-right: 0; }
-    #sidebar.sidebar-mini .nav-item { justify-content: center; padding-left: 0; padding-right: 0; }
+    #sidebar.sidebar-mini .nav-item { justify-content: center; padding-left: 0; padding-right: 0; position: relative; }
+    /* Tooltip nama menu saat sidebar dilipat (mini) — pakai CSS custom (bukan atribut
+       title bawaan browser) supaya muncul cepat/instan, bukan nunggu delay ~1 detik
+       kayak native tooltip browser. */
+    #sidebar.sidebar-mini .nav-item::after {
+        content: attr(data-tooltip);
+        position: absolute; left: calc(100% + 10px); top: 50%;
+        transform: translateY(-50%) scale(.95); transform-origin: left center;
+        background: #1e293b; color: #fff; padding: 6px 10px; border-radius: 8px;
+        font-size: 12px; font-weight: 700; white-space: nowrap;
+        opacity: 0; pointer-events: none; z-index: 60;
+        box-shadow: 0 4px 14px rgba(0,0,0,.3);
+        transition: opacity .05s ease, transform .05s ease;
+    }
+    #sidebar.sidebar-mini .nav-item:hover::after { opacity: 1; transform: translateY(-50%) scale(1); }
     #main-wrapper { margin-left: var(--sidebar-w, 260px); transition: margin-left .2s ease; }
     #sidebar.sidebar-mini ~ #main-wrapper { margin-left: var(--sidebar-mini-w, 64px); }
 }
@@ -1351,21 +1365,9 @@ window.closeMobileSidebar = function () {
     document.getElementById("sidebar")?.classList.remove("sidebar-mobile-open");
     document.getElementById("sidebar-overlay")?.classList.add("hide");
 };
-// Di desktop, kalau sidebar lagi mini (cuma rail ikon), klik pertama pada menu
-// hanya membuka sidebar-nya dulu — belum langsung pindah halaman. Baru klik
-// berikutnya (setelah kebuka) yang benar-benar navigasi.
-document.getElementById("sidebar-nav")?.addEventListener("click", function (e) {
-    const isDesktop = window.matchMedia("(min-width: 1024px)").matches;
-    const sidebar = document.getElementById("sidebar");
-    if (isDesktop && sidebar && sidebar.classList.contains("sidebar-mini")) {
-        e.preventDefault();
-        e.stopPropagation();
-        sidebar.classList.remove("sidebar-mini");
-        // Sama seperti toggleSidebar(): tunggu transisi lebar sidebar kelar dulu baru
-        // ukur ulang teks logo, biar gak kepepet flex-shrink pas masih animasi.
-        window.scheduleBrandTextAdjust && window.scheduleBrandTextAdjust();
-    }
-}, true);
+// Di desktop, kalau sidebar lagi mini (cuma rail ikon), klik menu langsung navigasi ke
+// halamannya (tidak perlu sidebar dibuka dulu) — nama menu ditampilkan lewat tooltip
+// cepat saat kursor hover ke ikon (lihat CSS #sidebar.sidebar-mini .nav-item::after).
 
 // Klik di luar sidebar: di desktop otomatis melipat sidebar jadi rail ikon-saja
 // (sidebar-mini); di mobile sidebar sudah otomatis tertutup total lewat overlay
@@ -1379,6 +1381,7 @@ document.addEventListener("click", function (e) {
     if (e.target.closest("#sidebar-toggle-btn")) return; // biar gak bentrok dgn tombol toggle di topbar
     sidebar.classList.add("sidebar-mini");
 });
+
 
 // ================= BRAND TEXT AUTO-SIZE =================
 // "NingratEdu" dibesarkan otomatis sampai lebarnya menyamai lebar teks tagline
@@ -1629,7 +1632,7 @@ window.renderSidebar = function () {
         { key: "admin/users", icon: "fa-users-gear", label: "Kelola Akun" },
     ];
     const item = (n) => `
-        <a href="#/${n.key}" data-nav="${n.key}" class="nav-item" title="${n.label}">
+        <a href="#/${n.key}" data-nav="${n.key}" class="nav-item" data-tooltip="${window.escapeHtml(n.label)}" aria-label="${window.escapeHtml(n.label)}">
             <i class="fas ${n.icon} w-5 text-center shrink-0"></i><span class="nav-label">${n.label}</span>
         </a>`;
     document.getElementById("sidebar-nav").innerHTML =
@@ -4426,19 +4429,32 @@ function renderCourseBuilder(id) {
                     <h3 class="font-black text-sm text-slate-700">Info Training</h3>
                     <input value="${window.escapeHtml(d.title)}" oninput="courseDraft.title=this.value" placeholder="Judul training" class="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm">
                     <textarea oninput="courseDraft.description=this.value" placeholder="Deskripsi" rows="3" class="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm">${window.escapeHtml(d.description)}</textarea>
-                    <div class="grid grid-cols-2 gap-3">
-                        <input value="${window.escapeHtml(d.category)}" oninput="courseDraft.category=this.value" placeholder="Kategori" class="border border-slate-200 rounded-xl px-3 py-2 text-sm">
-                        <input value="${window.escapeHtml(d.instructor)}" oninput="courseDraft.instructor=this.value" placeholder="Instruktur" class="border border-slate-200 rounded-xl px-3 py-2 text-sm">
-                        <select onchange="courseDraft.level=this.value" class="border border-slate-200 rounded-xl px-3 py-2 text-sm">
-                            ${["Umum","Pemula","Menengah","Lanjutan"].map(lv=>`<option ${d.level===lv?'selected':''}>${lv}</option>`).join("")}
-                        </select>
-                        <div class="flex items-center gap-2">
-                            <input value="${window.escapeHtml(d.coverImage)}" oninput="courseDraft.coverImage=this.value" placeholder="URL gambar cover (opsional)" class="flex-1 border border-slate-200 rounded-xl px-3 py-2 text-sm">
-                            <label class="shrink-0 text-[11px] font-bold text-indigo-500 hover:text-indigo-700 bg-indigo-50 px-3 py-2.5 rounded-xl cursor-pointer whitespace-nowrap">
-                                <i class="fas fa-upload mr-1"></i> Upload
-                                <input type="file" accept="image/*" class="hidden" onchange="window.uploadCoverImage(this)">
-                            </label>
+                    <div class="grid grid-cols-1 gap-3">
+                        <div>
+                            <label class="text-[10px] font-bold uppercase text-slate-400">Kategori</label>
+                            <input value="${window.escapeHtml(d.category)}" oninput="courseDraft.category=this.value" placeholder="Kategori" class="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm mt-1">
                         </div>
+                        <div>
+                            <label class="text-[10px] font-bold uppercase text-slate-400">Instruktur</label>
+                            <input value="${window.escapeHtml(d.instructor)}" oninput="courseDraft.instructor=this.value" placeholder="Instruktur" class="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm mt-1">
+                        </div>
+                        <div>
+                            <label class="text-[10px] font-bold uppercase text-slate-400">Level</label>
+                            <select onchange="courseDraft.level=this.value" class="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm mt-1">
+                                ${["Umum","Pemula","Menengah","Lanjutan"].map(lv=>`<option ${d.level===lv?'selected':''}>${lv}</option>`).join("")}
+                            </select>
+                        </div>
+                        <div>
+                            <label class="text-[10px] font-bold uppercase text-slate-400">Gambar Cover</label>
+                            <div class="flex items-center gap-2 mt-1">
+                                <input value="${window.escapeHtml(d.coverImage)}" oninput="courseDraft.coverImage=this.value" placeholder="URL gambar cover (opsional)" class="flex-1 border border-slate-200 rounded-xl px-3 py-2 text-sm">
+                                <label class="shrink-0 text-[11px] font-bold text-indigo-500 hover:text-indigo-700 bg-indigo-50 px-3 py-2.5 rounded-xl cursor-pointer whitespace-nowrap">
+                                    <i class="fas fa-upload mr-1"></i> Upload
+                                    <input type="file" accept="image/*" class="hidden" onchange="window.uploadCoverImage(this)">
+                                </label>
+                            </div>
+                        </div>
+                    </div>
                     </div>
                     <div id="cover-progress" class="hide">
                         <div class="flex items-center justify-between text-[10px] font-bold text-indigo-500 mb-1"><span><i class="fas fa-spinner fa-spin mr-1"></i>Mengupload gambar...</span><span id="cover-progress-pct">0%</span></div>
@@ -4881,19 +4897,34 @@ function renderTrainingBuilder(id) {
                     <h3 class="font-black text-sm text-slate-700">Info Training</h3>
                     <input value="${window.escapeHtml(d.title)}" oninput="trainingDraft.title=this.value" placeholder="Judul training" class="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm">
                     <textarea oninput="trainingDraft.description=this.value" placeholder="Deskripsi" rows="3" class="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm">${window.escapeHtml(d.description)}</textarea>
-                    <div class="grid grid-cols-2 gap-3">
-                        <input value="${window.escapeHtml(d.category)}" oninput="trainingDraft.category=this.value" placeholder="Kategori" class="border border-slate-200 rounded-xl px-3 py-2 text-sm">
-                        <input value="${window.escapeHtml(d.trainer)}" oninput="trainingDraft.trainer=this.value" placeholder="Nama Trainer" class="border border-slate-200 rounded-xl px-3 py-2 text-sm">
+                    <div>
+                        <label class="text-[10px] font-bold uppercase text-slate-400">Kategori</label>
+                        <input value="${window.escapeHtml(d.category)}" oninput="trainingDraft.category=this.value" placeholder="Kategori" class="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm mt-1">
+                    </div>
+                    <div>
+                        <label class="text-[10px] font-bold uppercase text-slate-400">Nama Trainer</label>
+                        <input value="${window.escapeHtml(d.trainer)}" oninput="trainingDraft.trainer=this.value" placeholder="Nama Trainer" class="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm mt-1">
                     </div>
                     <input value="${window.escapeHtml(d.location)}" oninput="trainingDraft.location=this.value" placeholder="Lokasi / link online" class="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm">
-                    <div class="grid grid-cols-3 gap-2">
-                        <input type="date" value="${window.escapeHtml(d.date)}" oninput="trainingDraft.date=this.value" class="border border-slate-200 rounded-xl px-3 py-2 text-sm">
-                        <input type="time" value="${window.escapeHtml(d.startTime)}" oninput="trainingDraft.startTime=this.value" class="border border-slate-200 rounded-xl px-3 py-2 text-sm">
-                        <input type="time" value="${window.escapeHtml(d.endTime)}" oninput="trainingDraft.endTime=this.value" class="border border-slate-200 rounded-xl px-3 py-2 text-sm">
+                    <div>
+                        <label class="text-[10px] font-bold uppercase text-slate-400">Tanggal</label>
+                        <input type="date" value="${window.escapeHtml(d.date)}" oninput="trainingDraft.date=this.value" class="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm mt-1">
                     </div>
-                    <div class="grid grid-cols-2 gap-2">
-                        <input type="number" value="${window.escapeHtml(d.quota)}" oninput="trainingDraft.quota=this.value" placeholder="Kuota (opsional)" class="border border-slate-200 rounded-xl px-3 py-2 text-sm">
-                        <input value="${window.escapeHtml(d.attendanceCode)}" oninput="trainingDraft.attendanceCode=this.value.toUpperCase()" placeholder="Kode presensi" class="border border-slate-200 rounded-xl px-3 py-2 text-sm font-mono uppercase">
+                    <div>
+                        <label class="text-[10px] font-bold uppercase text-slate-400">Jam Mulai</label>
+                        <input type="time" value="${window.escapeHtml(d.startTime)}" oninput="trainingDraft.startTime=this.value" class="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm mt-1">
+                    </div>
+                    <div>
+                        <label class="text-[10px] font-bold uppercase text-slate-400">Jam Selesai</label>
+                        <input type="time" value="${window.escapeHtml(d.endTime)}" oninput="trainingDraft.endTime=this.value" class="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm mt-1">
+                    </div>
+                    <div>
+                        <label class="text-[10px] font-bold uppercase text-slate-400">Kuota (opsional)</label>
+                        <input type="number" value="${window.escapeHtml(d.quota)}" oninput="trainingDraft.quota=this.value" placeholder="Kuota (opsional)" class="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm mt-1">
+                    </div>
+                    <div>
+                        <label class="text-[10px] font-bold uppercase text-slate-400">Kode Presensi</label>
+                        <input value="${window.escapeHtml(d.attendanceCode)}" oninput="trainingDraft.attendanceCode=this.value.toUpperCase()" placeholder="Kode presensi" class="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm font-mono uppercase mt-1">
                     </div>
                     <div class="flex items-center gap-2">
                         <input value="${window.escapeHtml(d.coverImage)}" oninput="trainingDraft.coverImage=this.value" placeholder="URL gambar cover (opsional)" class="flex-1 border border-slate-200 rounded-xl px-3 py-2 text-sm">
@@ -5284,7 +5315,7 @@ function renderCompetencyBuilder(id) {
                     <h3 class="font-black text-sm text-slate-700">Info Kompetensi</h3>
                     <input value="${window.escapeHtml(d.name)}" oninput="competencyDraft.name=this.value" placeholder="Nama kompetensi (mis. Komunikasi Efektif)" class="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm">
                     <textarea oninput="competencyDraft.description=this.value" placeholder="Deskripsi singkat kompetensi ini..." rows="3" class="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm">${window.escapeHtml(d.description)}</textarea>
-                    <div class="grid grid-cols-2 gap-3">
+                    <div class="grid grid-cols-1 gap-3">
                         <div>
                             <label class="text-[10px] font-bold uppercase text-slate-400">Kategori</label>
                             <select onchange="competencyDraft.category=this.value" class="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm mt-1">
