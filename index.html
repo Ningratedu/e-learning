@@ -5231,7 +5231,7 @@ function renderCompetencyMatrix(headerBlock) {
         ${headerBlock}
         <p class="text-xs text-slate-400 mb-3"><i class="fas fa-circle-info mr-1"></i> Angka = level target kompetensi (1 = dasar, 5 = ahli) untuk jabatan tersebut. Tanda "–" berarti kompetensi ini belum ditargetkan ke jabatan itu.</p>
         ${!posisiList.length ? dashboardEmptyState("fa-table-cells", "Belum ada jabatan/posisi terdaftar. Tambahkan lewat Data Karyawan atau mapping kompetensi.", "/admin/competencies", "Kembali") :
-        !competencies.length ? dashboardEmptyState("fa-diagram-project", "Belum ada kompetensi. Klik \\"Kompetensi Baru\\" untuk mulai memetakan.", "/admin/competencies", "Kembali") : `
+        !competencies.length ? dashboardEmptyState("fa-diagram-project", "Belum ada kompetensi. Klik \"Kompetensi Baru\" untuk mulai memetakan.", "/admin/competencies", "Kembali") : `
         <div class="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-auto max-h-[70vh]">
             <table class="border-separate border-spacing-0">
                 <thead class="text-[10px] font-black uppercase text-slate-400">
