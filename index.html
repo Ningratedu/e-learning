@@ -988,8 +988,19 @@ if (typeof Chart !== "undefined") {
         afterDatasetsDraw(chart) {
             const { ctx } = chart;
             if (!chart.options || chart.options.plugins?.valueLabels?.display === false) return;
+            // Breakpoint lebih halus: makin sempit layar (HP kecil kayak iPhone SE), makin kecil fontnya.
+            const isTiny = chart.width < 360;
             const isSmall = chart.width < 480;
-            const fontSize = isSmall ? 9 : 11;
+            let fontSize = isTiny ? 7 : (isSmall ? 8 : 11);
+            // Chart multi-garis (mis. mode "Per Departemen") punya lebih banyak label berdempetan
+            // di titik x yang sama — kecilkan lagi khusus di layar sempit biar gak desek-desekan.
+            const visibleDatasetCount = chart.data.datasets.filter((d, i) => {
+                const meta = chart.getDatasetMeta(i);
+                return meta && meta.visible && !d.hideValueLabels;
+            }).length;
+            if (isSmall && visibleDatasetCount > 2) {
+                fontSize = Math.max(isTiny ? 6 : 7, fontSize - 1);
+            }
             ctx.save();
             ctx.font = `800 ${fontSize}px 'Plus Jakarta Sans', -apple-system, sans-serif`;
             ctx.textAlign = "center";
@@ -4320,22 +4331,22 @@ function renderTrainingCatalog() {
         return `
         <a href="#/trainings/${t.id}" class="bg-white rounded-3xl border border-slate-100 shadow-sm hover:shadow-xl transition p-4 flex gap-3">
             <div class="w-20 shrink-0 rounded-2xl bg-cover bg-center relative overflow-hidden" style="${trainingCoverStyleSafe(t)}">
-                <div class="absolute inset-0 bg-black/25 flex flex-col items-center justify-center text-white">
+                <div class="absolute inset-0 bg-black/25 flex flex-col items-center justify-center text-white gap-0.5">
                     <span class="text-lg font-black leading-none">${new Date(t.date).getDate()}</span>
                     <span class="text-[10px] font-bold uppercase">${new Date(t.date).toLocaleDateString('id-ID',{month:'short'})}</span>
+                    ${(t.startTime || t.endTime) ? `<span class="text-[9px] font-semibold leading-none whitespace-nowrap"><i class="fas fa-clock mr-0.5"></i>${window.escapeHtml(t.startTime||'')}-${window.escapeHtml(t.endTime||'')}</span>` : ''}
                 </div>
             </div>
             <div class="flex-1 min-w-0">
                 <p class="text-[11px] font-bold text-amber-500 uppercase">${window.escapeHtml(t.category || "Training")}</p>
                 <h3 class="font-black text-slate-800 truncate">${window.escapeHtml(t.title)}</h3>
-                <p class="text-xs text-slate-500 mt-1"><i class="fas fa-location-dot mr-1"></i>${window.escapeHtml(t.location || "-")} &nbsp;•&nbsp; ${window.escapeHtml(t.startTime||'')}-${window.escapeHtml(t.endTime||'')}</p>
+                <p class="text-xs text-slate-500 mt-1"><i class="fas fa-location-dot mr-1"></i>${window.escapeHtml(t.location || "-")}</p>
                 <p class="text-xs text-slate-500 mt-0.5"><i class="fas fa-user-tie mr-1 text-amber-400"></i>${window.escapeHtml(t.trainer || "Trainer belum ditentukan")}</p>
                 <div class="flex items-center gap-1.5 mt-2 flex-wrap">
                     ${trainingSessionBadgeHtml(t)}
                     ${trainingInviteAttendBadgeHtml(t)}
                     ${!isPast && full ? '<span class="text-[10px] font-bold bg-rose-50 text-rose-500 px-2 py-1 rounded-full">Kuota Penuh</span>' : ''}
                 </div>
-                <p class="text-[10px] text-slate-400 font-semibold mt-1.5">${count}${t.quota ? '/'+t.quota : ''} peserta terdaftar</p>
                 ${reg ? trainingProgressRowHtml(t, window.STATE.user.id) : ''}
             </div>
         </a>`;
