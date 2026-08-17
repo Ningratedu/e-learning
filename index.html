@@ -971,6 +971,56 @@ window.dispatchEvent(new Event("lms-firebase-ready"));
 
 </script>
 <script>
+// ================= CHART.JS PLUGIN: VALUE LABELS (angka nilai di atas titik/bar) =================
+// Plugin custom (bukan chartjs-plugin-datalabels dari CDN luar, biar konsisten sama kebijakan
+// "semua library di-host sendiri") buat nampilin angka nilai langsung di atas titik/bar chart.
+// Ukuran font otomatis menyesuaikan lebar chart (device HP vs laptop) lewat cek chart.width.
+// Dataset bisa matiin label per-dataset dengan set `hideValueLabels: true`, atau custom lewat
+// `valueLabelFormatter(value)` dan `valueLabelOffset` (jarak vertikal dari titik/bar, default -8).
+if (typeof Chart !== "undefined") {
+    const ValueLabelsPlugin = {
+        id: "valueLabels",
+        afterDatasetsDraw(chart) {
+            const { ctx } = chart;
+            if (!chart.options || chart.options.plugins?.valueLabels?.display === false) return;
+            const isSmall = chart.width < 480;
+            const fontSize = isSmall ? 9 : 11;
+            ctx.save();
+            ctx.font = `800 ${fontSize}px 'Plus Jakarta Sans', -apple-system, sans-serif`;
+            ctx.textAlign = "center";
+            ctx.textBaseline = "alphabetic";
+            chart.data.datasets.forEach((dataset, dsIndex) => {
+                if (dataset.hideValueLabels) return;
+                const meta = chart.getDatasetMeta(dsIndex);
+                if (!meta || !meta.visible) return;
+                meta.data.forEach((element, index) => {
+                    const value = dataset.data[index];
+                    if (value === null || value === undefined || Number.isNaN(value)) return;
+                    if (dataset.hideZeroValueLabels && value === 0) return;
+                    if (!element || typeof element.tooltipPosition !== "function") return;
+                    const pos = element.tooltipPosition();
+                    if (!pos || Number.isNaN(pos.x) || Number.isNaN(pos.y)) return;
+                    const label = dataset.valueLabelFormatter ? dataset.valueLabelFormatter(value) : String(value);
+                    const color = dataset.valueLabelColor || dataset.borderColor || "#334155";
+                    ctx.fillStyle = typeof color === "string" ? color : "#334155";
+                    const offsetY = typeof dataset.valueLabelOffset === "function"
+                        ? dataset.valueLabelOffset(value, index)
+                        : (dataset.valueLabelOffset !== undefined ? dataset.valueLabelOffset : -8);
+                    // Sedikit "stroke" putih tipis di belakang teks biar tetap kebaca kalau
+                    // kepotong garis/area chart yang warnanya mirip.
+                    ctx.lineWidth = 3;
+                    ctx.strokeStyle = "rgba(255,255,255,.85)";
+                    ctx.strokeText(label, pos.x, pos.y + offsetY);
+                    ctx.fillText(label, pos.x, pos.y + offsetY);
+                });
+            });
+            ctx.restore();
+        }
+    };
+    Chart.register(ValueLabelsPlugin);
+}
+</script>
+<script>
 // ================= GLOBAL STATE =================
 window.STATE = {
     user: null,          // user login saat ini {id, username, role, ...}
@@ -2404,6 +2454,14 @@ window.setCompanyKpiView = function (mode) {
 
 const COMPANY_KPI_DEPT_COLORS = ["#4f46e5", "#f59e0b", "#10b981", "#ec4899", "#0ea5e9"];
 
+// Helper kecil buat ubah warna hex ("#4f46e5") jadi string "r,g,b" — dipakai buat bikin
+// rgba(...) dengan opacity custom untuk efek gradasi/pudar tiap garis departemen.
+window.hexToRgbString = function (hex) {
+    const m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex || "");
+    if (!m) return null;
+    return `${parseInt(m[1], 16)},${parseInt(m[2], 16)},${parseInt(m[3], 16)}`;
+};
+
 let __companyKpiChartInstance = null;
 function renderCompanyKpiChart(stats, token) {
     if (!stats.hasData) return;
@@ -2427,18 +2485,33 @@ function renderCompanyKpiChart(stats, token) {
 
             let datasets;
             if (view === "dept" && stats.topDepts && stats.topDepts.length) {
-                datasets = stats.topDepts.map((dept, i) => ({
-                    label: dept,
-                    data: stats.deptMonthly[dept],
-                    spanGaps: true,
-                    tension: 0.4,
-                    borderColor: COMPANY_KPI_DEPT_COLORS[i % COMPANY_KPI_DEPT_COLORS.length],
-                    backgroundColor: "transparent",
-                    borderWidth: 2.5,
-                    pointRadius: 3,
-                    pointHoverRadius: 6,
-                    fill: false,
-                }));
+                const h = liveCanvas.clientHeight || (document.getElementById("company-kpi-chart-wrap") || {}).clientHeight || 220;
+                datasets = stats.topDepts.map((dept, i) => {
+                    const color = COMPANY_KPI_DEPT_COLORS[i % COMPANY_KPI_DEPT_COLORS.length];
+                    // Efek gradasi/pudar di bawah tiap garis departemen, sama seperti mode
+                    // "Semua" — bikin tiap garis punya area fill transparan yang memudar ke bawah.
+                    const deptGradient = ctx.createLinearGradient(0, 0, 0, h);
+                    const rgb = window.hexToRgbString ? window.hexToRgbString(color) : null;
+                    const rgbaTop = rgb ? `rgba(${rgb},.22)` : color + "38";
+                    const rgbaBottom = rgb ? `rgba(${rgb},0)` : color + "00";
+                    deptGradient.addColorStop(0, rgbaTop);
+                    deptGradient.addColorStop(1, rgbaBottom);
+                    return {
+                        label: dept,
+                        data: stats.deptMonthly[dept],
+                        spanGaps: true,
+                        tension: 0.4,
+                        borderColor: color,
+                        backgroundColor: deptGradient,
+                        borderWidth: 2.5,
+                        pointRadius: 3,
+                        pointHoverRadius: 6,
+                        fill: true,
+                        valueLabelFormatter: (v) => v + "%",
+                        valueLabelColor: color,
+                        valueLabelOffset: -9,
+                    };
+                });
                 if (legendEl) {
                     legendEl.classList.remove("hide");
                     legendEl.innerHTML = stats.topDepts.map((dept, i) => `
@@ -2472,6 +2545,9 @@ function renderCompanyKpiChart(stats, token) {
                     pointBorderWidth: 2,
                     pointRadius: pointRadii,
                     pointHoverRadius: 7,
+                    valueLabelFormatter: (v) => v + "%",
+                    valueLabelColor: "#059669",
+                    valueLabelOffset: (v, i) => ((stats.best && i === stats.best.i) || (stats.worst && i === stats.worst.i) ? -14 : -10),
                 }];
                 if (legendEl) { legendEl.classList.add("hide"); legendEl.innerHTML = ""; }
             }
@@ -2482,7 +2558,7 @@ function renderCompanyKpiChart(stats, token) {
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
-                    layout: { padding: { top: 14 } },
+                    layout: { padding: { top: 26 } },
                     interaction: { intersect: false, mode: "index" },
                     plugins: {
                         legend: { display: false },
@@ -2505,12 +2581,12 @@ function renderCompanyKpiChart(stats, token) {
                     scales: {
                         y: {
                             min: 0, max: 100,
-                            ticks: { callback: (v) => v + "%", font: { size: 10 }, color: "#94a3b8" },
+                            ticks: { callback: (v) => v + "%", font: (c) => ({ size: c.chart.width < 480 ? 9 : 10 }), color: "#94a3b8" },
                             grid: { color: "#f1f5f9" }
                         },
                         x: {
                             grid: { display: false },
-                            ticks: { font: { size: 10, weight: "bold" }, color: "#94a3b8" }
+                            ticks: { font: (c) => ({ size: c.chart.width < 480 ? 9 : 10, weight: "bold" }), color: "#94a3b8" }
                         }
                     }
                 }
@@ -2673,6 +2749,9 @@ function renderTnaMonthlyChart(stats, token) {
                             maxBarThickness: 28,
                             yAxisID: "y",
                             order: 2,
+                            valueLabelColor: "#b45309",
+                            valueLabelOffset: -6,
+                            hideZeroValueLabels: true,
                         },
                         {
                             type: "line",
@@ -2689,20 +2768,23 @@ function renderTnaMonthlyChart(stats, token) {
                             pointBorderWidth: 2,
                             yAxisID: "y1",
                             order: 1,
+                            valueLabelColor: "#059669",
+                            valueLabelOffset: -10,
+                            hideZeroValueLabels: true,
                         }
                     ]
                 },
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
-                    layout: { padding: { top: 8 } },
+                    layout: { padding: { top: 22 } },
                     interaction: { intersect: false, mode: "index" },
                     plugins: {
                         legend: {
                             display: true,
                             position: "top",
                             align: "end",
-                            labels: { boxWidth: 10, boxHeight: 10, usePointStyle: true, pointStyle: "circle", font: { size: 11, weight: "bold" }, color: "#64748b" }
+                            labels: { boxWidth: 10, boxHeight: 10, usePointStyle: true, pointStyle: "circle", font: (c) => ({ size: c.chart.width < 480 ? 10 : 11, weight: "bold" }), color: "#64748b" }
                         },
                         tooltip: {
                             backgroundColor: "#0f172a",
@@ -2724,20 +2806,20 @@ function renderTnaMonthlyChart(stats, token) {
                         y: {
                             position: "left",
                             beginAtZero: true,
-                            ticks: { precision: 0, font: { size: 10 }, color: "#94a3b8" },
+                            ticks: { precision: 0, font: (c) => ({ size: c.chart.width < 480 ? 9 : 10 }), color: "#94a3b8" },
                             grid: { color: "#f1f5f9" },
                             title: { display: true, text: "Sesi", font: { size: 10, weight: "bold" }, color: "#94a3b8" }
                         },
                         y1: {
                             position: "right",
                             beginAtZero: true,
-                            ticks: { precision: 0, font: { size: 10 }, color: "#94a3b8" },
+                            ticks: { precision: 0, font: (c) => ({ size: c.chart.width < 480 ? 9 : 10 }), color: "#94a3b8" },
                             grid: { display: false },
                             title: { display: true, text: "Peserta Lulus", font: { size: 10, weight: "bold" }, color: "#94a3b8" }
                         },
                         x: {
                             grid: { display: false },
-                            ticks: { font: { size: 10, weight: "bold" }, color: "#94a3b8" }
+                            ticks: { font: (c) => ({ size: c.chart.width < 480 ? 9 : 10, weight: "bold" }), color: "#94a3b8" }
                         }
                     }
                 }
