@@ -3158,14 +3158,20 @@ window.buildAdminReminders = function () {
     }
 
     // 3) Tugas peserta (Onboarding & TNA) yang sudah dikumpulkan tapi belum dinilai admin.
-    const pending = (window.STATE.assignmentSubmissions || []).filter(s => s.status !== "graded");
-    if (pending.length) {
+    const pendingAll = (window.STATE.assignmentSubmissions || []).filter(s => s.status !== "graded");
+    if (pendingAll.length) {
+        const pendingCourseCount = pendingAll.filter(s => !s.trainingId).length;
+        const pendingTrainingCount = pendingAll.filter(s => !!s.trainingId).length;
+        // Tentukan konteks (onboarding/tna) mana yang punya tugas pending terbanyak,
+        // supaya pas link-nya diklik, halaman Penilaian Tugas langsung buka di tab yang benar-benar ada isinya.
+        const targetCtx = pendingTrainingCount > pendingCourseCount ? "tna" : "onboarding";
         items.push({
             icon: "fa-file-signature",
             color: "amber",
             title: "Tugas Menunggu Dinilai",
-            subtitle: `${pending.length} tugas peserta belum dinilai.`,
-            link: "#/admin/assignments"
+            subtitle: `${pendingAll.length} tugas peserta belum dinilai.`,
+            link: "#/admin/assignments",
+            onClickExtra: `window.adminNavContext='${targetCtx}'; adminAssignmentFilter='pending';`
         });
     }
 
@@ -3175,7 +3181,7 @@ window.buildAdminReminders = function () {
 const REMINDER_COLOR_CLASS = { rose: "bg-rose-50 text-rose-600", amber: "bg-amber-50 text-amber-600", indigo: "bg-indigo-50 text-indigo-600" };
 window.renderLoginReminderList = function (items) {
     return items.map(it => `
-        <a href="${it.link}" onclick="window.closeModal('modal-login-reminder')" class="flex items-start gap-3 p-3 rounded-2xl border border-slate-100 hover:bg-slate-50 transition">
+        <a href="${it.link}" onclick="${it.onClickExtra || ''} window.closeModal('modal-login-reminder')" class="flex items-start gap-3 p-3 rounded-2xl border border-slate-100 hover:bg-slate-50 transition">
             <div class="w-10 h-10 rounded-xl ${REMINDER_COLOR_CLASS[it.color] || REMINDER_COLOR_CLASS.indigo} flex items-center justify-center shrink-0"><i class="fas ${it.icon}"></i></div>
             <div class="min-w-0 flex-1">
                 <p class="text-sm font-bold text-slate-700">${window.escapeHtml(it.title)}</p>
@@ -4554,13 +4560,16 @@ function renderCourseBuilder(id) {
                                 <span class="text-[10px] font-bold uppercase text-slate-400">Tampil untuk Departemen</span>
                                 <button type="button" onclick="courseDraft.departments=[]; rerenderBuilder()" class="text-[10px] font-bold text-indigo-500 hover:text-indigo-700">Semua Departemen</button>
                             </label>
-                            <select multiple onchange="window.setCourseDepts(this)" class="w-full border border-slate-200 rounded-lg px-2.5 py-1.5 text-sm mt-1 min-h-[84px]">
+                            <div class="w-full border border-slate-200 rounded-lg px-2.5 py-2 mt-1 max-h-[160px] overflow-y-auto grid grid-cols-1 sm:grid-cols-2 gap-1">
                                 ${window.sel.allDeptNames().length ? window.sel.allDeptNames().map(dep => {
                                     const active = d.departments.some(x => x.toLowerCase() === dep.toLowerCase());
-                                    return `<option value="${window.escapeHtml(dep)}" ${active ? 'selected' : ''}>${window.escapeHtml(dep)}</option>`;
-                                }).join("") : `<option disabled>Belum ada departemen terdaftar dari akun pengguna.</option>`}
-                            </select>
-                            <p class="text-[10px] text-slate-400 mt-1">Tahan Ctrl/Cmd (atau Command di Mac) untuk pilih lebih dari satu. Kosongkan pilihan supaya training tampil ke semua departemen.</p>
+                                    return `<label class="flex items-center gap-2 text-sm px-1.5 py-1 rounded-lg hover:bg-slate-50 cursor-pointer">
+                                        <input type="checkbox" ${active ? 'checked' : ''} onchange="window.toggleCourseDept('${window.escapeHtml(dep).replace(/'/g, "\\'")}')" class="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500">
+                                        <span class="truncate">${window.escapeHtml(dep)}</span>
+                                    </label>`;
+                                }).join("") : `<p class="text-xs text-slate-400 px-1 py-1">Belum ada departemen terdaftar dari akun pengguna.</p>`}
+                            </div>
+                            <p class="text-[10px] text-slate-400 mt-1">Centang satu atau lebih departemen. Kosongkan semua centang supaya training tampil ke semua departemen.</p>
                             ${!d.departments.length ? `<p class="text-xs text-emerald-600 font-semibold bg-emerald-50 rounded-xl px-3 py-2 mt-1"><i class="fas fa-globe mr-1"></i> Training ini tampil untuk semua departemen.</p>` : ""}
                             <div class="flex items-center gap-2 mt-2">
                                 <input id="new-dept-input" placeholder="Tambah nama departemen baru..." class="flex-1 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs">
@@ -5058,13 +5067,16 @@ function renderTrainingBuilder(id) {
                     ${d.participants.mode === "department" ? `
                     <div>
                         <label class="text-[10px] font-bold uppercase text-slate-400">Pilih Departemen</label>
-                        <select multiple onchange="window.setTrainingParticipantDepts(this)" class="w-full border border-slate-200 rounded-lg px-2.5 py-1.5 text-sm mt-1 min-h-[84px]">
+                        <div class="w-full border border-slate-200 rounded-lg px-2.5 py-2 mt-1 max-h-[160px] overflow-y-auto grid grid-cols-1 sm:grid-cols-2 gap-1">
                             ${window.sel.allDeptNames().length ? window.sel.allDeptNames().map(dep => {
                                 const active = d.participants.departments.some(x => x.toLowerCase() === dep.toLowerCase());
-                                return `<option value="${window.escapeHtml(dep)}" ${active ? 'selected' : ''}>${window.escapeHtml(dep)}</option>`;
-                            }).join("") : `<option disabled>Belum ada departemen terdaftar dari akun pengguna.</option>`}
-                        </select>
-                        <p class="text-[10px] text-slate-400 mt-1">Tahan Ctrl/Cmd (atau Command di Mac) untuk pilih lebih dari satu.</p>
+                                return `<label class="flex items-center gap-2 text-sm px-1.5 py-1 rounded-lg hover:bg-slate-50 cursor-pointer">
+                                    <input type="checkbox" ${active ? 'checked' : ''} onchange="window.toggleTrainingParticipantValue('departments','${window.escapeHtml(dep).replace(/'/g, "\\'")}')" class="rounded border-slate-300 text-amber-500 focus:ring-amber-500">
+                                    <span class="truncate">${window.escapeHtml(dep)}</span>
+                                </label>`;
+                            }).join("") : `<p class="text-xs text-slate-400 px-1 py-1">Belum ada departemen terdaftar dari akun pengguna.</p>`}
+                        </div>
+                        <p class="text-[10px] text-slate-400 mt-1">Centang satu atau lebih departemen.</p>
                         ${!d.participants.departments.length ? `<p class="text-[11px] text-amber-600 font-semibold mt-2"><i class="fas fa-triangle-exclamation mr-1"></i> Pilih minimal 1 departemen — kalau belum dipilih, training ini belum tampil ke siapa pun.</p>` : ""}
                     </div>` : ""}
 
@@ -7474,7 +7486,7 @@ window.ROUTES["admin/reports"] = requireAdmin(function () {
     const pendingSubs = S.assignmentSubmissions.filter(s => s.status !== "graded")
         .sort((a, b) => tsMillis(b.submittedAt) - tsMillis(a.submittedAt)).slice(0, 5);
     const pendingSubsHtml = pendingSubs.map(s => `
-        <a href="#/admin/assignments" class="flex items-center gap-3 p-3 rounded-2xl hover:bg-violet-50/50 transition">
+        <a href="#/admin/assignments" onclick="window.adminNavContext='${s.trainingId ? 'tna' : 'onboarding'}'; adminAssignmentFilter='pending';" class="flex items-center gap-3 p-3 rounded-2xl hover:bg-violet-50/50 transition">
             <div class="w-9 h-9 rounded-xl bg-violet-50 text-violet-500 flex items-center justify-center shrink-0"><i class="fas fa-file-signature text-sm"></i></div>
             <div class="flex-1 min-w-0">
                 <p class="text-sm font-bold text-slate-700 truncate">${window.escapeHtml(s.userName || '-')}</p>
@@ -7689,7 +7701,14 @@ window.openReportDetail = function (type) {
                 <span class="shrink-0 text-[10px] font-black px-2 py-1 rounded-full ${s.status === "graded" ? "bg-emerald-50 text-emerald-600" : "bg-amber-50 text-amber-600"}">${s.status === "graded" ? `Nilai ${s.score ?? "-"}` : "Menunggu"}</span>
             </div>`;
         }).join("") : dashboardEmptyState("fa-file-signature", isPending ? "Semua tugas sudah dinilai." : "Belum ada tugas yang dikumpulkan.", "/admin/assignments", "Kelola Penugasan"))
-            + (subs.length ? `<a href="#/admin/assignments" onclick="window.closeModal('modal-dashboard-detail')" class="block text-center text-violet-500 font-bold text-sm pt-3">${isPending ? "Nilai Sekarang" : "Kelola Penilaian Tugas"} →</a>` : "");
+            + (subs.length ? (() => {
+                // Pilih konteks (onboarding/tna) yang jumlah tugasnya paling banyak di list ini,
+                // supaya tombol "Nilai Sekarang" langsung buka tab yang isinya beneran ada, bukan tab kosong.
+                const courseCount = subs.filter(s => !s.trainingId).length;
+                const trainingCount = subs.filter(s => !!s.trainingId).length;
+                const targetCtx = trainingCount > courseCount ? "tna" : "onboarding";
+                return `<a href="#/admin/assignments" onclick="window.adminNavContext='${targetCtx}'; adminAssignmentFilter='${isPending ? "pending" : "all"}'; window.closeModal('modal-dashboard-detail')" class="block text-center text-violet-500 font-bold text-sm pt-3">${isPending ? "Nilai Sekarang" : "Kelola Penilaian Tugas"} →</a>`;
+            })() : "");
     }
 
     window.openModal("modal-dashboard-detail");
