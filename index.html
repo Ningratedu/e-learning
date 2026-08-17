@@ -176,6 +176,41 @@ body {
     filter: blur(10px);
 }
 
+/* Video background sesi login: <video> full-cover di belakang grid/glow/form,
+   plus overlay gelap tipis biar form tetap kebaca kontras di atas video apapun. */
+.auth-bg-video {
+    position: absolute; inset: 0; z-index: 0;
+    width: 100%; height: 100%;
+    object-fit: cover;
+    pointer-events: none;
+}
+.auth-bg-video-overlay {
+    position: absolute; inset: 0; z-index: 0; pointer-events: none;
+    background: linear-gradient(180deg, rgba(6,8,16,.55) 0%, rgba(11,15,30,.6) 55%, rgba(6,8,16,.75) 100%);
+}
+
+/* Posisi panel login: di laptop/desktop digeser ke kanan-bawah layar; di HP tetap
+   normal di tengah seperti sebelumnya (di-override lewat media query di bawah). */
+#auth-screen.auth-screen-video { align-items: center; justify-content: center; }
+@media (min-width: 1024px) {
+    #auth-screen.auth-screen-video {
+        align-items: flex-end;
+        justify-content: flex-end;
+        padding-right: 6vw;
+        padding-bottom: 6vh;
+    }
+}
+
+/* Tombol mata "tampilkan/sembunyikan password" di dalam input */
+.password-field-wrap { position: relative; }
+.password-field-wrap input { padding-right: 2.5rem; }
+.password-toggle-btn {
+    position: absolute; right: 0.6rem; top: 50%; transform: translateY(-50%);
+    background: none; border: none; padding: 4px; cursor: pointer;
+    color: #94a3b8; font-size: 13px; line-height: 1;
+}
+.password-toggle-btn:hover { color: #6366f1; }
+
 .hide { display: none !important; }
 
 button:disabled, input[type="submit"]:disabled {
@@ -420,7 +455,11 @@ html.dark .corevalue-wire { background: rgba(96, 165, 250, .2); }
 <div id="toast-box" class="fixed top-4 right-4 z-[99998] w-72"></div>
 
 <!-- ================= AUTH SCREEN ================= -->
-<div id="auth-screen" class="hide min-h-screen flex items-center justify-center auth-bg p-4 relative overflow-hidden">
+<div id="auth-screen" class="hide min-h-screen flex items-center justify-center auth-bg auth-screen-video p-4 relative overflow-hidden">
+    <video class="auth-bg-video" autoplay muted loop playsinline preload="auto">
+        <source src="login-bg.mp4" type="video/mp4">
+    </video>
+    <div class="auth-bg-video-overlay"></div>
     <div class="auth-bg-grid"></div>
     <div class="auth-bg-glow"></div>
     <div class="w-full max-w-md relative z-10">
@@ -438,7 +477,10 @@ html.dark .corevalue-wire { background: rgba(96, 165, 250, .2); }
                 </div>
                 <div>
                     <label class="text-[10px] font-bold uppercase text-slate-400">Password</label>
-                    <input id="login-password" type="password" class="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm mt-1 outline-none focus:ring-2 focus:ring-indigo-400" placeholder="••••••••" onkeydown="if(event.key==='Enter') window.guardedClick(this, () => window.doLogin())">
+                    <div class="password-field-wrap mt-1">
+                        <input id="login-password" type="password" class="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-indigo-400" placeholder="••••••••" onkeydown="if(event.key==='Enter') window.guardedClick(this, () => window.doLogin())">
+                        <button type="button" tabindex="-1" onclick="window.toggleLoginPasswordVisibility(this)" class="password-toggle-btn" aria-label="Tampilkan/sembunyikan password"><i class="fas fa-eye"></i></button>
+                    </div>
                 </div>
             </div>
             <button onclick="window.guardedClick(this, () => window.doLogin())" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-2xl transition"><i class="fas fa-right-to-bracket mr-1"></i> Masuk</button>
@@ -1594,6 +1636,19 @@ const MAX_POSTTEST_ATTEMPTS = 3;
 // ================= AUTH (pola sederhana: koleksi lmsUsers di Firestore, sama seperti app lama) =================
 
 const SESSION_KEY = "lms_session_user_id";
+
+// Toggle tampil/sembunyi password di form login lewat ikon mata.
+window.toggleLoginPasswordVisibility = function (btn) {
+    const input = document.getElementById("login-password");
+    if (!input) return;
+    const icon = btn.querySelector("i");
+    const isHidden = input.type === "password";
+    input.type = isHidden ? "text" : "password";
+    if (icon) {
+        icon.classList.toggle("fa-eye", !isHidden);
+        icon.classList.toggle("fa-eye-slash", isHidden);
+    }
+};
 
 window.doLogin = async function () {
     const username = document.getElementById("login-username").value.trim();
@@ -8042,6 +8097,10 @@ window.ROUTES["admin/reports"] = requireAdmin(function () {
             ${donutStatCard("fa-spinner", "sky", onboardingStats.progress, onboardingStats.total, "On Progress Onboarding", "window.openEmployeeStatDetail('onboarding-progress')")}
             ${donutStatCard("fa-hourglass-half", "rose", onboardingStats.notStarted, onboardingStats.total, "Belum Mulai Onboarding", "window.openEmployeeStatDetail('onboarding-notstarted')")}
         </div>
+
+        ${companyKpiPerformanceCard(companyKpiStats)}
+        ${tnaMonthlyTrendCard(tnaMonthlyStats)}
+
         <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
             ${clickableStatCard("fa-book-open", "indigo", totalCourses, "Total Onboarding", "window.openReportDetail('onboarding')")}
             ${clickableStatCard("fa-chalkboard-user", "amber", totalTrainings, "Total Training TNA", "window.openReportDetail('tna')")}
@@ -8052,9 +8111,6 @@ window.ROUTES["admin/reports"] = requireAdmin(function () {
             ${clickableStatCard("fa-file-signature", "violet", totalAssignments, "Tugas Dikumpulkan", "window.openReportDetail('assignments')")}
             ${clickableStatCard("fa-hourglass-half", "amber", pendingAssignments, "Tugas Menunggu Nilai", "window.openReportDetail('assignments-pending')")}
         </div>
-
-        ${companyKpiPerformanceCard(companyKpiStats)}
-        ${tnaMonthlyTrendCard(tnaMonthlyStats)}
 
         <div class="grid grid-cols-1 lg:grid-cols-3 gap-3 mb-3">
             <div class="bg-white rounded-3xl border border-slate-100 shadow-sm p-4 lg:col-span-2">
