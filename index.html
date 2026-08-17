@@ -201,6 +201,20 @@ button:disabled, input[type="submit"]:disabled {
 #sidebar .brand-label, #sidebar .nav-label { transition: opacity .12s ease; white-space: nowrap; }
 #sidebar-nav { scrollbar-width: thin; }
 
+/* Tooltip nama menu saat sidebar dilipat (mini). Elemen mengambang terpisah, ditempel
+   ke <body> & posisinya dihitung lewat JS saat hover, supaya tidak ke-clip oleh
+   overflow-x-hidden milik #sidebar-nav (lihat catatan di media query 1024px). */
+#sidebar-tooltip {
+    position: fixed; z-index: 70;
+    background: #1e293b; color: #fff; padding: 6px 10px; border-radius: 8px;
+    font-size: 12px; font-weight: 700; white-space: nowrap;
+    box-shadow: 0 4px 14px rgba(0,0,0,.3);
+    opacity: 0; pointer-events: none;
+    transform: translateY(-50%) scale(.95); transform-origin: left center;
+    transition: opacity .08s ease, transform .08s ease;
+}
+#sidebar-tooltip.show { opacity: 1; transform: translateY(-50%) scale(1); }
+
 /* Desktop: sidebar is fixed & always visible (never scrolls away on tall pages).
    Default = full menu with labels. Toggling collapses it into a slim icon-only rail
    that stays pinned to the left edge; clicking that rail re-opens the full menu. */
@@ -210,20 +224,13 @@ button:disabled, input[type="submit"]:disabled {
     #sidebar.sidebar-mini .brand-label, #sidebar.sidebar-mini .nav-label { display: none; }
     #sidebar.sidebar-mini #sidebar-brand { justify-content: center; padding-left: 0; padding-right: 0; }
     #sidebar.sidebar-mini .nav-item { justify-content: center; padding-left: 0; padding-right: 0; position: relative; }
-    /* Tooltip nama menu saat sidebar dilipat (mini) — pakai CSS custom (bukan atribut
-       title bawaan browser) supaya muncul cepat/instan, bukan nunggu delay ~1 detik
-       kayak native tooltip browser. */
-    #sidebar.sidebar-mini .nav-item::after {
-        content: attr(data-tooltip);
-        position: absolute; left: calc(100% + 10px); top: 50%;
-        transform: translateY(-50%) scale(.95); transform-origin: left center;
-        background: #1e293b; color: #fff; padding: 6px 10px; border-radius: 8px;
-        font-size: 12px; font-weight: 700; white-space: nowrap;
-        opacity: 0; pointer-events: none; z-index: 60;
-        box-shadow: 0 4px 14px rgba(0,0,0,.3);
-        transition: opacity .05s ease, transform .05s ease;
-    }
-    #sidebar.sidebar-mini .nav-item:hover::after { opacity: 1; transform: translateY(-50%) scale(1); }
+    /* Catatan: tooltip nama menu saat sidebar dilipat (mini) TIDAK dibuat pakai CSS
+       ::after lagi, karena #sidebar-nav punya overflow-x-hidden (buat scroll vertikal
+       daftar menu yang panjang) yang otomatis MEMOTONG elemen absolute yang nongol
+       keluar dari sisi kanannya — jadi tooltip lama gak pernah kelihatan. Solusinya
+       dipindah ke elemen tooltip terpisah (#sidebar-tooltip) yang ditempel ke <body>
+       dan diposisikan lewat JS (lihat bagian "TOOLTIP NAMA MENU SIDEBAR MINI"),
+       supaya gak ikut ke-clip oleh overflow container manapun. */
     #main-wrapper { margin-left: var(--sidebar-w, 260px); transition: margin-left .2s ease; }
     #sidebar.sidebar-mini ~ #main-wrapper { margin-left: var(--sidebar-mini-w, 64px); }
 }
@@ -502,6 +509,10 @@ html.dark .corevalue-wire { background: rgba(96, 165, 250, .2); }
         </button>
         <nav id="sidebar-nav" class="flex-1 px-3 space-y-1 overflow-y-auto overflow-x-hidden"></nav>
     </aside>
+
+    <!-- Tooltip nama menu (dipakai saat sidebar dalam mode mini/dilipat di desktop).
+         Ditaruh di luar #sidebar-nav supaya tidak ke-clip oleh overflow-x-hidden-nya. -->
+    <div id="sidebar-tooltip"></div>
 
     <!-- Main -->
     <div id="main-wrapper" class="flex-1 min-w-0 flex flex-col">
@@ -1341,6 +1352,7 @@ window.toggleSidebar = function () {
     if (isDesktop) {
         const sidebar = document.getElementById("sidebar");
         sidebar?.classList.toggle("sidebar-mini");
+        window.hideSidebarTooltip && window.hideSidebarTooltip(); // biar tooltip lama gak nyangkut pas sidebar buka/lipat
         // Label brand baru kelihatan lagi (display:none -> block) begitu sidebar-mini
         // dilepas, jadi lebarnya baru bisa diukur ulang setelah itu. TAPI #sidebar masih
         // ber-transisi lebar (.2s) saat ini — kalau diukur SEKARANG juga, elemen brand
@@ -1367,7 +1379,62 @@ window.closeMobileSidebar = function () {
 };
 // Di desktop, kalau sidebar lagi mini (cuma rail ikon), klik menu langsung navigasi ke
 // halamannya (tidak perlu sidebar dibuka dulu) — nama menu ditampilkan lewat tooltip
-// cepat saat kursor hover ke ikon (lihat CSS #sidebar.sidebar-mini .nav-item::after).
+// cepat saat kursor hover ke ikon (lihat "TOOLTIP NAMA MENU SIDEBAR MINI" di bawah).
+
+// ================= TOOLTIP NAMA MENU SIDEBAR MINI =================
+// #sidebar-nav punya overflow-x-hidden (dibutuhkan buat scroll vertikal saat menu
+// panjang), jadi kalau tooltip dibuat via CSS ::after di dalam nav-item, dia bakal
+// ke-clip/kepotong dan gak pernah kelihatan. Makanya tooltip ini dibuat sebagai satu
+// elemen mengambang (#sidebar-tooltip) yang ditempel di <body>, posisinya dihitung
+// & digeser lewat JS persis di sebelah kanan ikon menu yang lagi di-hover — jadi bebas
+// dari overflow container manapun. Style-nya tetap gelap + teks putih + padding.
+(function () {
+    const tooltip = document.getElementById("sidebar-tooltip");
+    const nav = document.getElementById("sidebar-nav");
+    if (!tooltip || !nav) return;
+
+    function isSidebarMiniDesktop() {
+        const sidebar = document.getElementById("sidebar");
+        return window.matchMedia("(min-width: 1024px)").matches &&
+            !!sidebar && sidebar.classList.contains("sidebar-mini");
+    }
+
+    function showTooltipFor(item) {
+        const label = item.getAttribute("data-tooltip") || item.getAttribute("aria-label") || "";
+        if (!label) return;
+        const rect = item.getBoundingClientRect();
+        tooltip.textContent = label;
+        tooltip.style.top = (rect.top + rect.height / 2) + "px";
+        tooltip.style.left = (rect.right + 10) + "px";
+        tooltip.classList.add("show");
+    }
+
+    function hideTooltip() {
+        tooltip.classList.remove("show");
+    }
+    window.hideSidebarTooltip = hideTooltip; // dipanggil dari toggleSidebar() saat sidebar dibuka/dilipat
+
+    nav.addEventListener("mouseover", function (e) {
+        if (!isSidebarMiniDesktop()) return;
+        const item = e.target.closest(".nav-item");
+        if (!item || !nav.contains(item)) return;
+        showTooltipFor(item);
+    });
+
+    nav.addEventListener("mouseout", function (e) {
+        const item = e.target.closest(".nav-item");
+        if (!item) return;
+        // Jangan disembunyikan kalau kursor masih di dalam item yang sama (misal
+        // pindah ke child elemen ikon/teksnya).
+        if (e.relatedTarget && item.contains(e.relatedTarget)) return;
+        hideTooltip();
+    });
+
+    // Jaga-jaga: sembunyikan tooltip begitu sidebar di-scroll, di-resize, atau
+    // dilebarkan lagi (keluar dari mode mini) supaya gak nyangkut nempel di layar.
+    nav.addEventListener("scroll", hideTooltip);
+    window.addEventListener("resize", hideTooltip);
+})();
 
 // Klik di luar sidebar: di desktop otomatis melipat sidebar jadi rail ikon-saja
 // (sidebar-mini); di mobile sidebar sudah otomatis tertutup total lewat overlay
