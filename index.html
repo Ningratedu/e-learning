@@ -1224,42 +1224,84 @@ window.sel = {
     }
 };
 
-// Cek apakah sebuah training (course/training) boleh dilihat oleh departemen user yang login.
-// targetDepts kosong/undefined artinya training itu berlaku untuk SEMUA departemen.
+// Cek apakah sebuah training onboarding boleh dilihat oleh karyawan yang login, pakai konsep
+// FILTER GABUNGAN (OR) yang sama dengan Target Peserta Training TNA: departemen ATAU posisi
+// ATAU dipilih manual. Kalau ketiganya kosong = training berlaku untuk SEMUA karyawan.
 // Admin selalu bisa lihat semua (buat keperluan kelola/preview).
 window.deptAllowed = function (item) {
     if (window.sel.isAdmin()) return true;
-    const targets = Array.isArray(item.departments) ? item.departments.filter(Boolean) : [];
-    if (!targets.length) return true;
+    const departments = Array.isArray(item.departments) ? item.departments.filter(Boolean) : [];
+    const positions = Array.isArray(item.positions) ? item.positions.filter(Boolean) : [];
+    const employeeUsernames = Array.isArray(item.employeeUsernames) ? item.employeeUsernames.filter(Boolean) : [];
+    if (!departments.length && !positions.length && !employeeUsernames.length) return true;
     const myDept = window.sel.myDept().toLowerCase();
-    if (!myDept) return false;
-    return targets.some(d => String(d).trim().toLowerCase() === myDept);
+    if (myDept && departments.some(d => String(d).trim().toLowerCase() === myDept)) return true;
+    const emp = window.sel.employeeOfUser(window.STATE.user);
+    const posisi = String((emp && emp.posisi) || "").trim().toLowerCase();
+    if (posisi && positions.some(x => String(x).trim().toLowerCase() === posisi)) return true;
+    const uname = normalizeUsername((emp && emp.username) || (window.STATE.user && window.STATE.user.username) || "");
+    if (uname && employeeUsernames.some(u => normalizeUsername(u) === uname)) return true;
+    return false;
+};
+
+// Daftar karyawan target sebuah training onboarding sesuai scope "tampil untuk departemen"
+// (gabungan filter departemen/posisi/manual, konsepnya sama dengan window.trainingTargetEmployees
+// buat Training TNA). Dipakai buat kolom "Peserta" di tabel Kelola Onboarding, supaya angkanya
+// nunjukin TOTAL KARYAWAN yang ditarget (bukan cuma yang udah register).
+window.courseTargetEmployees = function (c) {
+    const employees = window.STATE.employees || [];
+    const departments = Array.isArray(c && c.departments) ? c.departments.filter(Boolean) : [];
+    const positions = Array.isArray(c && c.positions) ? c.positions.filter(Boolean) : [];
+    const employeeUsernames = Array.isArray(c && c.employeeUsernames) ? c.employeeUsernames.filter(Boolean) : [];
+    if (!departments.length && !positions.length && !employeeUsernames.length) return employees;
+    return employees.filter(e => {
+        const dept = String(e.dept || "").trim().toLowerCase();
+        if (dept && departments.some(d => String(d).trim().toLowerCase() === dept)) return true;
+        const posisi = String(e.posisi || "").trim().toLowerCase();
+        if (posisi && positions.some(x => String(x).trim().toLowerCase() === posisi)) return true;
+        const uname = normalizeUsername(e.username || "");
+        if (uname && employeeUsernames.some(u => normalizeUsername(u) === uname)) return true;
+        return false;
+    });
+};
+
+// Label ringkas target peserta training onboarding (gabungan filter yang aktif), buat
+// ditampilkan di daftar admin — konsepnya sama dengan window.trainingScopeLabel.
+window.courseScopeLabel = function (c) {
+    const departments = (c && c.departments) || [];
+    const positions = (c && c.positions) || [];
+    const employeeUsernames = (c && c.employeeUsernames) || [];
+    if (!departments.length && !positions.length && !employeeUsernames.length) return "Semua Karyawan";
+    const parts = [];
+    if (departments.length) parts.push("Departemen: " + departments.join(", "));
+    if (positions.length) parts.push("Posisi: " + positions.join(", "));
+    if (employeeUsernames.length) parts.push(employeeUsernames.length + " karyawan manual");
+    return parts.join(" • ");
 };
 
 // ================= TARGET PESERTA TRAINING BY TNA =================
-// t.participants = { mode: 'all' | 'department' | 'position' | 'manual',
-//                     departments: [...], positions: [...], employeeUsernames: [...] }
-// mode 'all' (atau field participants belum ada sama sekali, data lama) => training terbuka
-// untuk SEMUA karyawan, perilaku lama tidak berubah.
+// t.participants = { departments: [...], positions: [...], employeeUsernames: [...] }
+// Konsep FILTER gabungan (OR): karyawan masuk target kalau cocok SALAH SATU dari filter yang
+// diisi (departemen ATAU posisi ATAU dipilih manual). Kalau semua filter kosong (belum dicentang
+// sama sekali) => training terbuka untuk SEMUA karyawan, sama seperti perilaku lama.
+// Catatan kompatibilitas: data training lama masih punya field "mode" (all/department/position/
+// manual) dari desain sebelumnya, tapi karena mode lama itu selalu cuma mengisi SATU dari ketiga
+// array di atas (mode "all" = ketiganya kosong), logika filter gabungan di bawah otomatis
+// menghasilkan hasil yang identik untuk data lama — field "mode" tidak dipakai lagi & aman diabaikan.
 window.trainingParticipantMatch = function (t, employee, user) {
     const p = t && t.participants;
-    if (!p || !p.mode || p.mode === "all") return true;
-    if (p.mode === "department") {
-        const dept = String((employee && employee.dept) || (user && user.dept) || "").trim().toLowerCase();
-        if (!dept) return false;
-        return (p.departments || []).some(d => String(d).trim().toLowerCase() === dept);
-    }
-    if (p.mode === "position") {
-        const posisi = String((employee && employee.posisi) || "").trim().toLowerCase();
-        if (!posisi) return false;
-        return (p.positions || []).some(x => String(x).trim().toLowerCase() === posisi);
-    }
-    if (p.mode === "manual") {
-        const uname = normalizeUsername((employee && employee.username) || (user && user.username) || "");
-        if (!uname) return false;
-        return (p.employeeUsernames || []).some(u => normalizeUsername(u) === uname);
-    }
-    return true;
+    if (!p) return true;
+    const departments = Array.isArray(p.departments) ? p.departments : [];
+    const positions = Array.isArray(p.positions) ? p.positions : [];
+    const employeeUsernames = Array.isArray(p.employeeUsernames) ? p.employeeUsernames : [];
+    if (!departments.length && !positions.length && !employeeUsernames.length) return true;
+    const dept = String((employee && employee.dept) || (user && user.dept) || "").trim().toLowerCase();
+    if (dept && departments.some(d => String(d).trim().toLowerCase() === dept)) return true;
+    const posisi = String((employee && employee.posisi) || "").trim().toLowerCase();
+    if (posisi && positions.some(x => String(x).trim().toLowerCase() === posisi)) return true;
+    const uname = normalizeUsername((employee && employee.username) || (user && user.username) || "");
+    if (uname && employeeUsernames.some(u => normalizeUsername(u) === uname)) return true;
+    return false;
 };
 // Cek apakah training ini boleh dilihat/diikuti oleh USER YANG SEDANG LOGIN. Admin selalu
 // boleh (buat keperluan kelola/preview/laporan).
@@ -1275,17 +1317,23 @@ window.trainingAllowedForUser = function (t) {
 window.trainingTargetEmployees = function (t) {
     const p = t && t.participants;
     const employees = window.STATE.employees || [];
-    if (!p || !p.mode || p.mode === "all") return employees;
+    const hasFilter = p && ((p.departments || []).length || (p.positions || []).length || (p.employeeUsernames || []).length);
+    if (!hasFilter) return employees;
     return employees.filter(e => window.trainingParticipantMatch(t, e, null));
 };
-// Label ringkas scope peserta sebuah training, buat ditampilkan di UI admin.
+// Label ringkas scope peserta sebuah training (gabungan filter yang aktif), buat ditampilkan
+// di UI admin.
 window.trainingScopeLabel = function (t) {
     const p = t && t.participants;
-    if (!p || !p.mode || p.mode === "all") return "Semua Karyawan";
-    if (p.mode === "department") return (p.departments || []).length ? "Departemen: " + p.departments.join(", ") : "Departemen (belum dipilih)";
-    if (p.mode === "position") return (p.positions || []).length ? "Posisi: " + p.positions.join(", ") : "Posisi (belum dipilih)";
-    if (p.mode === "manual") return (p.employeeUsernames || []).length + " karyawan terpilih";
-    return "Semua Karyawan";
+    const departments = (p && p.departments) || [];
+    const positions = (p && p.positions) || [];
+    const employeeUsernames = (p && p.employeeUsernames) || [];
+    if (!departments.length && !positions.length && !employeeUsernames.length) return "Semua Karyawan";
+    const parts = [];
+    if (departments.length) parts.push("Departemen: " + departments.join(", "));
+    if (positions.length) parts.push("Posisi: " + positions.join(", "));
+    if (employeeUsernames.length) parts.push(employeeUsernames.length + " karyawan manual");
+    return parts.join(" • ");
 };
 
 // ================= STATUS SESI TRAINING BY TNA (DIBUKA/DIMULAI ADMIN) =================
@@ -2019,8 +2067,13 @@ window.ROUTES["dashboard"] = function () {
 function renderUserDashboard() {
     const u = window.STATE.user;
     const myEnr = window.STATE.enrollments.filter(e => e.userId === u.id);
-    const completedCourses = myEnr.filter(e => e.status === "completed").length;
     const myAssignedCourses = window.STATE.courses.filter(c => c.published && window.deptAllowed(c));
+    // Hitung "selesai" cuma dari training onboarding yang trainingnya MASIH ADA & masih
+    // ditampilkan (published + sesuai departemen). Kalau training-nya dihapus admin atau
+    // di-unpublish/disembunyikan, enrollment "completed" lamanya tidak lagi ikut dihitung
+    // supaya kartu di dashboard user gak lebih besar dari total training yang sebenarnya aktif.
+    const myAssignedCourseIds = new Set(myAssignedCourses.map(c => c.id));
+    const completedCourses = myEnr.filter(e => e.status === "completed" && myAssignedCourseIds.has(e.courseId)).length;
     const myRegs = window.STATE.trainingRegs.filter(r => r.userId === u.id);
     const myCerts = window.STATE.certificates.filter(c => c.userId === u.id);
 
@@ -3776,7 +3829,7 @@ window.buildUserReminders = function () {
     if (emp) {
         const batch = window.onboardingBatchFor(emp);
         if (batch) {
-            const ordered = orderedPublishedCoursesForDept((emp.dept || "").trim());
+            const ordered = orderedPublishedCoursesForEmployee(emp);
             const doneCount = ordered.filter(c => certOfUser(c.id, u.id)).length;
             const isDone = ordered.length === 0 || doneCount === ordered.length;
             const diff = batch.deadline.getTime() - Date.now();
@@ -4351,7 +4404,7 @@ function renderTrainingCatalog() {
             </div>
             <div class="flex-1 min-w-0">
                 <p class="text-[11px] font-bold text-amber-500 uppercase">${window.escapeHtml(t.category || "Training")}</p>
-                <h3 class="font-black italic text-slate-800">${window.escapeHtml(t.title)}</h3>
+                <h3 class="font-black italic text-sm text-slate-800">"${window.escapeHtml(t.title)}"</h3>
                 <p class="text-xs text-slate-500 mt-1"><i class="fas fa-location-dot mr-1"></i>${window.escapeHtml(t.location || "-")}</p>
                 <p class="text-xs text-slate-500 mt-0.5"><i class="fas fa-user-tie mr-1 text-amber-400"></i>${window.escapeHtml(t.trainer || "Trainer belum ditentukan")}</p>
                 <div class="flex items-center gap-1.5 mt-2 flex-wrap">
@@ -5030,13 +5083,16 @@ function renderCourseAdminList() {
         return String(a.title||"").localeCompare(String(b.title||""));
     });
     const rows = sorted.map((c, i) => {
-        const enrolledCount = window.STATE.enrollments.filter(e=>e.courseId===c.id).length;
+        // Kolom "Peserta" = TOTAL KARYAWAN yang ditarget sesuai scope "tampil untuk
+        // departemen" (departemen/posisi/manual) training ini, BUKAN jumlah yang udah
+        // register — supaya konsisten sama window.courseScopeLabel di atasnya.
+        const targetCount = window.courseTargetEmployees(c).length;
         const completedCount = window.STATE.certificates.filter(cert => cert.type === "course" && cert.courseId === c.id).length;
         // Pakai Math.floor, BUKAN Math.round: kalau dibulatkan (round), training yang
-        // misalnya baru 199 dari 200 peserta selesai (99.5%) bisa kebulet jadi tampil
-        // "100%" — padahal senyatanya belum semua kelar. Math.floor memastikan label
-        // 100% cuma muncul kalau BENERAN completedCount == enrolledCount.
-        const completedPct = enrolledCount ? Math.floor((completedCount / enrolledCount) * 100) : 0;
+        // misalnya baru 199 dari 200 target peserta selesai (99.5%) bisa kebulet jadi
+        // tampil "100%" — padahal senyatanya belum semua kelar. Math.floor memastikan
+        // label 100% cuma muncul kalau BENERAN completedCount == targetCount.
+        const completedPct = targetCount ? Math.floor((completedCount / targetCount) * 100) : 0;
         return `
         <tr class="border-b border-slate-50 hover:bg-slate-50/60">
             <td class="px-3 py-3">
@@ -5049,12 +5105,12 @@ function renderCourseAdminList() {
             <td class="px-3 py-3 min-w-[220px]">
                 <p class="font-bold text-slate-700 text-sm">${window.escapeHtml(c.title)}</p>
                 <p class="text-[11px] text-slate-400">${(c.modules||[]).length} modul • ${window.escapeHtml(c.category||'-')}</p>
-                <p class="text-[11px] text-indigo-500 font-semibold mt-0.5">${(c.departments && c.departments.length) ? '<i class="fas fa-sitemap mr-1"></i>' + c.departments.map(window.escapeHtml).join(", ") : '<span class="text-emerald-500"><i class="fas fa-globe mr-1"></i>Semua departemen</span>'}</p>
+                <p class="text-[11px] text-indigo-500 font-semibold mt-0.5"><i class="fas ${(c.departments && c.departments.length) || (c.positions && c.positions.length) || (c.employeeUsernames && c.employeeUsernames.length) ? 'fa-sitemap' : 'fa-globe'} mr-1"></i>${window.escapeHtml(window.courseScopeLabel(c))}</p>
             </td>
             <td class="px-3 py-3 text-center">
                 <span class="text-[10px] font-black px-2 py-1 rounded-full ${c.published ? 'bg-emerald-50 text-emerald-600' : 'bg-slate-100 text-slate-500'}">${c.published ? 'Terbit' : 'Draft'}</span>
             </td>
-            <td class="px-3 py-3 text-center text-sm font-bold text-slate-600">${enrolledCount}</td>
+            <td class="px-3 py-3 text-center text-sm font-bold text-slate-600">${targetCount}</td>
             <td class="px-3 py-3 text-center text-sm font-bold text-slate-600">${completedCount}</td>
             <td class="px-3 py-3 text-center"><span class="text-[10px] font-black px-2 py-1 rounded-full bg-emerald-50 text-emerald-600">${completedPct}%</span></td>
             <td class="px-3 py-3 text-right space-x-2">
@@ -5118,6 +5174,7 @@ window.deleteCourse = async function (id) {
 };
 
 let courseDraft = null;
+let courseParticipantSearch = "";
 function renderCourseBuilder(id) {
     if (!courseDraft || courseDraft._loadedId !== (id || "new")) {
         const existing = id ? window.STATE.courses.find(c => c.id === id) : null;
@@ -5128,7 +5185,7 @@ function renderCourseBuilder(id) {
             title: "", description: "", category: "", instructor: "", level: "Umum",
             coverImage: "", published: false, modules: [], quiz: { passingScore: 70, questions: [] },
             assignment: { enabled: false, title: "", description: "", deadline: "" },
-            order: nextOrder, departments: []
+            order: nextOrder, departments: [], positions: [], employeeUsernames: []
         };
         if (!courseDraft.assignment) courseDraft.assignment = { enabled: false, title: "", description: "", deadline: "" };
         if (!Array.isArray(courseDraft.modules)) courseDraft.modules = [];
@@ -5137,8 +5194,11 @@ function renderCourseBuilder(id) {
         if (!Array.isArray(courseDraft.quiz.questions)) courseDraft.quiz.questions = [];
         if (!Number.isFinite(courseDraft.order)) courseDraft.order = nextOrder;
         if (!Array.isArray(courseDraft.departments)) courseDraft.departments = [];
+        if (!Array.isArray(courseDraft.positions)) courseDraft.positions = [];
+        if (!Array.isArray(courseDraft.employeeUsernames)) courseDraft.employeeUsernames = [];
         courseDraft._loadedId = id || "new";
         courseDraft._id = id;
+        courseParticipantSearch = "";
     }
     const d = courseDraft;
 
@@ -5235,27 +5295,53 @@ function renderCourseBuilder(id) {
                             <input type="number" step="1" value="${Number.isFinite(d.order) ? d.order : 1}" oninput="courseDraft.order=parseInt(this.value)||1" class="w-full border border-slate-200 rounded-lg px-2.5 py-1.5 text-sm mt-1">
                             <p class="text-[10px] text-slate-400 mt-1">Angka lebih kecil = lebih dulu. Dihitung ulang per departemen.</p>
                         </div>
-                        <div class="form-full">
-                            <label class="flex items-center justify-between">
-                                <span class="text-[10px] font-bold uppercase text-slate-400">Tampil untuk Departemen</span>
-                                <button type="button" onclick="courseDraft.departments=[]; rerenderBuilder()" class="text-[10px] font-bold text-indigo-500 hover:text-indigo-700">Semua Departemen</button>
-                            </label>
-                            <div class="w-full border border-slate-200 rounded-lg px-2.5 py-2 mt-1 max-h-[160px] overflow-y-auto grid grid-cols-1 sm:grid-cols-2 gap-1">
-                                ${window.sel.allDeptNames().length ? window.sel.allDeptNames().map(dep => {
-                                    const active = d.departments.some(x => x.toLowerCase() === dep.toLowerCase());
-                                    return `<label class="flex items-center gap-2 text-sm px-1.5 py-1 rounded-lg hover:bg-slate-50 cursor-pointer">
-                                        <input type="checkbox" ${active ? 'checked' : ''} onchange="window.toggleCourseDept('${window.escapeHtml(dep).replace(/'/g, "\\'")}')" class="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500">
-                                        <span class="truncate">${window.escapeHtml(dep)}</span>
-                                    </label>`;
-                                }).join("") : `<p class="text-xs text-slate-400 px-1 py-1">Belum ada departemen terdaftar dari akun pengguna.</p>`}
+                        <div class="form-full space-y-3 border border-slate-100 rounded-2xl p-3">
+                            <div>
+                                <h3 class="font-black text-sm text-slate-700"><i class="fas fa-users text-indigo-500 mr-1"></i> Target Peserta</h3>
+                                <p class="text-xs text-slate-400 mt-0.5">Centang filter di bawah sesuai kebutuhan — boleh kombinasi departemen, posisi, dan/atau karyawan manual sekaligus. Karyawan otomatis masuk target kalau cocok <b>salah satu</b> filter yang dicentang. Kalau tidak ada filter yang dicentang sama sekali, training ini tampil untuk <b>SEMUA karyawan</b>.</p>
                             </div>
-                            <p class="text-[10px] text-slate-400 mt-1">Centang satu atau lebih departemen. Kosongkan semua centang supaya training tampil ke semua departemen.</p>
-                            ${!d.departments.length ? `<p class="text-xs text-emerald-600 font-semibold bg-emerald-50 rounded-xl px-3 py-2 mt-1"><i class="fas fa-globe mr-1"></i> Training ini tampil untuk semua departemen.</p>` : ""}
-                            <div class="flex items-center gap-2 mt-2">
-                                <input id="new-dept-input" placeholder="Tambah nama departemen baru..." class="flex-1 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs">
-                                <button type="button" onclick="window.addCustomCourseDept()" class="shrink-0 text-[11px] font-bold text-indigo-500 hover:text-indigo-700 bg-indigo-50 px-2.5 py-1.5 rounded-lg">Tambah</button>
+
+                            ${!courseHasAnyParticipantFilter(d) ? `<p class="text-xs text-emerald-600 font-semibold bg-emerald-50 rounded-xl px-3 py-2"><i class="fas fa-globe mr-1"></i> Belum ada filter dicentang → training ini tampil untuk SEMUA karyawan / semua departemen.</p>` : ""}
+
+                            <div class="border border-slate-100 rounded-xl p-2.5">
+                                <label class="flex items-center justify-between">
+                                    <span class="text-[10px] font-bold uppercase text-slate-400 flex items-center gap-1"><i class="fas fa-building"></i> Filter Departemen ${d.departments.length ? `<span class="text-indigo-600">${d.departments.length} dipilih</span>` : ""}</span>
+                                    <button type="button" onclick="courseDraft.departments=[]; rerenderBuilder()" class="text-[10px] font-bold text-indigo-500 hover:text-indigo-700">Kosongkan</button>
+                                </label>
+                                <div class="w-full mt-1.5 max-h-[160px] overflow-y-auto grid grid-cols-1 sm:grid-cols-2 gap-1">
+                                    ${window.sel.allDeptNames().length ? window.sel.allDeptNames().map(dep => {
+                                        const active = d.departments.some(x => x.toLowerCase() === dep.toLowerCase());
+                                        return `<label class="flex items-center gap-2 text-sm px-1.5 py-1 rounded-lg hover:bg-slate-50 cursor-pointer">
+                                            <input type="checkbox" ${active ? 'checked' : ''} onchange="window.toggleCourseDept('${window.escapeHtml(dep).replace(/'/g, "\\'")}')" class="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500">
+                                            <span class="truncate">${window.escapeHtml(dep)}</span>
+                                        </label>`;
+                                    }).join("") : `<p class="text-xs text-slate-400 px-1 py-1">Belum ada departemen terdaftar dari akun pengguna.</p>`}
+                                </div>
+                                <div class="flex items-center gap-2 mt-2">
+                                    <input id="new-dept-input" placeholder="Tambah nama departemen baru..." class="flex-1 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs">
+                                    <button type="button" onclick="window.addCustomCourseDept()" class="shrink-0 text-[11px] font-bold text-indigo-500 hover:text-indigo-700 bg-indigo-50 px-2.5 py-1.5 rounded-lg">Tambah</button>
+                                </div>
+                                ${d.departments.length ? `<div class="flex flex-wrap gap-1.5 mt-2">${d.departments.map(dep => `<span class="text-[11px] font-bold px-2.5 py-1 rounded-full bg-indigo-50 text-indigo-600 flex items-center gap-1">${window.escapeHtml(dep)} <button type="button" onclick="window.toggleCourseDept('${window.escapeHtml(dep).replace(/'/g, "\\'")}')" class="hover:text-indigo-900"><i class="fas fa-xmark"></i></button></span>`).join("")}</div>` : ""}
                             </div>
-                            ${d.departments.length ? `<div class="flex flex-wrap gap-1.5 mt-2">${d.departments.map(dep => `<span class="text-[11px] font-bold px-2.5 py-1 rounded-full bg-indigo-50 text-indigo-600 flex items-center gap-1">${window.escapeHtml(dep)} <button type="button" onclick="window.toggleCourseDept('${window.escapeHtml(dep).replace(/'/g, "\\'")}')" class="hover:text-indigo-900"><i class="fas fa-xmark"></i></button></span>`).join("")}</div>` : ""}
+
+                            <div class="border border-slate-100 rounded-xl p-2.5">
+                                <label class="text-[10px] font-bold uppercase text-slate-400 flex items-center gap-1"><i class="fas fa-id-badge"></i> Filter Posisi/Level ${d.positions.length ? `<span class="ml-auto text-indigo-600">${d.positions.length} dipilih</span>` : ""}</label>
+                                <div class="flex flex-wrap gap-1.5 mt-1.5">
+                                    ${window.sel.allPosisiNames().map(pos => {
+                                        const active = d.positions.some(x => x.toLowerCase() === pos.toLowerCase());
+                                        return `<button type="button" onclick="window.toggleCourseParticipantValue('positions','${window.escapeHtml(pos).replace(/'/g, "\\'")}')" class="text-[11px] font-bold px-2.5 py-1.5 rounded-full border transition ${active ? 'bg-indigo-600 border-indigo-600 text-white' : 'bg-white border-slate-200 text-slate-500 hover:border-indigo-300'}">${active ? '<i class="fas fa-check mr-1"></i>' : ''}${window.escapeHtml(pos)}</button>`;
+                                    }).join("") || '<p class="text-[11px] text-slate-400">Belum ada data posisi/jabatan dari karyawan. Import dulu lewat menu Kelola Karyawan.</p>'}
+                                </div>
+                            </div>
+
+                            <div class="border border-slate-100 rounded-xl p-2.5 space-y-2">
+                                <label class="text-[10px] font-bold uppercase text-slate-400 flex items-center gap-1"><i class="fas fa-user-check"></i> Tambah Karyawan Manual <span id="course-participant-manual-count" class="${d.employeeUsernames.length ? '' : 'hide'} ml-auto text-indigo-600">${d.employeeUsernames.length} dipilih</span></label>
+                                <p class="text-[11px] text-slate-400">Opsional — buat nambahin karyawan tertentu di luar filter departemen/posisi di atas.</p>
+                                <input id="course-participant-search" value="${window.escapeHtml(courseParticipantSearch)}" oninput="courseParticipantSearch=this.value; window.reRenderCourseParticipantPicker()" placeholder="Cari nama / username / departemen karyawan..." class="w-full border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs">
+                                <div id="course-participant-picker-list" class="max-h-64 overflow-y-auto border border-slate-100 rounded-2xl divide-y divide-slate-50">
+                                    ${renderCourseParticipantPickerRows()}
+                                </div>
+                            </div>
                         </div>
                     </div>
                     <div id="cover-progress" class="hide">
@@ -5343,6 +5429,57 @@ window.setCourseDepts = function (selectEl) {
     courseDraft.departments = Array.from(selectEl.selectedOptions).map(o => o.value);
     rerenderBuilder();
 };
+// Toggle satu nilai (posisi) di dalam courseDraft.positions — sama konsepnya dengan filter
+// target peserta Training TNA.
+window.toggleCourseParticipantValue = function (field, val) {
+    const arr = courseDraft[field];
+    const idx = arr.findIndex(x => x.toLowerCase() === val.toLowerCase());
+    if (idx >= 0) arr.splice(idx, 1); else arr.push(val);
+    rerenderBuilder();
+};
+// Toggle satu karyawan (by username) di daftar peserta manual courseDraft.employeeUsernames.
+window.toggleCourseParticipantEmployee = function (username) {
+    const arr = courseDraft.employeeUsernames;
+    const norm = normalizeUsername(username);
+    const idx = arr.findIndex(u => normalizeUsername(u) === norm);
+    if (idx >= 0) arr.splice(idx, 1); else arr.push(username);
+    window.reRenderCourseParticipantPicker();
+};
+// Render daftar checkbox karyawan buat filter manual training onboarding, difilter oleh
+// pencarian & dikelompokkan urut departemen.
+function renderCourseParticipantPickerRows() {
+    const q = courseParticipantSearch.trim().toLowerCase();
+    const employees = [...window.STATE.employees].filter(e => {
+        if (!q) return true;
+        return (e.nama || "").toLowerCase().includes(q) || (e.username || "").toLowerCase().includes(q) || (e.dept || "").toLowerCase().includes(q) || (e.posisi || "").toLowerCase().includes(q);
+    }).sort((a, b) => (a.dept || "").localeCompare(b.dept || "") || (a.nama || "").localeCompare(b.nama || ""));
+    if (!employees.length) return `<p class="text-xs text-slate-400 text-center py-5">Tidak ada karyawan yang cocok.</p>`;
+    const selected = courseDraft.employeeUsernames;
+    return employees.map(e => {
+        const checked = selected.some(u => normalizeUsername(u) === normalizeUsername(e.username));
+        return `<label class="flex items-center gap-2 px-3 py-2 text-xs hover:bg-slate-50 cursor-pointer">
+            <input type="checkbox" ${checked ? 'checked' : ''} onchange="window.toggleCourseParticipantEmployee('${window.escapeHtml(e.username).replace(/'/g, "\\'")}')" class="accent-indigo-600 shrink-0">
+            <span class="flex-1 min-w-0"><span class="font-bold text-slate-700">${window.escapeHtml(e.nama || e.username)}</span> <span class="text-slate-400">• ${window.escapeHtml(e.dept || '-')} • ${window.escapeHtml(e.posisi || '-')}</span></span>
+        </label>`;
+    }).join("");
+}
+// Re-render list picker aja (tanpa render ulang seluruh builder) supaya fokus input
+// pencarian gak ke-reset tiap ketik.
+window.reRenderCourseParticipantPicker = function () {
+    const el = document.getElementById("course-participant-picker-list");
+    if (el) el.innerHTML = renderCourseParticipantPickerRows();
+    const countEl = document.getElementById("course-participant-manual-count");
+    if (countEl) {
+        const n = courseDraft.employeeUsernames.length;
+        countEl.textContent = `${n} dipilih`;
+        countEl.classList.toggle("hide", !n);
+    }
+};
+// Cek apakah ada filter (departemen/posisi/manual) yang sudah dicentang di draft training
+// onboarding ini — kalau belum ada sama sekali, training-nya otomatis tampil ke SEMUA karyawan.
+function courseHasAnyParticipantFilter(d) {
+    return !!((d.departments || []).length || (d.positions || []).length || (d.employeeUsernames || []).length);
+}
 
 window.saveCourseDraft = async function () {
     const d = courseDraft;
@@ -5352,7 +5489,10 @@ window.saveCourseDraft = async function () {
         title: d.title, description: d.description, category: d.category, instructor: d.instructor,
         level: d.level, coverImage: d.coverImage, published: !!d.published,
         modules: d.modules, quiz: d.quiz, assignment: d.assignment,
-        order: Number.isFinite(d.order) ? d.order : 1, departments: Array.isArray(d.departments) ? d.departments : [],
+        order: Number.isFinite(d.order) ? d.order : 1,
+        departments: Array.isArray(d.departments) ? d.departments : [],
+        positions: Array.isArray(d.positions) ? d.positions : [],
+        employeeUsernames: Array.isArray(d.employeeUsernames) ? d.employeeUsernames : [],
         updatedAt: serverTimestamp()
     };
     if (d._id) {
@@ -5401,7 +5541,6 @@ function renderTrainingAdminList() {
                 </div>
             </td>
             <td class="px-3 py-3 text-center text-sm font-bold text-slate-600">${invited}</td>
-            <td class="px-3 py-3 text-center text-sm font-bold text-slate-600">${regCountSafe(t.id)}${t.quota?'/'+t.quota:''}</td>
             <td class="px-3 py-3 text-center text-sm font-bold text-slate-600">${attended}</td>
             <td class="px-3 py-3 text-center"><span class="text-[10px] font-black px-2 py-1 rounded-full bg-emerald-50 text-emerald-600">${attendancePct}%</span></td>
             <td class="px-3 py-3 text-center text-sm font-bold text-slate-600">${passCount}</td>
@@ -5431,7 +5570,6 @@ function renderTrainingAdminList() {
                         <th class="sticky top-0 z-10 bg-slate-50 px-3 py-3 border-b border-slate-100">Training</th>
                         <th class="sticky top-0 z-10 bg-slate-50 px-3 py-3 border-b border-slate-100 text-center">Status</th>
                         <th class="sticky top-0 z-10 bg-slate-50 px-3 py-3 border-b border-slate-100 text-center">Diundang</th>
-                        <th class="sticky top-0 z-10 bg-slate-50 px-3 py-3 border-b border-slate-100 text-center">Terdaftar</th>
                         <th class="sticky top-0 z-10 bg-slate-50 px-3 py-3 border-b border-slate-100 text-center">Hadir</th>
                         <th class="sticky top-0 z-10 bg-slate-50 px-3 py-3 border-b border-slate-100 text-center">% Hadir</th>
                         <th class="sticky top-0 z-10 bg-slate-50 px-3 py-3 border-b border-slate-100 text-center">Lulus</th>
@@ -5440,12 +5578,11 @@ function renderTrainingAdminList() {
                         <th class="sticky top-0 z-10 bg-slate-50 px-3 py-3 border-b border-slate-100 text-right">Aksi</th>
                     </tr>
                 </thead>
-                <tbody>${rows || `<tr><td colspan="10" class="text-center py-10 text-slate-400">Belum ada jadwal training</td></tr>`}</tbody>
+                <tbody>${rows || `<tr><td colspan="9" class="text-center py-10 text-slate-400">Belum ada jadwal training</td></tr>`}</tbody>
             </table>
         </div>
     `);
 }
-function regCountSafe(id){ return window.STATE.trainingRegs.filter(r=>r.trainingId===id && r.status!=='cancelled').length; }
 function genCode() { return Math.random().toString(36).slice(2, 7).toUpperCase(); }
 
 window.deleteTraining = async function (id) {
@@ -5593,12 +5730,11 @@ function renderTrainingBuilder(id) {
             date: "", startTime: "", endTime: "", quota: "", attendanceCode: genCode(), coverImage: "",
             modules: [], quiz: { passingScore: 70, questions: [] },
             assignment: { enabled: false, title: "", description: "", deadline: "" },
-            participants: { mode: "all", departments: [], positions: [], employeeUsernames: [] }
+            participants: { departments: [], positions: [], employeeUsernames: [] }
         };
         if (trainingDraft.coverImage === undefined) trainingDraft.coverImage = "";
         if (!trainingDraft.assignment) trainingDraft.assignment = { enabled: false, title: "", description: "", deadline: "" };
-        if (!trainingDraft.participants) trainingDraft.participants = { mode: "all", departments: [], positions: [], employeeUsernames: [] };
-        if (!trainingDraft.participants.mode) trainingDraft.participants.mode = "all";
+        if (!trainingDraft.participants) trainingDraft.participants = { departments: [], positions: [], employeeUsernames: [] };
         if (!Array.isArray(trainingDraft.participants.departments)) trainingDraft.participants.departments = [];
         if (!Array.isArray(trainingDraft.participants.positions)) trainingDraft.participants.positions = [];
         if (!Array.isArray(trainingDraft.participants.employeeUsernames)) trainingDraft.participants.employeeUsernames = [];
@@ -5726,28 +5862,15 @@ function renderTrainingBuilder(id) {
                     </div>` : ""}
                 </div>
 
-                <div class="bg-white rounded-2xl border border-slate-100 shadow-sm p-3 space-y-2">
+                <div class="bg-white rounded-2xl border border-slate-100 shadow-sm p-3 space-y-3">
                     <h3 class="font-black text-sm text-slate-700"><i class="fas fa-users text-amber-500 mr-1"></i> Target Peserta</h3>
-                    <p class="text-xs text-slate-400">Tentukan siapa saja yang berhak melihat &amp; mendaftar training ini, sesuai data karyawan tiap departemen.</p>
-                    <div class="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
-                        ${[
-                            ["all", "Semua Karyawan", "fa-globe"],
-                            ["department", "Per Departemen", "fa-building"],
-                            ["position", "Per Posisi/Level", "fa-id-badge"],
-                            ["manual", "Pilih Manual", "fa-user-check"]
-                        ].map(([mode, label, icon]) => `
-                            <button type="button" onclick="trainingDraft.participants.mode='${mode}'; rerenderTrainingBuilder()" class="text-[11px] font-bold px-2 py-2 rounded-lg border transition flex flex-col items-center gap-1 text-center ${d.participants.mode === mode ? 'bg-amber-500 border-amber-500 text-white' : 'bg-white border-slate-200 text-slate-500 hover:border-amber-300'}">
-                                <i class="fas ${icon}"></i>${label}
-                            </button>
-                        `).join("")}
-                    </div>
+                    <p class="text-xs text-slate-400">Centang filter di bawah sesuai kebutuhan — boleh kombinasi departemen, posisi, dan/atau karyawan manual sekaligus. Karyawan otomatis masuk target kalau cocok <b>salah satu</b> filter yang dicentang. Kalau tidak ada filter yang dicentang sama sekali, training ini terbuka untuk <b>SEMUA karyawan</b>.</p>
 
-                    ${d.participants.mode === "all" ? `<p class="text-xs text-emerald-600 font-semibold bg-emerald-50 rounded-xl px-3 py-2"><i class="fas fa-globe mr-1"></i> Training ini terbuka untuk SEMUA karyawan / semua departemen.</p>` : ""}
+                    ${!trainingHasAnyParticipantFilter(d) ? `<p class="text-xs text-emerald-600 font-semibold bg-emerald-50 rounded-xl px-3 py-2"><i class="fas fa-globe mr-1"></i> Belum ada filter dicentang → training ini terbuka untuk SEMUA karyawan / semua departemen.</p>` : ""}
 
-                    ${d.participants.mode === "department" ? `
-                    <div>
-                        <label class="text-[10px] font-bold uppercase text-slate-400">Pilih Departemen</label>
-                        <div class="w-full border border-slate-200 rounded-lg px-2.5 py-2 mt-1 max-h-[160px] overflow-y-auto grid grid-cols-1 sm:grid-cols-2 gap-1">
+                    <div class="border border-slate-100 rounded-xl p-2.5">
+                        <label class="text-[10px] font-bold uppercase text-slate-400 flex items-center gap-1"><i class="fas fa-building"></i> Filter Departemen ${d.participants.departments.length ? `<span class="ml-auto text-amber-600">${d.participants.departments.length} dipilih</span>` : ""}</label>
+                        <div class="w-full mt-1.5 max-h-[160px] overflow-y-auto grid grid-cols-1 sm:grid-cols-2 gap-1">
                             ${window.sel.allDeptNames().length ? window.sel.allDeptNames().map(dep => {
                                 const active = d.participants.departments.some(x => x.toLowerCase() === dep.toLowerCase());
                                 return `<label class="flex items-center gap-2 text-sm px-1.5 py-1 rounded-lg hover:bg-slate-50 cursor-pointer">
@@ -5756,29 +5879,26 @@ function renderTrainingBuilder(id) {
                                 </label>`;
                             }).join("") : `<p class="text-xs text-slate-400 px-1 py-1">Belum ada departemen terdaftar dari akun pengguna.</p>`}
                         </div>
-                        <p class="text-[10px] text-slate-400 mt-1">Centang satu atau lebih departemen.</p>
-                        ${!d.participants.departments.length ? `<p class="text-[11px] text-amber-600 font-semibold mt-2"><i class="fas fa-triangle-exclamation mr-1"></i> Pilih minimal 1 departemen — kalau belum dipilih, training ini belum tampil ke siapa pun.</p>` : ""}
-                    </div>` : ""}
+                    </div>
 
-                    ${d.participants.mode === "position" ? `
-                    <div>
-                        <div class="flex flex-wrap gap-1.5">
+                    <div class="border border-slate-100 rounded-xl p-2.5">
+                        <label class="text-[10px] font-bold uppercase text-slate-400 flex items-center gap-1"><i class="fas fa-id-badge"></i> Filter Posisi/Level ${d.participants.positions.length ? `<span class="ml-auto text-amber-600">${d.participants.positions.length} dipilih</span>` : ""}</label>
+                        <div class="flex flex-wrap gap-1.5 mt-1.5">
                             ${window.sel.allPosisiNames().map(pos => {
                                 const active = d.participants.positions.some(x => x.toLowerCase() === pos.toLowerCase());
                                 return `<button type="button" onclick="window.toggleTrainingParticipantValue('positions','${window.escapeHtml(pos).replace(/'/g, "\\'")}')" class="text-[11px] font-bold px-2.5 py-1.5 rounded-full border transition ${active ? 'bg-amber-500 border-amber-500 text-white' : 'bg-white border-slate-200 text-slate-500 hover:border-amber-300'}">${active ? '<i class="fas fa-check mr-1"></i>' : ''}${window.escapeHtml(pos)}</button>`;
                             }).join("") || '<p class="text-[11px] text-slate-400">Belum ada data posisi/jabatan dari karyawan. Import dulu lewat menu Kelola Karyawan.</p>'}
                         </div>
-                        ${!d.participants.positions.length ? `<p class="text-[11px] text-amber-600 font-semibold mt-2"><i class="fas fa-triangle-exclamation mr-1"></i> Pilih minimal 1 posisi/level jabatan.</p>` : ""}
-                    </div>` : ""}
+                    </div>
 
-                    ${d.participants.mode === "manual" ? `
-                    <div class="space-y-2">
+                    <div class="border border-slate-100 rounded-xl p-2.5 space-y-2">
+                        <label class="text-[10px] font-bold uppercase text-slate-400 flex items-center gap-1"><i class="fas fa-user-check"></i> Tambah Karyawan Manual <span id="training-participant-manual-count" class="${d.participants.employeeUsernames.length ? '' : 'hide'} ml-auto text-amber-600">${d.participants.employeeUsernames.length} dipilih</span></label>
+                        <p class="text-[11px] text-slate-400">Opsional — buat nambahin karyawan tertentu di luar filter departemen/posisi di atas (misalnya satu-dua orang dari departemen lain).</p>
                         <input id="training-participant-search" value="${window.escapeHtml(trainingParticipantSearch)}" oninput="trainingParticipantSearch=this.value; window.reRenderTrainingParticipantPicker()" placeholder="Cari nama / username / departemen karyawan..." class="w-full border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs">
-                        <p class="text-[11px] text-slate-400">${d.participants.employeeUsernames.length} karyawan dipilih dari total ${window.STATE.employees.length} karyawan (bisa ambil beberapa dari tiap departemen).</p>
                         <div id="training-participant-picker-list" class="max-h-64 overflow-y-auto border border-slate-100 rounded-2xl divide-y divide-slate-50">
                             ${renderTrainingParticipantPickerRows()}
                         </div>
-                    </div>` : ""}
+                    </div>
                 </div>
 
                 <div class="bg-white rounded-2xl border border-slate-100 shadow-sm p-3 space-y-2">
@@ -5875,11 +5995,19 @@ function renderTrainingParticipantPickerRows() {
 window.reRenderTrainingParticipantPicker = function () {
     const el = document.getElementById("training-participant-picker-list");
     if (el) el.innerHTML = renderTrainingParticipantPickerRows();
-    const countEl = el && el.previousElementSibling;
-    if (countEl && countEl.tagName === "P") {
-        countEl.textContent = `${trainingDraft.participants.employeeUsernames.length} karyawan dipilih dari total ${window.STATE.employees.length} karyawan (bisa ambil beberapa dari tiap departemen).`;
+    const countEl = document.getElementById("training-participant-manual-count");
+    if (countEl) {
+        const n = trainingDraft.participants.employeeUsernames.length;
+        countEl.textContent = `${n} dipilih`;
+        countEl.classList.toggle("hide", !n);
     }
 };
+// Cek apakah ada filter (departemen/posisi/manual) yang sudah dicentang di draft training ini
+// — kalau belum ada sama sekali, training-nya otomatis kebuka untuk SEMUA karyawan.
+function trainingHasAnyParticipantFilter(d) {
+    const p = d.participants || {};
+    return !!((p.departments || []).length || (p.positions || []).length || (p.employeeUsernames || []).length);
+}
 
 window.saveTrainingDraft = async function () {
     const d = trainingDraft;
@@ -5892,7 +6020,6 @@ window.saveTrainingDraft = async function () {
         coverImage: d.coverImage || "",
         modules: d.modules, quiz: d.quiz, assignment: d.assignment,
         participants: {
-            mode: d.participants.mode || "all",
             departments: Array.isArray(d.participants.departments) ? d.participants.departments : [],
             positions: Array.isArray(d.participants.positions) ? d.participants.positions : [],
             employeeUsernames: Array.isArray(d.participants.employeeUsernames) ? d.participants.employeeUsernames : []
@@ -6373,7 +6500,7 @@ function renderTrainingReport(id) {
 
     const regs = window.STATE.trainingRegs.filter(r => r.trainingId === id && r.status !== "cancelled");
 
-    const hasScope = !!(t.participants && t.participants.mode && t.participants.mode !== "all");
+    const hasScope = trainingHasAnyParticipantFilter(t);
     const targetEmployees = window.trainingTargetEmployees(t);
     // Penyebut (denominator) Keterlaksanaan/Kehadiran (Y) = jumlah target peserta sesuai
     // penugasan admin (window.trainingTargetEmployees), SELALU — bukan jumlah yang terdaftar.
@@ -7077,13 +7204,10 @@ function donutStatCard(icon, color, x, y, label, onclick) {
 function computeEmployeeOnboardingStats() {
     const usersByUsername = {};
     window.STATE.users.forEach(u => { usersByUsername[normalizeUsername(u.username)] = u; });
-    const orderedCache = {};
     let done = 0, progress = 0, notStarted = 0;
     const doneList = [], progressList = [], notStartedList = [];
     window.STATE.employees.forEach(e => {
-        const dept = (e.dept || "").trim();
-        if (!(dept in orderedCache)) orderedCache[dept] = orderedPublishedCoursesForDept(dept);
-        const ordered = orderedCache[dept];
+        const ordered = orderedPublishedCoursesForEmployee(e);
         const user = usersByUsername[normalizeUsername(e.username)];
         const completedCount = user ? ordered.filter(c => certOfUser(c.id, user.id)).length : 0;
         const entry = { emp: e, completedCount, orderedLength: ordered.length };
@@ -7219,7 +7343,7 @@ function renderEmployeeAdminList() {
                 <button onclick="window.guardedClick(this, () => window.uploadEmployeeExcel())" class="bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold px-3.5 py-2.5 rounded-2xl"><i class="fas fa-file-excel mr-1"></i> Upload Data Karyawan</button>
             </div>
         </div>
-        <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-3">
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
             ${donutStatCard("fa-user-check", "emerald", onboardingStats.done, onboardingStats.total, "Selesai Onboarding", "window.openEmployeeStatDetail('onboarding-done')")}
             ${donutStatCard("fa-chalkboard-user", "amber", tnaStats.attended, tnaStats.targeted, "Sudah Ikut Training TNA", "window.openEmployeeStatDetail('tna-attended')")}
             ${donutStatCard("fa-spinner", "sky", onboardingStats.progress, onboardingStats.total, "On Progress Onboarding", "window.openEmployeeStatDetail('onboarding-progress')")}
@@ -7249,20 +7373,28 @@ function renderEmployeeAdminList() {
 // orderedPublishedCourses, courseLockInfo) semuanya terikat ke user yang sedang login.
 // Admin butuh lihat data training milik KARYAWAN LAIN, jadi gak bisa pakai versi itu langsung.
 
-// Sama seperti window.deptAllowed, tapi departemen-nya diinput manual (bukan dari sesi login).
-function deptAllowedForDept(item, deptName) {
-    const targets = Array.isArray(item.departments) ? item.departments.filter(Boolean) : [];
-    if (!targets.length) return true;
-    const d = (deptName || "").trim().toLowerCase();
-    if (!d) return false;
-    return targets.some(t => String(t).trim().toLowerCase() === d);
+// Sama seperti window.deptAllowed, tapi dicek pakai data karyawan yang diinput manual (bukan
+// dari sesi login) — dipakai admin buat lihat training onboarding milik KARYAWAN LAIN.
+// Konsepnya sama dengan window.deptAllowed: filter gabungan (OR) departemen/posisi/manual.
+function courseAllowedForEmployee(item, emp) {
+    const departments = Array.isArray(item.departments) ? item.departments.filter(Boolean) : [];
+    const positions = Array.isArray(item.positions) ? item.positions.filter(Boolean) : [];
+    const employeeUsernames = Array.isArray(item.employeeUsernames) ? item.employeeUsernames.filter(Boolean) : [];
+    if (!departments.length && !positions.length && !employeeUsernames.length) return true;
+    const dept = String((emp && emp.dept) || "").trim().toLowerCase();
+    if (dept && departments.some(d => String(d).trim().toLowerCase() === dept)) return true;
+    const posisi = String((emp && emp.posisi) || "").trim().toLowerCase();
+    if (posisi && positions.some(x => String(x).trim().toLowerCase() === posisi)) return true;
+    const uname = normalizeUsername((emp && emp.username) || "");
+    if (uname && employeeUsernames.some(u => normalizeUsername(u) === uname)) return true;
+    return false;
 }
 
-// Sama seperti orderedPublishedCourses, tapi untuk departemen tertentu (bukan dept user login).
+// Sama seperti orderedPublishedCourses, tapi untuk karyawan tertentu (bukan user login).
 // Urutan HARUS identik dengan yang dipakai di katalog peserta supaya "training berikutnya yang
 // harus diselesaikan" konsisten dengan yang dilihat karyawan sendiri.
-function orderedPublishedCoursesForDept(deptName) {
-    const list = window.STATE.courses.filter(c => c.published && deptAllowedForDept(c, deptName));
+function orderedPublishedCoursesForEmployee(emp) {
+    const list = window.STATE.courses.filter(c => c.published && courseAllowedForEmployee(c, emp));
     return list.sort((a, b) => {
         const oa = Number.isFinite(a.order) ? a.order : Infinity;
         const ob = Number.isFinite(b.order) ? b.order : Infinity;
@@ -7314,7 +7446,7 @@ window.bulkCompleteOnboardingUntilCutoff = async function () {
         const user = usersByUsername[normalizeUsername(e.username)];
         if (!user) { empSkippedNoAccount++; continue; }
         const dept = (user.dept || e.dept || "").trim();
-        const ordered = orderedPublishedCoursesForDept(dept);
+        const ordered = orderedPublishedCoursesForEmployee(e);
         if (!ordered.length) continue;
 
         for (const course of ordered) {
@@ -7425,21 +7557,18 @@ window.onboardingBatchFor = function (emp) {
 
 // Semua karyawan (yang punya tanggal join valid & punya akun) dikelompokkan per batch,
 // lengkap dengan status penyelesaian onboarding-nya masing-masing (pakai logika yang sama
-// dengan modal Detail Karyawan: assignedCourses = orderedPublishedCoursesForDept, "selesai"
-// = punya sertifikat untuk SEMUA training onboarding yang ditargetkan ke departemennya).
+// dengan modal Detail Karyawan: assignedCourses = orderedPublishedCoursesForEmployee, "selesai"
+// = punya sertifikat untuk SEMUA training onboarding yang ditargetkan ke karyawan itu).
 window.buildOnboardingBatches = function () {
     const usersByUsername = {};
     window.STATE.users.forEach(u => { usersByUsername[normalizeUsername(u.username)] = u; });
-    const orderedCache = {};
 
     const batches = {};
     window.STATE.employees.forEach(e => {
         const batch = window.onboardingBatchFor(e);
         if (!batch) return;
         const user = usersByUsername[normalizeUsername(e.username)];
-        const dept = (e.dept || "").trim();
-        if (!orderedCache[dept]) orderedCache[dept] = orderedPublishedCoursesForDept(dept);
-        const ordered = orderedCache[dept];
+        const ordered = orderedPublishedCoursesForEmployee(e);
         const completedCount = user ? ordered.filter(c => certOfUser(c.id, user.id)).length : 0;
         const isDone = ordered.length === 0 || completedCount === ordered.length;
 
@@ -7973,8 +8102,7 @@ function buildEmployeeTrainingSummary(emp, user) {
         </div>`;
     }
 
-    const dept = (user.dept || emp.dept || "").trim();
-    const ordered = orderedPublishedCoursesForDept(dept);
+    const ordered = orderedPublishedCoursesForEmployee(emp);
     const completedCount = ordered.filter(c => certOfUser(c.id, user.id)).length;
     const percent = ordered.length ? Math.round((completedCount / ordered.length) * 100) : 0;
     const remaining = ordered.length - completedCount;
@@ -8053,9 +8181,8 @@ window.sendTrainingReminder = function (empId) {
     const user = usersByUsername[normalizeUsername(e.username)];
     if (!user) { window.toast("Karyawan ini belum punya akun, reminder tidak bisa dikirim.", "warn"); return; }
 
-    const dept = (user.dept || e.dept || "").trim();
-    const ordered = orderedPublishedCoursesForDept(dept);
-    if (!ordered.length) { window.toast("Tidak ada training onboarding untuk departemen karyawan ini.", "info"); return; }
+    const ordered = orderedPublishedCoursesForEmployee(e);
+    if (!ordered.length) { window.toast("Tidak ada training onboarding untuk karyawan ini.", "info"); return; }
 
     const incomplete = ordered.filter(c => !certOfUser(c.id, user.id));
     if (!incomplete.length) { window.toast("Semua training onboarding karyawan ini sudah selesai, tidak perlu reminder.", "success"); return; }
