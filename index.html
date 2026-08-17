@@ -2285,6 +2285,10 @@ function renderKpiMonthlyChart(stats, token) {
                     interaction: { intersect: false, mode: "index" },
                     plugins: {
                         legend: { display: false },
+                        // Matikan plugin global "valueLabels" (yang otomatis jalan di semua chart)
+                        // khusus di sini, karena chart ini sudah punya kpiValueLabelPlugin sendiri
+                        // buat nampilin angka persen — kalau dua-duanya aktif, teksnya jadi dobel.
+                        valueLabels: { display: false },
                         tooltip: {
                             backgroundColor: "#0f172a",
                             titleFont: { weight: "bold" },
@@ -7978,6 +7982,42 @@ function buildEmployeeTrainingSummary(emp, user) {
     </div>`;
 }
 
+// Blok ringkasan nilai KPI di modal Detail Karyawan: reuse computeUserKpiStatsFor yang sama
+// persis dipakai buat chart KPI di dashboard user, jadi angkanya otomatis konsisten.
+function buildEmployeeKpiSummary(emp) {
+    const stats = computeUserKpiStatsFor(emp);
+    if (!stats.hasData) {
+        return `
+        <div class="mt-4 pt-4 border-t border-slate-100">
+            <h4 class="font-black text-xs text-slate-700 mb-2 uppercase tracking-wide"><i class="fas fa-chart-area mr-1.5 text-indigo-400"></i> Nilai KPI ${stats.year}</h4>
+            <div class="bg-slate-50 text-slate-400 text-xs font-semibold rounded-2xl p-3">Belum ada data KPI bulanan untuk karyawan ini. Data KPI bisa dimasukkan lewat menu <b>Data Karyawan → Upload Data Karyawan</b>.</div>
+        </div>`;
+    }
+
+    const monthChips = stats.monthly.map((v, i) => {
+        if (v === null) return "";
+        const isBest = stats.best && i === stats.best.i;
+        const isWorst = stats.worst && i === stats.worst.i;
+        const chipClass = isBest ? "bg-emerald-50 text-emerald-600" : isWorst ? "bg-rose-50 text-rose-500" : "bg-slate-50 text-slate-500";
+        return `<span class="text-[10px] font-bold px-2 py-1 rounded-lg ${chipClass}">${KPI_MONTH_NAMES_SHORT[i]}: ${v}%</span>`;
+    }).filter(Boolean).join(" ");
+
+    const trendIcon = stats.trend === "naik" ? '<i class="fas fa-arrow-trend-up text-emerald-500"></i>' : stats.trend === "turun" ? '<i class="fas fa-arrow-trend-down text-rose-500"></i>' : '<i class="fas fa-minus text-slate-400"></i>';
+
+    return `
+    <div class="mt-4 pt-4 border-t border-slate-100">
+        <h4 class="font-black text-xs text-slate-700 mb-2 uppercase tracking-wide"><i class="fas fa-chart-area mr-1.5 text-indigo-400"></i> Nilai KPI ${stats.year}</h4>
+        <div class="bg-indigo-50 rounded-2xl p-4 flex items-center justify-between gap-3 flex-wrap">
+            <div class="min-w-0">
+                <p class="text-[10px] font-bold uppercase text-indigo-400 tracking-wide">Rata-rata KPI</p>
+                <p class="text-sm font-black text-indigo-700 mt-0.5">${trendIcon} Bulan terakhir (${KPI_MONTH_NAMES_FULL[stats.latest.i]}): ${stats.latest.v}%</p>
+            </div>
+            <div class="text-2xl font-black text-indigo-600">${stats.avg}%</div>
+        </div>
+        <div class="flex flex-wrap gap-1.5 mt-2">${monthChips}</div>
+    </div>`;
+}
+
 // Cari & buka link WhatsApp berisi reminder buat menyelesaikan training onboarding yang belum
 // tuntas. Link yang disisipkan selalu mengarah ke training PALING AWAL yang belum selesai
 // (sesuai urutan resmi), jadi karyawan diarahkan lanjut dari titik yang benar, bukan loncat.
@@ -8037,6 +8077,7 @@ window.showEmployeeDetail = function (empId) {
         ${row("Tgl Bergabung", window.fmtDate(e.tglBergabung))}
         ${row("No Kontak", e.kontak)}
         ${row("Tanggal Lahir", window.fmtDate(e.tglLahir))}
+        ${buildEmployeeKpiSummary(e)}
         ${buildEmployeeTrainingSummary(e, linkedUser)}
     `;
     window.openModal("modal-employee-detail");
