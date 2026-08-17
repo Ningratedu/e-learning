@@ -2474,6 +2474,233 @@ function renderCompanyKpiChart(stats, token) {
     });
 }
 
+// ================= TREN KETERLAKSANAAN & KELULUSAN TNA BULANAN (Dashboard Admin) =================
+// Bar (sumbu kiri) = jumlah SESI Training TNA yang sudah terlaksana per bulan (tahun berjalan).
+// Line (sumbu kanan) = jumlah PESERTA LULUS (sertifikat terbit) dari sesi-sesi di bulan itu.
+// Sesi & kelulusan dikelompokkan berdasarkan bulan TANGGAL TRAINING-nya (bukan tanggal sertifikat
+// terbit) — konsisten dengan cara Laporan Keterlaksanaan per-training menghitung target & hadir
+// (lihat renderTrainingReport / window.trainingTargetEmployees).
+function computeTnaMonthlyStats() {
+    const year = new Date().getFullYear();
+    const now = Date.now();
+    const S = window.STATE;
+    const trainingsThisYear = S.trainings.filter(t => t.date && new Date(t.date).getFullYear() === year);
+    // "Terlaksana" = sesi yang tanggalnya udah lewat/hari ini, bukan jadwal yang masih akan datang.
+    const doneTrainings = trainingsThisYear.filter(t => new Date(t.date).getTime() <= now);
+
+    const sessions = new Array(12).fill(0);
+    const targeted = new Array(12).fill(0);
+    const attended = new Array(12).fill(0);
+    const passed = new Array(12).fill(0);
+
+    doneTrainings.forEach(t => {
+        const m = new Date(t.date).getMonth();
+        sessions[m] += 1;
+        targeted[m] += window.trainingTargetEmployees(t).length;
+        attended[m] += S.attendance.filter(a => a.trainingId === t.id).length;
+        passed[m] += S.certificates.filter(c => c.trainingId === t.id).length;
+    });
+
+    const totalSessions = sessions.reduce((s, v) => s + v, 0);
+    if (!totalSessions) {
+        return { sessions, passed, attended, targeted, year, hasData: false, totalSessions: 0, totalPassed: 0, totalAttended: 0, totalTargeted: 0 };
+    }
+
+    const totalPassed = passed.reduce((s, v) => s + v, 0);
+    const totalAttended = attended.reduce((s, v) => s + v, 0);
+    const totalTargeted = targeted.reduce((s, v) => s + v, 0);
+    const attendancePct = totalTargeted ? Math.round((totalAttended / totalTargeted) * 100) : 0;
+    const passPct = totalAttended ? Math.round((totalPassed / totalAttended) * 100) : 0;
+
+    const monthsWithSessions = sessions.map((v, i) => ({ v, i })).filter(x => x.v > 0);
+    const busiest = monthsWithSessions.reduce((a, b) => (b.v > a.v ? b : a));
+    const monthsWithPassed = passed.map((v, i) => ({ v, i })).filter(x => x.v > 0);
+    const bestPassMonth = monthsWithPassed.length ? monthsWithPassed.reduce((a, b) => (b.v > a.v ? b : a)) : null;
+
+    return {
+        sessions, passed, attended, targeted, year, hasData: true,
+        totalSessions, totalPassed, totalAttended, totalTargeted, attendancePct, passPct,
+        busiest, bestPassMonth
+    };
+}
+
+function buildTnaMonthlyResumeSentence(stats) {
+    if (!stats.hasData) {
+        return `Belum ada sesi Training TNA yang terlaksana di tahun ${stats.year}. Jadwalkan training lewat menu <b>Training TNA → Tambah Training</b>.`;
+    }
+    const { totalSessions, totalPassed, totalAttended, attendancePct, passPct, busiest, bestPassMonth, year } = stats;
+    let s = `Sepanjang tahun ${year}, sudah ada <b>${totalSessions} sesi</b> Training TNA yang terlaksana dengan total <b>${totalAttended} peserta hadir</b> (keterlaksanaan <b>${attendancePct}%</b> dari target undangan), dan <b>${totalPassed} peserta lulus</b> (kelulusan <b>${passPct}%</b> dari yang hadir). `;
+    if (busiest) s += `Bulan tersibuk ada di <b>${KPI_MONTH_NAMES_FULL[busiest.i]}</b> dengan ${busiest.v} sesi. `;
+    if (bestPassMonth) s += `Kelulusan terbanyak tercatat di bulan <b>${KPI_MONTH_NAMES_FULL[bestPassMonth.i]}</b> dengan ${bestPassMonth.v} peserta lulus.`;
+    return s;
+}
+
+function tnaMonthlyTrendCard(stats) {
+    const resume = buildTnaMonthlyResumeSentence(stats);
+    const badges = stats.hasData
+        ? `<span class="text-xs font-black px-2.5 py-1 rounded-full bg-amber-50 text-amber-600">${stats.totalSessions} Sesi</span>
+           <span class="text-xs font-black px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-600">${stats.totalPassed} Lulus</span>`
+        : "";
+    return `
+    <div class="bg-white rounded-3xl border border-slate-100 shadow-sm p-4 mb-3">
+        <div class="flex flex-wrap items-center justify-between gap-2 mb-2">
+            <h3 class="font-black text-slate-700 text-sm"><i class="fas fa-chalkboard-user text-amber-500 mr-1"></i> Tren Keterlaksanaan & Kelulusan TNA ${stats.year || new Date().getFullYear()}</h3>
+            <div class="flex items-center gap-2">${badges}</div>
+        </div>
+        ${stats.hasData
+            ? `<div class="relative h-56 sm:h-72" id="tna-monthly-chart-wrap"><canvas id="tna-monthly-chart"></canvas></div>`
+            : `<div class="h-40 flex flex-col items-center justify-center text-center gap-1">
+                    <i class="fas fa-chart-simple text-3xl text-slate-200"></i>
+                    <p class="text-sm text-slate-400 max-w-xs">Belum ada sesi Training TNA yang terlaksana tahun ini.</p>
+               </div>`}
+        <div class="mt-3 bg-amber-50/60 rounded-2xl p-3.5 flex items-start gap-2.5">
+            <i class="fas fa-sparkles text-amber-500 mt-0.5 shrink-0"></i>
+            <p class="text-[13px] text-slate-600 leading-relaxed">${resume}</p>
+        </div>
+    </div>`;
+}
+
+window.__tnaMonthlyRenderToken = window.__tnaMonthlyRenderToken || 0;
+
+function waitForChartJsThenRenderTnaMonthly(stats, attempt, token) {
+    attempt = attempt || 0;
+    if (token !== window.__tnaMonthlyRenderToken) return; // sudah ada render halaman yang lebih baru
+    const canvas = document.getElementById("tna-monthly-chart");
+    if (!canvas) return; // halaman sudah berpindah, gak perlu render lagi
+
+    if (typeof Chart === "undefined") {
+        if (attempt < 20) {
+            setTimeout(() => waitForChartJsThenRenderTnaMonthly(stats, attempt + 1, token), 100);
+        } else {
+            console.error("Chart.js tidak tersedia, chart Keterlaksanaan & Kelulusan TNA tidak bisa ditampilkan.");
+            showTnaMonthlyChartError("Grafik gagal dimuat. Coba muat ulang halaman.");
+        }
+        return;
+    }
+    renderTnaMonthlyChart(stats, token);
+}
+
+function showTnaMonthlyChartError(message) {
+    const wrap = document.getElementById("tna-monthly-chart-wrap");
+    if (!wrap) return;
+    wrap.innerHTML = `
+        <div class="h-full flex flex-col items-center justify-center text-center gap-2">
+            <i class="fas fa-triangle-exclamation text-2xl text-amber-300"></i>
+            <p class="text-xs text-slate-400 max-w-[240px]">${window.escapeHtml(message)}</p>
+            <button onclick="window.location.reload()" class="text-xs font-black text-indigo-500 hover:underline">Muat ulang halaman</button>
+        </div>`;
+}
+
+let __tnaMonthlyChartInstance = null;
+function renderTnaMonthlyChart(stats, token) {
+    if (!stats.hasData) return;
+    if (typeof token !== "undefined" && token !== window.__tnaMonthlyRenderToken) return;
+    const canvas = document.getElementById("tna-monthly-chart");
+    if (!canvas || typeof Chart === "undefined") return;
+
+    // Sama seperti chart KPI: tunggu 1 frame biar layout kartu udah kelar duluan, supaya
+    // canvas gak kebaca tinggi 0 pas render pertama.
+    requestAnimationFrame(() => {
+        if (typeof token !== "undefined" && token !== window.__tnaMonthlyRenderToken) return;
+        const liveCanvas = document.getElementById("tna-monthly-chart");
+        if (!liveCanvas) return;
+
+        try {
+            if (__tnaMonthlyChartInstance) { __tnaMonthlyChartInstance.destroy(); __tnaMonthlyChartInstance = null; }
+            const ctx = liveCanvas.getContext("2d");
+
+            __tnaMonthlyChartInstance = new Chart(ctx, {
+                type: "bar",
+                data: {
+                    labels: KPI_MONTH_NAMES_SHORT,
+                    datasets: [
+                        {
+                            type: "bar",
+                            label: "Sesi Terlaksana",
+                            data: stats.sessions,
+                            backgroundColor: "rgba(245,158,11,.55)",
+                            borderColor: "#f59e0b",
+                            borderWidth: 1.5,
+                            borderRadius: 6,
+                            maxBarThickness: 28,
+                            yAxisID: "y",
+                            order: 2,
+                        },
+                        {
+                            type: "line",
+                            label: "Peserta Lulus",
+                            data: stats.passed,
+                            borderColor: "#10b981",
+                            backgroundColor: "#10b981",
+                            borderWidth: 2.5,
+                            tension: 0.4,
+                            pointRadius: 4,
+                            pointHoverRadius: 6,
+                            pointBackgroundColor: "#10b981",
+                            pointBorderColor: "#fff",
+                            pointBorderWidth: 2,
+                            yAxisID: "y1",
+                            order: 1,
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    layout: { padding: { top: 8 } },
+                    interaction: { intersect: false, mode: "index" },
+                    plugins: {
+                        legend: {
+                            display: true,
+                            position: "top",
+                            align: "end",
+                            labels: { boxWidth: 10, boxHeight: 10, usePointStyle: true, pointStyle: "circle", font: { size: 11, weight: "bold" }, color: "#64748b" }
+                        },
+                        tooltip: {
+                            backgroundColor: "#0f172a",
+                            titleFont: { weight: "bold" },
+                            padding: 10,
+                            cornerRadius: 10,
+                            callbacks: {
+                                afterBody: (items) => {
+                                    if (!items.length) return "";
+                                    const idx = items[0].dataIndex;
+                                    const tgt = stats.targeted[idx] || 0;
+                                    const att = stats.attended[idx] || 0;
+                                    return tgt ? [`Hadir: ${att}/${tgt} target`] : [];
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        y: {
+                            position: "left",
+                            beginAtZero: true,
+                            ticks: { precision: 0, font: { size: 10 }, color: "#94a3b8" },
+                            grid: { color: "#f1f5f9" },
+                            title: { display: true, text: "Sesi", font: { size: 10, weight: "bold" }, color: "#94a3b8" }
+                        },
+                        y1: {
+                            position: "right",
+                            beginAtZero: true,
+                            ticks: { precision: 0, font: { size: 10 }, color: "#94a3b8" },
+                            grid: { display: false },
+                            title: { display: true, text: "Peserta Lulus", font: { size: 10, weight: "bold" }, color: "#94a3b8" }
+                        },
+                        x: {
+                            grid: { display: false },
+                            ticks: { font: { size: 10, weight: "bold" }, color: "#94a3b8" }
+                        }
+                    }
+                }
+            });
+        } catch (err) {
+            console.error("Gagal render chart Keterlaksanaan & Kelulusan TNA:", err);
+            showTnaMonthlyChartError("Terjadi kesalahan saat menggambar grafik.");
+        }
+    });
+}
+
 function tsMillis(ts) {
     if (!ts) return 0;
     if (ts.seconds) return ts.seconds * 1000;
@@ -7736,6 +7963,7 @@ window.ROUTES["admin/reports"] = requireAdmin(function () {
     const tnaStats = computeEmployeeTnaStats();
     const companyKpiStats = computeCompanyKpiStats();
     window.__companyKpiView = "overall"; // reset ke tampilan default tiap kali halaman ini dibuka
+    const tnaMonthlyStats = computeTnaMonthlyStats();
 
     const topCourses = [...S.courses].map(c => ({
         c, count: S.enrollments.filter(e => e.courseId === c.id).length
@@ -7826,6 +8054,7 @@ window.ROUTES["admin/reports"] = requireAdmin(function () {
         </div>
 
         ${companyKpiPerformanceCard(companyKpiStats)}
+        ${tnaMonthlyTrendCard(tnaMonthlyStats)}
 
         <div class="grid grid-cols-1 lg:grid-cols-3 gap-3 mb-3">
             <div class="bg-white rounded-3xl border border-slate-100 shadow-sm p-4 lg:col-span-2">
@@ -7862,6 +8091,9 @@ window.ROUTES["admin/reports"] = requireAdmin(function () {
 
     const companyKpiToken = ++window.__companyKpiRenderToken;
     waitForChartJsThenRenderCompany(companyKpiStats, 0, companyKpiToken);
+
+    const tnaMonthlyToken = ++window.__tnaMonthlyRenderToken;
+    waitForChartJsThenRenderTnaMonthly(tnaMonthlyStats, 0, tnaMonthlyToken);
 });
 
 // Mengisi & membuka modal detail (reuse "modal-dashboard-detail") untuk tiap kartu di halaman
