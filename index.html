@@ -846,6 +846,32 @@ html.dark .corevalue-wire { background: rgba(96, 165, 250, .2); }
     </div>
 </div>
 
+<!-- ================= MODAL: RESET DATA KARYAWAN & TRAINING (superadmin only) ================= -->
+<div id="modal-reset-employee-data" class="fixed inset-0 z-[10000] hide modal-overlay flex items-center justify-center p-4">
+    <div class="bg-white w-full max-w-lg rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+        <div class="p-4 border-b flex justify-between items-center bg-rose-50 shrink-0">
+            <h3 class="text-lg font-black text-rose-600"><i class="fas fa-triangle-exclamation mr-1"></i> Reset Data Karyawan &amp; Training</h3>
+            <button onclick="window.closeModal('modal-reset-employee-data')" class="text-slate-400 hover:text-slate-700"><i class="fas fa-times"></i></button>
+        </div>
+        <div class="p-4 overflow-y-auto space-y-3">
+            <p class="text-sm text-slate-600">Ini akan <strong class="text-rose-600">menghapus permanen</strong> semua data berikut:</p>
+            <ul class="text-xs text-slate-600 list-disc pl-4 space-y-1">
+                <li>Semua <strong>Data Karyawan</strong> (dummy) beserta <strong>Akun</strong> yang otomatis dibuat darinya</li>
+                <li>Semua histori <strong>progress &amp; penyelesaian Training Onboarding</strong> (enrollment, sertifikat, percobaan kuis)</li>
+                <li>Semua histori <strong>Training TNA</strong> (pendaftaran, presensi, sertifikat, percobaan kuis, evaluasi)</li>
+                <li>Semua <strong>tugas yang sudah dikumpulkan</strong> (assignment submissions)</li>
+            </ul>
+            <p class="text-xs text-emerald-600 bg-emerald-50 rounded-xl px-3 py-2"><i class="fas fa-circle-check mr-1"></i> Yang <strong>TIDAK</strong> ikut terhapus: materi Training Onboarding &amp; jadwal Training TNA (kontennya tetap aman, tinggal ditargetkan ulang ke data karyawan yang baru).</p>
+            <p class="text-xs font-bold text-rose-600">Tindakan ini tidak bisa dibatalkan. Pastikan data karyawan yang beneran sudah siap diupload setelah ini.</p>
+            <div>
+                <label class="text-[10px] font-bold uppercase text-slate-400">Ketik <span class="text-rose-600">HAPUS</span> untuk konfirmasi</label>
+                <input id="reset-employee-confirm-input" oninput="document.getElementById('reset-employee-confirm-btn').disabled = this.value.trim() !== 'HAPUS'" placeholder="Ketik HAPUS di sini..." class="w-full border border-rose-200 rounded-lg px-2.5 py-2 text-sm mt-1 focus:ring-2 focus:ring-rose-300 focus:outline-none">
+            </div>
+            <button id="reset-employee-confirm-btn" disabled onclick="window.guardedClick(this, () => window.confirmResetEmployeeData())" class="w-full bg-rose-600 hover:bg-rose-700 disabled:opacity-40 disabled:hover:bg-rose-600 text-white font-bold py-3 rounded-2xl transition"><i class="fas fa-trash mr-1"></i> Hapus Permanen Sekarang</button>
+        </div>
+    </div>
+</div>
+
 <!-- ================= MODAL: KIRIM UNDANGAN TRAINING TNA ================= -->
 <div id="modal-training-invite" class="fixed inset-0 z-[10000] hide modal-overlay flex items-center justify-center p-4">
     <div class="bg-white w-full max-w-lg rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[85vh]">
@@ -2504,7 +2530,7 @@ function companyKpiPerformanceCard(stats) {
     return `
     <div class="bg-white rounded-3xl border border-slate-100 shadow-sm p-4 mb-3">
         <div class="flex flex-wrap items-center justify-between gap-2 mb-2">
-            <h3 class="font-black text-slate-700 text-sm"><i class="fas fa-chart-line text-emerald-500 mr-1"></i> Tren Avg KPI All Karyawan ${stats.year || new Date().getFullYear()}</h3>
+            <h3 class="font-black text-slate-700 text-sm"><i class="fas fa-chart-line text-emerald-500 mr-1"></i> Tren KPI Perusahaan ${stats.year || new Date().getFullYear()}</h3>
             <div class="flex items-center gap-2">${avgBadge}${deptToggle}</div>
         </div>
         ${stats.hasData
@@ -4525,7 +4551,7 @@ function renderTrainingDetail(id) {
             </div>`;
         } else {
             const lockMsg = !reg
-                ? 'Daftar training untuk membuka materi, kuis, dan penugasan.'
+                ? 'Klik Daftar training untuk membuka materi, kuis, dan penugasan.'
                 : 'Lakukan presensi dengan kode dari trainer untuk membuka materi, kuis, dan penugasan.';
             materiArea = `<div class="mt-3 bg-slate-50 border border-dashed border-slate-200 rounded-2xl p-4 flex items-center gap-3"><i class="fas fa-lock text-slate-300"></i><p class="text-xs text-slate-400 font-semibold">${lockMsg}</p></div>`;
         }
@@ -7273,6 +7299,49 @@ window.downloadEmployeeTemplate = function () {
     XLSX.writeFile(wb, "Template_Data_Karyawan_NingratEdu.xlsx");
 };
 
+// ================= RESET DATA KARYAWAN & TRAINING (superadmin only) =================
+// Buat bersihin data dummy (karyawan + akun + semua histori training) sebelum ganti ke data
+// karyawan yang beneran. SENGAJA gak nyentuh koleksi "courses" & "trainings" (materi/jadwal
+// training) — cuma data yang terikat ke karyawan/akun yang dihapus.
+const RESET_EMPLOYEE_COLLECTIONS = [
+    "employees", "users", "enrollments", "trainingRegistrations",
+    "attendance", "certificates", "quizAttempts", "evaluations", "assignmentSubmissions"
+];
+window.openResetEmployeeDataModal = function () {
+    if (!window.sel.isSuperAdmin()) { window.toast("Cuma Super Admin yang bisa melakukan reset ini.", "warn"); return; }
+    const input = document.getElementById("reset-employee-confirm-input");
+    const btn = document.getElementById("reset-employee-confirm-btn");
+    if (input) input.value = "";
+    if (btn) btn.disabled = true;
+    window.openModal("modal-reset-employee-data");
+};
+window.confirmResetEmployeeData = async function () {
+    const input = document.getElementById("reset-employee-confirm-input");
+    if (!input || input.value.trim() !== "HAPUS") { window.toast('Ketik "HAPUS" persis buat konfirmasi.', "warn"); return; }
+    if (!window.sel.isSuperAdmin()) { window.toast("Cuma Super Admin yang bisa melakukan reset ini.", "warn"); return; }
+
+    const { getDocs, col, writeBatch, db } = window.LMS_DB;
+    try {
+        for (const name of RESET_EMPLOYEE_COLLECTIONS) {
+            const snap = await getDocs(col(name));
+            const docs = snap.docs;
+            // Firestore batch max 500 operasi — dipecah per 450 biar aman.
+            for (let i = 0; i < docs.length; i += 450) {
+                const chunk = docs.slice(i, i + 450);
+                const batch = writeBatch(db);
+                chunk.forEach(d => batch.delete(d.ref));
+                await batch.commit();
+            }
+        }
+        window.closeModal("modal-reset-employee-data");
+        window.toast("Data karyawan & training berhasil direset. Silakan upload data karyawan yang baru.", "success");
+        window.navigate("/admin/employees");
+    } catch (e) {
+        console.error(e);
+        window.toast("Gagal reset data: " + (e.message || e), "error");
+    }
+};
+
 function fmtMasaKerja(v) {
     if (v === null || v === undefined || isNaN(v)) return "-";
     const years = Math.floor(v);
@@ -7458,7 +7527,8 @@ function renderEmployeeAdminList() {
                 <h1 class="text-xl font-black text-slate-800">Data Karyawan</h1>
                 <p class="text-sm text-slate-500">Master data karyawan &amp; sumber pembuatan akun otomatis. Upload ulang file Excel yang sama buat sinkronisasi data terbaru.</p>
             </div>
-            <div class="flex items-center gap-2">
+            <div class="flex items-center gap-2 flex-wrap justify-end">
+                ${window.sel.isSuperAdmin() ? `<button onclick="window.openResetEmployeeDataModal()" class="bg-white border border-rose-200 hover:border-rose-400 text-rose-500 text-xs font-bold px-3.5 py-2.5 rounded-2xl"><i class="fas fa-triangle-exclamation mr-1"></i> Reset Data Karyawan</button>` : ""}
                 <button onclick="window.downloadEmployeeTemplate()" class="bg-white border border-slate-200 hover:border-indigo-300 text-slate-600 text-xs font-bold px-3.5 py-2.5 rounded-2xl"><i class="fas fa-download mr-1"></i> Template</button>
                 <button onclick="window.guardedClick(this, () => window.uploadEmployeeExcel())" class="bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold px-3.5 py-2.5 rounded-2xl"><i class="fas fa-file-excel mr-1"></i> Upload Data Karyawan</button>
             </div>
