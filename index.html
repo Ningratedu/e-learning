@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>NingratEdu - Learning Management System</title>
+<title>NingratEdu - Learning Management System Trusmi Group</title>
 
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
@@ -4611,14 +4611,35 @@ async function issueCertificate(refId, title, type = "course") {
     if (existing) return existing;
     const { col, addDoc, serverTimestamp } = window.LMS_DB;
     const certId = "CERT-" + Date.now().toString(36).toUpperCase();
+    // Cek DULU sebelum addDoc apakah ini sertifikat pertama yang terbit buat training ini —
+    // dipakai buat trigger auto-update "Training Terlaksana" di Hasil TNA yang linked (lihat bawah).
+    const isFirstPassForTraining = type === "training" && window.STATE.certificates.filter(c => c.trainingId === refId).length === 0;
     const payload = {
         userId: window.STATE.user.id, userName: window.STATE.user.name || window.STATE.user.username,
         title, certId, issuedAt: serverTimestamp(), type
     };
     payload[type === "course" ? "courseId" : "trainingId"] = refId;
     await addDoc(col("certificates"), payload);
+    // Auto-update progress Hasil TNA: begitu ADA MINIMAL 1 peserta lulus (sertifikat training
+    // pertama terbit) dari training yang linkedTnaResultId-nya keisi, progress Hasil TNA terkait
+    // otomatis maju ke tahap "Training Terlaksana" (kalau belum sejauh itu).
+    if (isFirstPassForTraining) {
+        const tr = window.STATE.trainings.find(x => x.id === refId);
+        if (tr && tr.linkedTnaResultId) {
+            const tnaResult = window.STATE.tnaResults.find(x => x.id === tr.linkedTnaResultId);
+            if (tnaResult && tnaProgressIndex(tnaResult.progressStatus) < tnaProgressIndex("terlaksana")) {
+                await setDocForTnaProgress(tr.linkedTnaResultId, "terlaksana");
+            }
+        }
+    }
 }
 window.issueCertificate = issueCertificate;
+// Helper kecil biar issueCertificate gak perlu import ref/setDoc/serverTimestamp ganda —
+// dipakai khusus buat auto-advance progressStatus Hasil TNA dari training yang linked.
+async function setDocForTnaProgress(tnaResultId, progressStatus) {
+    const { ref, setDoc, serverTimestamp } = window.LMS_DB;
+    await setDoc(ref("tnaResults", tnaResultId), { progressStatus, updatedAt: serverTimestamp() }, { merge: true });
+}
 
 
 // ================= TRAINING BY TNA (INTERNAL) =================
@@ -6149,6 +6170,7 @@ function tnaRequesterEmployee(t) {
 window.openTnaApprovalRequest = function (id) {
     const t = window.STATE.tnaResults.find(x => x.id === id);
     if (!t) { window.toast("Data Hasil TNA tidak ditemukan", "error"); return; }
+    if (!t.moduleFileUrl) { window.toast("Upload modul/materi dulu sebelum mengajukan approval", "warn"); return; }
 
     const requesterName = t.createdByName || t.createdByUsername || "Pembuat request";
     const emp = tnaRequesterEmployee(t);
@@ -6380,6 +6402,7 @@ function renderTnaResultBuilder(id, backRoute) {
             levelJabatan: "", problem: "", identification: "", correctiveAction: "",
             actionRecommendation: "", deadlineModul: "", deadlinePelaksanaan: "",
             notes: "", attachmentUrl: "", attachmentName: "",
+            moduleFileUrl: "", moduleFileName: "",
             progressStatus: "belum_mulai", moduleApprovalStatus: "none"
         };
         if (!tnaResultDraft.progressStatus) tnaResultDraft.progressStatus = "belum_mulai";
@@ -6393,6 +6416,9 @@ function renderTnaResultBuilder(id, backRoute) {
     const posOptions = window.sel.allPosisiNames();
     const canDecideApproval = d.moduleApprovalStatus === "menunggu" && (isAdminCtx || normalizeUsername(d.createdByUsername) === normalizeUsername(u.username));
     const canRequestApproval = isAdminCtx && !!d._id; // Admin/Tim Training aja yang bisa ajukan approval, dan baru bisa kalau datanya udah tersimpan
+    // Semua training (Training By TNA) yang lahir dari entri Hasil TNA ini — 1 Hasil TNA bisa
+    // punya banyak sesi/batch training sekaligus (linkedTnaResultId nunjuk balik ke sini).
+    const linkedTrainings = d._id ? window.STATE.trainings.filter(tr => tr.linkedTnaResultId === d._id) : [];
 
     window.setPage(`
         <a href="${backRoute}" class="text-xs font-bold text-slate-400 hover:text-amber-600"><i class="fas fa-arrow-left mr-1"></i> Kembali</a>
@@ -6472,10 +6498,56 @@ function renderTnaResultBuilder(id, backRoute) {
             </div>
 
             <div class="bg-white rounded-2xl border border-slate-100 shadow-sm p-3 space-y-2">
+                <h3 class="font-black text-sm text-slate-700"><i class="fas fa-calendar-check text-amber-500 mr-1"></i> Training TNA Terkait</h3>
+                ${linkedTrainings.length ? `
+                <div class="space-y-1.5">
+                    ${linkedTrainings.map(tr => {
+                        const sessionStatus = window.trainingSessionStatus ? window.trainingSessionStatus(tr) : (tr.sessionStatus || "not_started");
+                        const passCount = window.STATE.certificates.filter(c => c.trainingId === tr.id).length;
+                        const sessionBadge = sessionStatus === "finished" ? `<span class="text-[10px] font-black px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-600">Selesai</span>` : sessionStatus === "ongoing" ? `<span class="text-[10px] font-black px-2 py-0.5 rounded-full bg-amber-50 text-amber-600">Berlangsung</span>` : `<span class="text-[10px] font-black px-2 py-0.5 rounded-full bg-slate-100 text-slate-500">Belum Mulai</span>`;
+                        return `
+                        <a href="#/admin/trainings/${tr.id}" class="flex items-center gap-2 bg-slate-50 hover:bg-slate-100 rounded-lg px-2.5 py-1.5 transition">
+                            <div class="flex-1 min-w-0">
+                                <p class="text-xs font-bold text-slate-700 truncate">${window.escapeHtml(tr.title || "(Tanpa judul)")}</p>
+                                <p class="text-[10px] text-slate-400">${window.escapeHtml(tr.date || "-")} • ${passCount} lulus</p>
+                            </div>
+                            ${sessionBadge}
+                        </a>`;
+                    }).join("")}
+                </div>
+                ` : `
+                <p class="text-xs text-slate-400">Belum ada training yang dibuat dari entri Hasil TNA ini.</p>
+                `}
+                ${(isAdminCtx && d._id) ? `
+                <button type="button" onclick="window.guardedClick(this, () => window.createTrainingFromTnaResult('${d._id}'))" class="w-full bg-white border border-slate-200 hover:border-amber-300 text-slate-500 hover:text-amber-600 text-xs font-bold py-2.5 rounded-2xl transition"><i class="fas fa-plus mr-1"></i> Buat Training dari Sini</button>
+                ` : (isAdminCtx ? `
+                <p class="text-[11px] text-slate-400"><i class="fas fa-circle-info mr-1"></i>Simpan data ini dulu sebelum bisa bikin training dari sini.</p>
+                ` : "")}
+            </div>
+
+            <div class="bg-white rounded-2xl border border-slate-100 shadow-sm p-3 space-y-2">
                 <div class="flex items-center justify-between flex-wrap gap-2">
                     <h3 class="font-black text-sm text-slate-700"><i class="fas fa-stamp text-indigo-500 mr-1"></i> Approval Modul/Materi</h3>
                     ${tnaApprovalBadgeHtml(d.moduleApprovalStatus)}
                 </div>
+                ${isAdminCtx ? `
+                <div class="space-y-1.5">
+                    ${d.moduleFileUrl ? `
+                    <div class="flex items-center gap-2 bg-slate-50 rounded-lg px-2.5 py-1.5">
+                        <a href="${window.escapeHtml(d.moduleFileUrl)}" target="_blank" class="text-xs font-bold text-indigo-500 hover:underline flex-1 min-w-0 truncate"><i class="fas fa-file-circle-check mr-1"></i>${window.escapeHtml(d.moduleFileName || 'Lihat modul/materi')}</a>
+                        <button type="button" onclick="tnaResultDraft.moduleFileUrl=''; tnaResultDraft.moduleFileName=''; rerenderTnaResultBuilder()" class="text-rose-400 hover:text-rose-600 text-xs px-1"><i class="fas fa-xmark"></i></button>
+                    </div>` : ''}
+                    <div class="flex items-center gap-2">
+                        <input id="tna-module-file-input" type="file" class="flex-1 min-w-0 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs">
+                        <button type="button" id="tna-module-upload-btn" onclick="window.guardedClick(this, () => window.uploadTnaModuleFile())" class="shrink-0 bg-white border border-slate-200 hover:border-indigo-300 text-slate-500 hover:text-indigo-600 text-[11px] font-bold px-3 py-2 rounded-lg whitespace-nowrap"><i class="fas fa-upload mr-1"></i> Upload</button>
+                    </div>
+                    <p class="text-[11px] text-slate-400">Upload modul/materi training di sini dulu sebelum kirim permohonan approval, biar pembuat request bisa cek isinya.</p>
+                </div>
+                ` : (d.moduleFileUrl ? `
+                <a href="${window.escapeHtml(d.moduleFileUrl)}" target="_blank" class="flex items-center gap-2 bg-indigo-50 rounded-lg px-2.5 py-1.5 text-xs font-bold text-indigo-600 hover:underline"><i class="fas fa-file-circle-check mr-1"></i>${window.escapeHtml(d.moduleFileName || 'Lihat modul/materi')}</a>
+                ` : `
+                <p class="text-[11px] text-slate-400 bg-slate-50 rounded-lg px-2.5 py-1.5"><i class="fas fa-circle-info mr-1"></i>Modul/materi belum diupload Tim Training.</p>
+                `)}
                 ${d.moduleApprovalStatus === 'ditolak' && d.moduleApprovalDecisionNote ? `<p class="text-xs text-rose-500 bg-rose-50 rounded-lg px-2.5 py-1.5"><i class="fas fa-circle-info mr-1"></i>Alasan ditolak: ${window.escapeHtml(d.moduleApprovalDecisionNote)}</p>` : ''}
                 ${canDecideApproval ? `
                 <p class="text-xs text-slate-400">Modul sudah diajukan Admin/Tim Training, ada permohonan approval yang menunggu keputusan kamu sebagai pembuat request:</p>
@@ -6528,6 +6600,25 @@ window.uploadTnaAttachment = async function () {
     }
 };
 
+window.uploadTnaModuleFile = async function () {
+    const fileInput = document.getElementById("tna-module-file-input");
+    const file = fileInput && fileInput.files[0];
+    if (!file) { window.toast("Pilih file dulu sebelum upload", "warn"); return; }
+    const btn = document.getElementById("tna-module-upload-btn");
+    if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i> Mengupload...'; }
+    try {
+        const url = await window.LMS_DB.uploadFile(file, "tna-modules");
+        tnaResultDraft.moduleFileUrl = url;
+        tnaResultDraft.moduleFileName = file.name;
+        window.toast("Modul/materi berhasil diupload", "success");
+        rerenderTnaResultBuilder();
+    } catch (e) {
+        console.error(e);
+        window.toast("Gagal upload modul/materi: " + (e.message || e), "error");
+        if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-upload mr-1"></i> Upload'; }
+    }
+};
+
 window.saveTnaResultDraft = async function (backRoute) {
     const d = tnaResultDraft;
     if (!d.dept.trim() || !d.levelJabatan.trim() || !d.problem.trim()) {
@@ -6544,6 +6635,7 @@ window.saveTnaResultDraft = async function (backRoute) {
         deadlineModul: d.deadlineModul || "", deadlinePelaksanaan: d.deadlinePelaksanaan || "",
         notes: (d.notes || "").trim(),
         attachmentUrl: d.attachmentUrl || "", attachmentName: d.attachmentName || "",
+        moduleFileUrl: d.moduleFileUrl || "", moduleFileName: d.moduleFileName || "",
         progressStatus: d.progressStatus || "belum_mulai",
         moduleApprovalStatus: d.moduleApprovalStatus || "none",
         updatedAt: serverTimestamp()
@@ -6786,6 +6878,38 @@ let trainingFilterOpen = null; // null | 'dept' | 'level' | 'emp' — dropdown T
 // Catatan: pilihan manual karyawan di luar dept/level (mode lama) gak selalu bisa dipetakan 1:1
 // ke model baru, jadi bagian itu sengaja gak diikutkan (kosong) — admin tinggal cek ulang di
 // dropdown "Nama Karyawan" kalau perlu.
+// Prefill form "Jadwal Baru" Training TNA dari sebuah entri Hasil TNA — dipanggil dari tombol
+// "Buat Training dari Sini" di form Hasil TNA (admin context). Draft-nya cuma STARTING POINT:
+// semua field (judul, deskripsi, tanggal, target peserta) tetap bisa diedit manual sebelum
+// disimpan, gak ada yang di-lock. linkedTnaResultId disimpan biar bisa nyambungin balik training
+// yang lahir dari entri Hasil TNA ini (dipakai buat auto-update progress & cross-link tampilan).
+window.createTrainingFromTnaResult = function (id) {
+    const t = window.STATE.tnaResults.find(x => x.id === id);
+    if (!t) { window.toast("Data Hasil TNA tidak ditemukan", "error"); return; }
+    const deptNames = window.sel.allDeptNames();
+    const posNames = window.sel.allPosisiNames();
+    trainingDraft = {
+        title: t.actionRecommendation || t.problem || "",
+        description: [t.problem ? `Problem: ${t.problem}` : "", t.correctiveAction ? `Corrective Action: ${t.correctiveAction}` : ""].filter(Boolean).join("\n\n"),
+        category: "", trainer: "", location: "",
+        date: t.deadlinePelaksanaan || "", startTime: "", endTime: "", quota: "", attendanceCode: genCode(), coverImage: "",
+        modules: [], quiz: { passingScore: 70, questions: [] },
+        assignment: { enabled: false, title: "", description: "", deadline: "" },
+        participants: {
+            // Prefill: exclude semua dept/level SELAIN yang match Hasil TNA ini. Tetap full-editable
+            // di form training-nya (checkbox biasa), ini cuma starting point bukan constraint.
+            excludedDepartments: t.dept ? deptNames.filter(dep => dep.toLowerCase() !== t.dept.toLowerCase()) : [],
+            excludedPositions: t.levelJabatan ? posNames.filter(pos => pos.toLowerCase() !== t.levelJabatan.toLowerCase()) : [],
+            excludedEmployeeUsernames: []
+        },
+        linkedTnaResultId: t.id,
+        _loadedId: "new", _id: null
+    };
+    tnaResultDraft = null;
+    window.navigate("/admin/trainings/new");
+    window.toast("Form training baru diisi otomatis dari Hasil TNA ini — cek & sesuaikan sebelum simpan", "success");
+};
+
 function migrateTrainingParticipants(p) {
     if (!p) return { excludedDepartments: [], excludedPositions: [], excludedEmployeeUsernames: [] };
     if (("excludedDepartments" in p) || ("excludedPositions" in p) || ("excludedEmployeeUsernames" in p)) {
@@ -6817,8 +6941,10 @@ function renderTrainingBuilder(id) {
             date: "", startTime: "", endTime: "", quota: "", attendanceCode: genCode(), coverImage: "",
             modules: [], quiz: { passingScore: 70, questions: [] },
             assignment: { enabled: false, title: "", description: "", deadline: "" },
-            participants: { excludedDepartments: [], excludedPositions: [], excludedEmployeeUsernames: [] }
+            participants: { excludedDepartments: [], excludedPositions: [], excludedEmployeeUsernames: [] },
+            linkedTnaResultId: ""
         };
+        if (trainingDraft.linkedTnaResultId === undefined) trainingDraft.linkedTnaResultId = "";
         if (trainingDraft.coverImage === undefined) trainingDraft.coverImage = "";
         if (!trainingDraft.assignment) trainingDraft.assignment = { enabled: false, title: "", description: "", deadline: "" };
         trainingDraft.participants = migrateTrainingParticipants(trainingDraft.participants);
@@ -6890,6 +7016,14 @@ function renderTrainingBuilder(id) {
     window.setPage(`
         <a href="#/admin/trainings" class="text-xs font-bold text-slate-400 hover:text-amber-600"><i class="fas fa-arrow-left mr-1"></i> Kembali</a>
         <h1 class="text-xl font-black text-slate-800 mt-2 mb-3">${d._id ? 'Edit Training TNA' : 'Jadwal Training TNA Baru'}</h1>
+        ${d.linkedTnaResultId ? (() => {
+            const linkedTna = window.STATE.tnaResults.find(x => x.id === d.linkedTnaResultId);
+            return linkedTna ? `
+            <a href="#/admin/tna-results/${linkedTna.id}" class="flex items-center gap-2 bg-amber-50 border border-amber-100 rounded-xl px-3 py-2 mb-3 hover:bg-amber-100 transition">
+                <i class="fas fa-diagram-project text-amber-500"></i>
+                <span class="text-xs font-bold text-amber-700 flex-1 min-w-0 truncate">Tindak lanjut dari Hasil TNA: ${window.escapeHtml(linkedTna.dept || '-')} • ${window.escapeHtml(linkedTna.problem || '-')}</span>
+            </a>` : "";
+        })() : ""}
         <div class="space-y-2">
                 <div class="bg-white rounded-2xl border border-slate-100 shadow-sm p-3 space-y-2">
                     <h3 class="font-black text-sm text-slate-700">Info Training</h3>
@@ -7267,6 +7401,7 @@ window.saveTrainingDraft = async function () {
             excludedPositions: Array.isArray(d.participants.excludedPositions) ? d.participants.excludedPositions : [],
             excludedEmployeeUsernames: Array.isArray(d.participants.excludedEmployeeUsernames) ? d.participants.excludedEmployeeUsernames : []
         },
+        linkedTnaResultId: d.linkedTnaResultId || "",
         updatedAt: serverTimestamp()
     };
     if (d._id) {
