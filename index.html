@@ -2371,10 +2371,10 @@ function renderUserDashboard() {
             <p class="text-sm text-slate-500">Ini ringkasan progres belajar kamu.</p>
         </div>
         <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
-            ${diagramStatCardDark("fa-book-open", "indigo", donutDiagramSvg(onboardingPct, DONUT_STAT_COLORS.indigo.hex), "Training Onboarding", `${completedCourses}/${myAssignedCourses.length} selesai`, "window.openDashboardDetail('enrolled')")}
-            ${diagramStatCardDark("fa-chart-line", "sky", prePostBarDiagramSvg(prePostStats.avgPre, prePostStats.avgPost), "Progres Training", prePostStats.n ? `<span class="block" style="font-size:8.5px;line-height:1.25">Nilai rata² Pre test ${prePostStats.avgPre}</span><span class="block" style="font-size:8.5px;line-height:1.25">Nilai rata² Post test ${prePostStats.avgPost}</span>` : "Belum ada data", "window.openDashboardDetail('prepost')")}
-            ${diagramStatCardDark("fa-chalkboard-user", "amber", donutDiagramSvg(tnaPct, DONUT_STAT_COLORS.amber.hex), "Training by TNA", `${myCompletedTnaTrainings}/${myTargetTrainings.length} selesai`, "window.openDashboardDetail('registered')")}
-            ${clickableStatCard("fa-award", "rose", myCerts.length, "Sertifikat", "window.openDashboardDetail('certificates')")}
+            ${diagramStatCardDark("fa-book-open", "indigo", donutDiagramSvg(onboardingPct, DONUT_STAT_COLORS.indigo.hex, true), "Training Onboarding", `${completedCourses}/${myAssignedCourses.length} selesai`, "window.openDashboardDetail('enrolled')", true)}
+            ${diagramStatCardDark("fa-chart-line", "sky", prePostBarDiagramSvg(prePostStats.avgPre, prePostStats.avgPost, true), "Progres Training", prePostStats.n ? `<span class="block" style="font-size:10.5px;line-height:1.3">Nilai rata² Pre test ${prePostStats.avgPre}</span><span class="block" style="font-size:10.5px;line-height:1.3">Nilai rata² Post test ${prePostStats.avgPost}</span>` : "Belum ada data", "window.openDashboardDetail('prepost')", true)}
+            ${diagramStatCardDark("fa-chalkboard-user", "amber", donutDiagramSvg(tnaPct, DONUT_STAT_COLORS.amber.hex, true), "Training by TNA", `${myCompletedTnaTrainings}/${myTargetTrainings.length} selesai`, "window.openDashboardDetail('registered')", true)}
+            ${clickableStatCard("fa-award", "rose", myCerts.length, "Sertifikat", "window.openDashboardDetail('certificates')", true)}
         </div>
         <div class="grid grid-cols-1 lg:grid-cols-2 gap-3">
             <div class="bg-white rounded-3xl border border-slate-100 shadow-sm p-4">
@@ -3210,19 +3210,19 @@ function courseCoverStyleSafe(c) {
 // membuka modal "modal-dashboard-detail" berisi rincian sesuai kategori kartunya
 // (Training Diikuti / Selesai / Terdaftar / Sertifikat), lengkap dengan tombol
 // aksi "Lanjutkan" atau "Lihat Kembali" per item.
-function clickableStatCard(icon, color, value, label, onclick) {
+function clickableStatCard(icon, color, value, label, onclick, big) {
     const c = DONUT_STAT_COLORS[color] || DONUT_STAT_COLORS.indigo;
     const tag = onclick ? "button" : "div";
     const attrs = onclick ? ` type="button" onclick="${onclick}"` : "";
     return `
     <${tag}${attrs} class="text-left w-full bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden flex items-stretch${onclick ? " hover:shadow-md hover:border-indigo-200 hover:-translate-y-0.5 active:translate-y-0 transition-all cursor-pointer" : ""}">
         <div class="shrink-0 w-[72px] bg-slate-900 flex items-center justify-center py-3">
-            <span class="text-xl font-black leading-none" style="color:${c.hex}">${value}</span>
+            <span class="${big ? 'text-2xl' : 'text-xl'} font-black leading-none" style="color:${c.hex}">${value}</span>
         </div>
         <div class="flex-1 min-w-0 p-3.5 flex items-center justify-between gap-2">
             <div class="min-w-0 flex items-center gap-2">
-                <div class="w-9 h-9 rounded-lg ${c.bg} flex items-center justify-center shrink-0"><i class="fas ${icon} ${c.text} text-[14px]"></i></div>
-                <p class="text-[11px] text-slate-400 font-semibold truncate">${label}</p>
+                <div class="w-9 h-9 rounded-lg ${c.bg} flex items-center justify-center shrink-0"><i class="fas ${icon} ${c.text} ${big ? 'text-base' : 'text-[14px]'}"></i></div>
+                <p class="${big ? 'text-sm' : 'text-[11px]'} text-slate-400 font-semibold truncate">${label}</p>
             </div>
             ${onclick ? '<i class="fas fa-chevron-right text-slate-300 text-xs shrink-0"></i>' : ""}
         </div>
@@ -3254,7 +3254,7 @@ function clickableStatCardProgress(icon, color, doneCount, totalCount, label, on
 // sisi kanan tetap putih normal berisi ikon kecil + label + sub-label. Dipakai untuk kartu
 // "Training Onboarding", "Progress Pre & Post Training", dan "Training by TNA". Kartu
 // "Sertifikat" SENGAJA tetap pakai clickableStatCard biasa (tanpa diagram), sesuai request.
-function diagramStatCardDark(icon, color, diagramHtml, label, subLabel, onclick) {
+function diagramStatCardDark(icon, color, diagramHtml, label, subLabel, onclick, big) {
     const c = DONUT_STAT_COLORS[color] || DONUT_STAT_COLORS.indigo;
     const tag = onclick ? "button" : "div";
     const attrs = onclick ? ` type="button" onclick="${onclick}"` : "";
@@ -3264,16 +3264,16 @@ function diagramStatCardDark(icon, color, diagramHtml, label, subLabel, onclick)
             ${diagramHtml}
         </div>
         <div class="flex-1 min-w-0 px-3.5 py-1.5 flex flex-col justify-center">
-            <div class="w-8 h-8 rounded-lg ${c.bg} flex items-center justify-center mb-0"><i class="fas ${icon} ${c.text} text-[13px]"></i></div>
-            <p class="text-[11px] text-slate-400 font-semibold truncate">${label}</p>
-            <p class="text-[10px] ${c.text} font-bold mt-0.5">${subLabel}</p>
+            <div class="w-8 h-8 rounded-lg ${c.bg} flex items-center justify-center mb-0"><i class="fas ${icon} ${c.text} ${big ? 'text-base' : 'text-[13px]'}"></i></div>
+            <p class="${big ? 'text-sm' : 'text-[11px]'} text-slate-400 font-semibold truncate">${label}</p>
+            <p class="${big ? 'text-xs' : 'text-[10px]'} ${c.text} font-bold mt-0.5">${subLabel}</p>
         </div>
     </${tag}>`;
 }
 // Diagram donut (dipakai untuk kartu rasio x/y seperti "Training Onboarding" & "Training by
 // TNA") — sama seperti donutStatCard di halaman Laporan Admin, tapi versi track/teks yang
 // disesuaikan supaya kontras di atas panel gelap (bukan di atas kartu putih).
-function donutDiagramSvg(pct, hex) {
+function donutDiagramSvg(pct, hex, big) {
     const dash = Math.max(0, Math.min(100, pct));
     return `
     <div class="relative w-14 h-14">
@@ -3281,14 +3281,14 @@ function donutDiagramSvg(pct, hex) {
             <circle class="text-white/10" stroke="currentColor" stroke-width="4" fill="none" cx="18" cy="18" r="15.9155"></circle>
             <circle stroke="${hex}" stroke-width="4" fill="none" stroke-linecap="round" stroke-dasharray="${dash} ${100 - dash}" stroke-dashoffset="25" cx="18" cy="18" r="15.9155"></circle>
         </svg>
-        <div class="absolute inset-0 flex items-center justify-center"><span class="text-[11px] font-black text-white">${pct}%</span></div>
+        <div class="absolute inset-0 flex items-center justify-center"><span class="${big ? 'text-sm' : 'text-[11px]'} font-black text-white">${pct}%</span></div>
     </div>`;
 }
 // Diagram bar Pre vs Post (dipakai khusus kartu "Progress Pre & Post Training"). Donut kurang
 // cocok di sini karena datanya BUKAN rasio bagian-dari-keseluruhan, tapi PERBANDINGAN dua nilai
 // (skor rata-rata sebelum vs sesudah) — jadi bar berdampingan lebih jelas menunjukkan arah
 // kenaikannya, dengan label persentase kenaikan di bawahnya.
-function prePostBarDiagramSvg(avgPre, avgPost) {
+function prePostBarDiagramSvg(avgPre, avgPost, big) {
     const maxH = 26, baseY = 30;
     const preH = avgPre > 0 ? Math.max(3, Math.round((Math.min(100, avgPre) / 100) * maxH)) : 2;
     const postH = avgPost > 0 ? Math.max(3, Math.round((Math.min(100, avgPost) / 100) * maxH)) : 2;
@@ -3302,7 +3302,7 @@ function prePostBarDiagramSvg(avgPre, avgPost) {
             <rect x="8" y="${baseY - preH}" width="7" height="${preH}" rx="1.5" fill="rgba(255,255,255,.35)"></rect>
             <rect x="21" y="${baseY - postH}" width="7" height="${postH}" rx="1.5" fill="#38bdf8"></rect>
         </svg>
-        <span class="text-[10px] font-black ${pctColor} leading-none">${sign}${pct}%</span>
+        <span class="${big ? 'text-xs' : 'text-[10px]'} font-black ${pctColor} leading-none">${sign}${pct}%</span>
     </div>`;
 }
 // Hitung rata-rata skor Pre-test & Post-test (percobaan terbaru) milik user saat ini, dari
@@ -6274,8 +6274,8 @@ function renderTnaResultAdminList() {
 
     const rows = list.map((t, i) => `
         <tr class="border-b border-slate-50 hover:bg-slate-50/60 align-top">
-            <td class="px-3 py-3 text-center text-sm font-bold text-slate-500">${i + 1}</td>
-            <td class="px-3 py-3 text-sm font-bold text-slate-700 min-w-[130px]">${window.escapeHtml(t.dept || '-')}</td>
+            <td class="px-3 py-3 text-center text-sm text-slate-600">${i + 1}</td>
+            <td class="px-3 py-3 text-sm text-slate-600 min-w-[130px]">${window.escapeHtml(t.dept || '-')}</td>
             <td class="px-3 py-3 text-sm text-slate-600 min-w-[100px]">${window.escapeHtml(t.levelJabatan || '-')}</td>
             <td class="px-3 py-3 text-sm text-slate-600 min-w-[180px]">${window.escapeHtml(t.problem || '-')}</td>
             <td class="px-3 py-3 text-sm text-slate-600 min-w-[180px]">${window.escapeHtml(t.identification || '-')}</td>
@@ -6708,8 +6708,8 @@ function renderTnaInputList() {
 
     const rows = mine.map((t, i) => `
         <tr class="border-b border-slate-50 hover:bg-slate-50/60 align-top">
-            <td class="px-3 py-3 text-center text-sm font-bold text-slate-500">${i + 1}</td>
-            <td class="px-3 py-3 text-sm font-bold text-slate-700 min-w-[130px]">${window.escapeHtml(t.dept || '-')}</td>
+            <td class="px-3 py-3 text-center text-sm text-slate-600">${i + 1}</td>
+            <td class="px-3 py-3 text-sm text-slate-600 min-w-[130px]">${window.escapeHtml(t.dept || '-')}</td>
             <td class="px-3 py-3 text-sm text-slate-600 min-w-[100px]">${window.escapeHtml(t.levelJabatan || '-')}</td>
             <td class="px-3 py-3 text-sm text-slate-600 min-w-[180px]">${window.escapeHtml(t.problem || '-')}</td>
             <td class="px-3 py-3 text-sm text-slate-600 min-w-[180px]">${window.escapeHtml(t.identification || '-')}</td>
