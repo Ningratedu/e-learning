@@ -886,6 +886,20 @@ html.dark .corevalue-wire { background: rgba(96, 165, 250, .2); }
     </div>
 </div>
 
+<!-- ================= MODAL: KIRIM NOTIF PERMOHONAN APPROVAL MODUL (HASIL TNA) ================= -->
+<div id="modal-tna-approval-request" class="fixed inset-0 z-[10000] hide modal-overlay flex items-center justify-center p-4">
+    <div class="bg-white w-full max-w-lg rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[85vh]">
+        <div class="p-4 border-b flex justify-between items-center bg-indigo-50 shrink-0">
+            <div>
+                <h3 class="text-sm font-black text-indigo-600"><i class="fas fa-stamp mr-1"></i> Permohonan Approval Modul</h3>
+                <p id="tna-approval-sub" class="text-[11px] text-slate-400 font-semibold mt-0.5"></p>
+            </div>
+            <button onclick="window.closeModal('modal-tna-approval-request')" class="text-slate-400 hover:text-slate-700"><i class="fas fa-times"></i></button>
+        </div>
+        <div id="tna-approval-body" class="p-4 overflow-y-auto space-y-2"></div>
+    </div>
+</div>
+
 <script type="module">
 // ================= FIREBASE (reuse project & pola yang sama dengan TrainingHub) =================
 // 🔥 CATATAN: config di bawah ini SAMA dengan project Firebase TrainingHub yang lama.
@@ -6003,10 +6017,13 @@ window.deleteTraining = async function (id) {
 // Tab baru "Hasil TNA" di dalam "Kelola Training TNA" — rekap gap/problem hasil analisa
 // Training Need Analysis per departemen & level jabatan, lengkap dengan corrective action,
 // rekomendasi training, dan deadline modul/pelaksanaan. Data diisi lewat 2 jalur:
-//  1) Admin, langsung dari tab "Hasil TNA" ini ("Entri Baru" / edit / hapus, bebas semua data).
+//  1) Admin, langsung dari tab "Hasil TNA" ini ("Entri Baru" / edit / hapus, bebas semua data,
+//     termasuk menyiapkan modul, update progress, minta approval, sampai laksanain training).
 //  2) Peserta dengan level jabatan "Supervisor ke atas" (dikonfigurasi admin di bawah), lewat
-//     menu sidebar "Input Hasil TNA" (route #/tna-input) — mereka cuma bisa edit/hapus entri
-//     yang mereka input sendiri.
+//     menu sidebar "Input Hasil TNA" (route #/tna-input) — mereka cuma mengajukan permintaan
+//     training (problem, identifikasi, rekomendasi, dll) buat timnya dan cuma bisa edit/hapus
+//     entri yang mereka input sendiri. Penyiapan modul, update progress, permohonan approval,
+//     sampai pelaksanaan trainingnya sepenuhnya jadi tanggung jawab Admin/Tim Training.
 // Struktur dokumen di collection "tnaResults": { dept, levelJabatan, problem, identification,
 // correctiveAction, actionRecommendation, deadlineModul, deadlinePelaksanaan, createdBy,
 // createdByUsername, createdByName, createdAt, updatedAt }.
@@ -6059,6 +6076,175 @@ function tnaFmtDeadline(v) {
     } catch (e) { return "—"; }
 }
 
+// ---- Progress Keterlaksanaan Training (hasil TNA) ----
+// Tahapan linear dari data diinput sampai training benar-benar terlaksana. Progress ini
+// dikerjakan & diupdate oleh Admin/Tim Training saja (bukan peserta pengisi permintaan) —
+// dipakai buat monitoring progress (kolom "Progress" + dropdown update di tabel Admin, dan
+// badge read-only di kartu peserta) dan juga jadi pemicu kapan tombol "Kirim Notif Permohonan
+// Approval Modul" (yang dipicu oleh Admin) relevan ditampilkan.
+const TNA_PROGRESS_STAGES = [
+    { key: "belum_mulai", label: "Belum Mulai", color: "bg-slate-100 text-slate-500" },
+    { key: "modul_disiapkan", label: "Modul Sedang Disiapkan", color: "bg-sky-50 text-sky-600" },
+    { key: "modul_siap", label: "Modul/Materi Sudah Jadi", color: "bg-indigo-50 text-indigo-600" },
+    { key: "menunggu_approval", label: "Menunggu Approval", color: "bg-amber-50 text-amber-600" },
+    { key: "disetujui", label: "Modul Disetujui", color: "bg-emerald-50 text-emerald-600" },
+    { key: "terlaksana", label: "Training Terlaksana", color: "bg-emerald-600 text-white" },
+];
+function tnaProgressStage(key) {
+    return TNA_PROGRESS_STAGES.find(s => s.key === key) || TNA_PROGRESS_STAGES[0];
+}
+function tnaProgressIndex(key) {
+    const i = TNA_PROGRESS_STAGES.findIndex(s => s.key === key);
+    return i < 0 ? 0 : i;
+}
+function tnaProgressBadgeHtml(key) {
+    const s = tnaProgressStage(key);
+    return `<span class="text-[10px] font-black px-2 py-1 rounded-full whitespace-nowrap ${s.color}">${s.label}</span>`;
+}
+// Progress bar mini (dipakai di kartu peserta) — persentase dihitung dari posisi tahapan
+// terhadap total tahapan.
+function tnaProgressBarHtml(key) {
+    const idx = tnaProgressIndex(key);
+    const pct = Math.round((idx / (TNA_PROGRESS_STAGES.length - 1)) * 100);
+    return `<div class="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden"><div class="h-full bg-amber-500 rounded-full" style="width:${pct}%"></div></div>`;
+}
+// Dropdown <select> buat update progress langsung dari tabel/kartu (tanpa buka form edit).
+function tnaProgressSelectHtml(t, onchangeFn) {
+    return `<select onchange="window.guardedClick(this, () => ${onchangeFn}('${t.id}', this.value))" class="text-[10px] font-bold border border-slate-200 rounded-lg px-1.5 py-1 bg-white">
+        ${TNA_PROGRESS_STAGES.map(s => `<option value="${s.key}" ${((t.progressStatus || 'belum_mulai') === s.key) ? 'selected' : ''}>${s.label}</option>`).join("")}
+    </select>`;
+}
+window.updateTnaProgress = async function (id, value) {
+    const { ref, setDoc, serverTimestamp } = window.LMS_DB;
+    await setDoc(ref("tnaResults", id), { progressStatus: value, updatedAt: serverTimestamp() }, { merge: true });
+    window.toast("Progress diperbarui", "success");
+};
+
+// ---- Approval Modul/Materi Training (hasil TNA) ----
+// Status: "none" (belum diajukan) | "menunggu" | "disetujui" | "ditolak". Modul disiapkan oleh
+// Admin/Tim Training, lalu permohonan approval-nya diajukan lewat tombol "Kirim Notif
+// Permohonan Approval Modul" yang mengirim WA LANGSUNG ke pembuat request (peserta yang
+// mengajukan data Hasil TNA ini) — nomornya diambil dari data karyawan (kontak) berdasarkan
+// createdByUsername. Keputusan setuju/tolak selanjutnya jadi hak pembuat request itu sendiri
+// (baik lewat menu "Input Hasil TNA" atau kalau dia login sebagai Admin).
+function tnaApprovalBadgeHtml(status) {
+    const map = {
+        none: { label: "Belum Diajukan", color: "bg-slate-100 text-slate-400" },
+        menunggu: { label: "Menunggu Approval", color: "bg-amber-50 text-amber-600" },
+        disetujui: { label: "Disetujui", color: "bg-emerald-50 text-emerald-600" },
+        ditolak: { label: "Ditolak", color: "bg-rose-50 text-rose-600" },
+    };
+    const s = map[status] || map.none;
+    return `<span class="text-[10px] font-black px-2 py-1 rounded-full whitespace-nowrap ${s.color}">${s.label}</span>`;
+}
+// Cari data karyawan (buat ambil nomor WA) dari username pembuat request suatu entri Hasil TNA.
+function tnaRequesterEmployee(t) {
+    const uname = normalizeUsername(t && t.createdByUsername);
+    if (!uname) return null;
+    return (window.STATE.employees || []).find(e => normalizeUsername(e.username) === uname) || null;
+}
+// Buka modal konfirmasi kirim notif WhatsApp permohonan approval modul, diarahkan langsung ke
+// pembuat request (bukan pilih dari daftar Admin) — tiap pembuat request punya nomor WA
+// masing-masing di data karyawan.
+window.openTnaApprovalRequest = function (id) {
+    const t = window.STATE.tnaResults.find(x => x.id === id);
+    if (!t) { window.toast("Data Hasil TNA tidak ditemukan", "error"); return; }
+
+    const requesterName = t.createdByName || t.createdByUsername || "Pembuat request";
+    const emp = tnaRequesterEmployee(t);
+    const phoneDigits = String((emp && emp.kontak) || "").replace(/[^\d]/g, "");
+    document.getElementById("tna-approval-sub").textContent = `${t.dept || '-'} • ${t.levelJabatan || '-'} — ${t.actionRecommendation || t.problem || ''}`;
+
+    document.getElementById("tna-approval-body").innerHTML = `
+        <p class="text-xs text-slate-400 mb-1"><i class="fas fa-circle-info mr-1"></i> Kirim notifikasi WhatsApp permohonan approval modul ke pembuat request ini. Status permohonan otomatis berubah jadi "Menunggu Approval" begitu kamu klik "Kirim".</p>
+        <div class="flex items-center gap-3 p-3 rounded-2xl border border-slate-100">
+            <div class="w-10 h-10 rounded-full bg-indigo-50 text-indigo-600 flex items-center justify-center font-black text-xs shrink-0">${window.escapeHtml((requesterName || "?").slice(0, 1).toUpperCase())}</div>
+            <div class="flex-1 min-w-0">
+                <p class="text-sm font-bold text-slate-700 truncate">${window.escapeHtml(requesterName)}</p>
+                <p class="text-[11px] text-slate-400 truncate">Pembuat request ini</p>
+            </div>
+            ${phoneDigits
+                ? `<button onclick="window.guardedClick(this, () => window.sendTnaApprovalRequest('${t.id}','${phoneDigits}','${window.escapeHtml(requesterName).replace(/'/g, "\\'")}'))" class="shrink-0 bg-indigo-600 hover:bg-indigo-700 text-white text-[11px] font-black px-3 py-2 rounded-xl transition"><i class="fab fa-whatsapp mr-1"></i> Kirim</button>`
+                : `<span class="shrink-0 text-[10px] text-slate-300 font-bold text-right">No. HP<br>kosong</span>`}
+        </div>
+        ${!phoneDigits ? `<button onclick="window.guardedClick(this, () => window.markTnaApprovalRequested('${t.id}', null))" class="w-full text-xs font-bold text-slate-400 hover:text-indigo-600 py-2 mt-2"><i class="fas fa-check mr-1"></i> Tandai "Menunggu Approval" tanpa kirim WhatsApp</button>` : ''}
+    `;
+
+    window.openModal("modal-tna-approval-request");
+};
+window.markTnaApprovalRequested = async function (id, note) {
+    const { ref, setDoc, serverTimestamp } = window.LMS_DB;
+    const u = window.STATE.user;
+    const t = window.STATE.tnaResults.find(x => x.id === id);
+    const payload = {
+        moduleApprovalStatus: "menunggu",
+        moduleApprovalRequestedAt: serverTimestamp(),
+        moduleApprovalRequestedByName: u.name || u.username || "",
+        updatedAt: serverTimestamp()
+    };
+    // Progress otomatis maju ke "Menunggu Approval" kalau belum sejauh itu.
+    if (!t || tnaProgressIndex(t.progressStatus) < tnaProgressIndex("menunggu_approval")) {
+        payload.progressStatus = "menunggu_approval";
+    }
+    await setDoc(ref("tnaResults", id), payload, { merge: true });
+    window.closeModal("modal-tna-approval-request");
+    window.toast("Status approval modul diperbarui jadi \"Menunggu Approval\"", "success");
+};
+window.sendTnaApprovalRequest = async function (id, phoneDigits, requesterName) {
+    const t = window.STATE.tnaResults.find(x => x.id === id);
+    if (!t) return;
+    await window.markTnaApprovalRequested(id, null);
+    let phone = phoneDigits;
+    if (phone.startsWith("0")) phone = "62" + phone.slice(1);
+    else if (!phone.startsWith("62")) phone = "62" + phone;
+    const link = `${location.origin}${location.pathname}#/tna-input/${t.id}`;
+    const text = `Halo ${requesterName}, mohon approval modul/materi training atas request Hasil TNA kamu berikut 🙏\n\n`
+        + `🏢 *${t.dept || '-'}* • ${t.levelJabatan || '-'}\n`
+        + `❗ Problem: ${t.problem || '-'}\n`
+        + `🎯 Rekomendasi: ${t.actionRecommendation || '-'}\n\n`
+        + `Modul/materinya sudah jadi dari Tim Training, mohon dicek & di-approve ya. Detail lengkapnya di sini:\n${link}\n\nTerima kasih!`;
+    window.open(`https://wa.me/${phone}?text=${encodeURIComponent(text)}`, "_blank");
+    window.toast(`Permohonan approval WhatsApp untuk ${requesterName} berhasil dibuka.`, "success");
+};
+// Pembuat request (peserta yang mengajukan data Hasil TNA ini): setujui/tolak permohonan
+// approval modul yang diajukan Admin/Tim Training. Admin tetap boleh memutuskan sebagai
+// cadangan/oversight kalau perlu.
+window.decideTnaApproval = async function (id, decision) {
+    const t = window.STATE.tnaResults.find(x => x.id === id);
+    const u = window.STATE.user;
+    const isRequester = t && normalizeUsername(t.createdByUsername) === normalizeUsername(u.username);
+    if (!isRequester && !window.sel.isAdmin()) {
+        window.toast("Cuma pembuat request atau Admin yang bisa memutuskan approval ini", "warn");
+        return;
+    }
+    if (decision === "ditolak") {
+        const note = prompt("Alasan penolakan (opsional):", "") || "";
+        const { ref, setDoc, serverTimestamp } = window.LMS_DB;
+        await setDoc(ref("tnaResults", id), {
+            moduleApprovalStatus: "ditolak", moduleApprovalDecisionNote: note,
+            moduleApprovalDecidedAt: serverTimestamp(),
+            moduleApprovalDecidedByName: window.STATE.user.name || window.STATE.user.username || "",
+            updatedAt: serverTimestamp()
+        }, { merge: true });
+        window.toast("Permohonan approval modul ditolak", "warn");
+    } else {
+        const { ref, setDoc, serverTimestamp } = window.LMS_DB;
+        const payload = {
+            moduleApprovalStatus: "disetujui",
+            moduleApprovalDecidedAt: serverTimestamp(),
+            moduleApprovalDecidedByName: window.STATE.user.name || window.STATE.user.username || "",
+            updatedAt: serverTimestamp()
+        };
+        if (!t || tnaProgressIndex(t.progressStatus) < tnaProgressIndex("disetujui")) {
+            payload.progressStatus = "disetujui";
+        }
+        await setDoc(ref("tnaResults", id), payload, { merge: true });
+        window.toast("Modul disetujui", "success");
+    }
+    if (window.sel.isAdmin()) { tnaResultDraft = null; renderTnaResultAdminList(); }
+    else { tnaResultDraft = null; renderTnaInputList(); }
+};
+
 function renderTnaResultAdminList() {
     const list = [...window.STATE.tnaResults]
         .filter(t => !tnaResultDeptFilter || String(t.dept || "").toLowerCase() === tnaResultDeptFilter.toLowerCase())
@@ -6075,6 +6261,24 @@ function renderTnaResultAdminList() {
             <td class="px-3 py-3 text-sm text-slate-600 min-w-[160px]">${window.escapeHtml(t.actionRecommendation || '-')}</td>
             <td class="px-3 py-3 text-sm text-slate-500 text-center whitespace-nowrap">${tnaFmtDeadline(t.deadlineModul)}</td>
             <td class="px-3 py-3 text-sm text-slate-500 text-center whitespace-nowrap">${tnaFmtDeadline(t.deadlinePelaksanaan)}</td>
+            <td class="px-3 py-3 text-center min-w-[110px]">${t.attachmentUrl ? `<a href="${window.escapeHtml(t.attachmentUrl)}" target="_blank" class="text-[11px] font-bold text-indigo-500 hover:underline"><i class="fas fa-paperclip mr-1"></i>${window.escapeHtml(t.attachmentName || 'Lihat')}</a>` : '<span class="text-slate-300 text-xs">-</span>'}</td>
+            <td class="px-3 py-3 min-w-[170px]">
+                <div class="flex flex-col gap-1.5 items-start">
+                    ${tnaProgressSelectHtml(t, 'window.updateTnaProgress')}
+                    ${tnaProgressBarHtml(t.progressStatus)}
+                </div>
+            </td>
+            <td class="px-3 py-3 min-w-[150px]">
+                <div class="flex flex-col gap-1.5 items-start">
+                    ${tnaApprovalBadgeHtml(t.moduleApprovalStatus || 'none')}
+                    ${(t.moduleApprovalStatus === 'menunggu') ? `
+                    <p class="text-[10px] text-slate-400 leading-tight">Menunggu keputusan <span class="font-bold">${window.escapeHtml(t.createdByName || t.createdByUsername || 'pembuat request')}</span>. Admin bisa override:</p>
+                    <div class="flex gap-1">
+                        <button onclick="window.guardedClick(this, () => window.decideTnaApproval('${t.id}','disetujui'))" class="text-[10px] font-black px-2 py-1 rounded-lg bg-emerald-500 hover:bg-emerald-600 text-white transition"><i class="fas fa-check mr-0.5"></i>Setujui</button>
+                        <button onclick="window.guardedClick(this, () => window.decideTnaApproval('${t.id}','ditolak'))" class="text-[10px] font-black px-2 py-1 rounded-lg bg-rose-100 hover:bg-rose-200 text-rose-600 transition"><i class="fas fa-xmark mr-0.5"></i>Tolak</button>
+                    </div>` : ''}
+                </div>
+            </td>
             <td class="px-3 py-3 text-right space-x-2 whitespace-nowrap">
                 <a href="#/admin/tna-results/${t.id}" class="text-indigo-500 hover:text-indigo-700"><i class="fas fa-pen"></i></a>
                 <button onclick="window.guardedClick(this, () => window.deleteTnaResult('${t.id}'))" class="text-rose-400 hover:text-rose-600"><i class="fas fa-trash"></i></button>
@@ -6133,10 +6337,13 @@ function renderTnaResultAdminList() {
                         <th class="sticky top-0 z-10 bg-slate-50 px-3 py-3 border-b border-slate-100">Action / Training Recommendation</th>
                         <th class="sticky top-0 z-10 bg-slate-50 px-3 py-3 border-b border-slate-100 text-center">Deadline Modul</th>
                         <th class="sticky top-0 z-10 bg-slate-50 px-3 py-3 border-b border-slate-100 text-center">Deadline Pelaksanaan Training</th>
+                        <th class="sticky top-0 z-10 bg-slate-50 px-3 py-3 border-b border-slate-100">Lampiran</th>
+                        <th class="sticky top-0 z-10 bg-slate-50 px-3 py-3 border-b border-slate-100">Progress</th>
+                        <th class="sticky top-0 z-10 bg-slate-50 px-3 py-3 border-b border-slate-100">Approval Modul</th>
                         <th class="sticky top-0 z-10 bg-slate-50 px-3 py-3 border-b border-slate-100 text-right">Aksi</th>
                     </tr>
                 </thead>
-                <tbody>${rows || `<tr><td colspan="10" class="text-center py-10 text-slate-400">Belum ada data Hasil TNA${tnaResultDeptFilter ? ' untuk departemen ini' : ''}.</td></tr>`}</tbody>
+                <tbody>${rows || `<tr><td colspan="13" class="text-center py-10 text-slate-400">Belum ada data Hasil TNA${tnaResultDeptFilter ? ' untuk departemen ini' : ''}.</td></tr>`}</tbody>
             </table>
         </div>
     `);
@@ -6171,14 +6378,21 @@ function renderTnaResultBuilder(id, backRoute) {
         tnaResultDraft = existing ? JSON.parse(JSON.stringify(existing)) : {
             dept: (myEmp && myEmp.dept) || (u && u.dept) || "",
             levelJabatan: "", problem: "", identification: "", correctiveAction: "",
-            actionRecommendation: "", deadlineModul: "", deadlinePelaksanaan: ""
+            actionRecommendation: "", deadlineModul: "", deadlinePelaksanaan: "",
+            notes: "", attachmentUrl: "", attachmentName: "",
+            progressStatus: "belum_mulai", moduleApprovalStatus: "none"
         };
+        if (!tnaResultDraft.progressStatus) tnaResultDraft.progressStatus = "belum_mulai";
+        if (!tnaResultDraft.moduleApprovalStatus) tnaResultDraft.moduleApprovalStatus = "none";
         tnaResultDraft._loadedId = id || "new";
         tnaResultDraft._id = id;
+        tnaResultDraft._backRoute = backRoute;
     }
     const d = tnaResultDraft;
     const deptOptions = window.sel.allDeptNames();
     const posOptions = window.sel.allPosisiNames();
+    const canDecideApproval = d.moduleApprovalStatus === "menunggu" && (isAdminCtx || normalizeUsername(d.createdByUsername) === normalizeUsername(u.username));
+    const canRequestApproval = isAdminCtx && !!d._id; // Admin/Tim Training aja yang bisa ajukan approval, dan baru bisa kalau datanya udah tersimpan
 
     window.setPage(`
         <a href="${backRoute}" class="text-xs font-bold text-slate-400 hover:text-amber-600"><i class="fas fa-arrow-left mr-1"></i> Kembali</a>
@@ -6223,13 +6437,96 @@ function renderTnaResultBuilder(id, backRoute) {
                         <input type="date" value="${window.escapeHtml(d.deadlinePelaksanaan || '')}" oninput="tnaResultDraft.deadlinePelaksanaan=this.value" class="w-full border border-slate-200 rounded-lg px-2.5 py-1.5 text-sm mt-1">
                     </div>
                 </div>
+                <div>
+                    <label class="text-[10px] font-bold uppercase text-slate-400">Notes Tambahan</label>
+                    <textarea oninput="tnaResultDraft.notes=this.value" placeholder="Catatan tambahan (opsional)..." rows="2" class="w-full border border-slate-200 rounded-lg px-2.5 py-1.5 text-sm mt-1">${window.escapeHtml(d.notes || '')}</textarea>
+                </div>
+                <div>
+                    <label class="text-[10px] font-bold uppercase text-slate-400">Lampiran Pendukung</label>
+                    <div class="mt-1 space-y-1.5">
+                        ${d.attachmentUrl ? `
+                        <div class="flex items-center gap-2 bg-slate-50 rounded-lg px-2.5 py-1.5">
+                            <a href="${window.escapeHtml(d.attachmentUrl)}" target="_blank" class="text-xs font-bold text-indigo-500 hover:underline flex-1 min-w-0 truncate"><i class="fas fa-paperclip mr-1"></i>${window.escapeHtml(d.attachmentName || 'Lihat lampiran')}</a>
+                            <button type="button" onclick="tnaResultDraft.attachmentUrl=''; tnaResultDraft.attachmentName=''; rerenderTnaResultBuilder()" class="text-rose-400 hover:text-rose-600 text-xs px-1"><i class="fas fa-xmark"></i></button>
+                        </div>` : ''}
+                        <div class="flex items-center gap-2">
+                            <input id="tna-attachment-file-input" type="file" class="flex-1 min-w-0 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs">
+                            <button type="button" id="tna-attachment-upload-btn" onclick="window.guardedClick(this, () => window.uploadTnaAttachment())" class="shrink-0 bg-white border border-slate-200 hover:border-amber-300 text-slate-500 hover:text-amber-600 text-[11px] font-bold px-3 py-2 rounded-lg whitespace-nowrap"><i class="fas fa-upload mr-1"></i> Upload</button>
+                        </div>
+                        <p class="text-[11px] text-slate-400">Mis. hasil assessment, notulen, atau dokumen pendukung lain (opsional).</p>
+                    </div>
+                </div>
             </div>
+
+            <div class="bg-white rounded-2xl border border-slate-100 shadow-sm p-3 space-y-2">
+                <h3 class="font-black text-sm text-slate-700"><i class="fas fa-chart-line text-amber-500 mr-1"></i> Progress Keterlaksanaan Training</h3>
+                ${isAdminCtx ? `
+                <p class="text-xs text-slate-400">Update tahapan progress penyiapan modul sampai training benar-benar terlaksana.</p>
+                <select onchange="window.guardedClick(this, () => { tnaResultDraft.progressStatus=this.value; rerenderTnaResultBuilder(); })" class="w-full border border-slate-200 rounded-lg px-2.5 py-1.5 text-sm">
+                    ${TNA_PROGRESS_STAGES.map(s => `<option value="${s.key}" ${(d.progressStatus === s.key) ? 'selected' : ''}>${s.label}</option>`).join("")}
+                </select>
+                ` : `
+                <p class="text-xs text-slate-400">Progress dikerjakan &amp; diupdate oleh Admin/Tim Training. Status saat ini: ${tnaProgressBadgeHtml(d.progressStatus)}</p>
+                `}
+                ${tnaProgressBarHtml(d.progressStatus)}
+            </div>
+
+            <div class="bg-white rounded-2xl border border-slate-100 shadow-sm p-3 space-y-2">
+                <div class="flex items-center justify-between flex-wrap gap-2">
+                    <h3 class="font-black text-sm text-slate-700"><i class="fas fa-stamp text-indigo-500 mr-1"></i> Approval Modul/Materi</h3>
+                    ${tnaApprovalBadgeHtml(d.moduleApprovalStatus)}
+                </div>
+                ${d.moduleApprovalStatus === 'ditolak' && d.moduleApprovalDecisionNote ? `<p class="text-xs text-rose-500 bg-rose-50 rounded-lg px-2.5 py-1.5"><i class="fas fa-circle-info mr-1"></i>Alasan ditolak: ${window.escapeHtml(d.moduleApprovalDecisionNote)}</p>` : ''}
+                ${canDecideApproval ? `
+                <p class="text-xs text-slate-400">Modul sudah diajukan Admin/Tim Training, ada permohonan approval yang menunggu keputusan kamu sebagai pembuat request:</p>
+                <div class="flex gap-2">
+                    <button onclick="window.guardedClick(this, () => window.decideTnaApproval('${d._id}','disetujui'))" class="flex-1 bg-emerald-500 hover:bg-emerald-600 text-white font-bold py-2.5 rounded-2xl transition text-sm"><i class="fas fa-check mr-1"></i> Setujui</button>
+                    <button onclick="window.guardedClick(this, () => window.decideTnaApproval('${d._id}','ditolak'))" class="flex-1 bg-rose-100 hover:bg-rose-200 text-rose-600 font-bold py-2.5 rounded-2xl transition text-sm"><i class="fas fa-xmark mr-1"></i> Tolak</button>
+                </div>
+                ` : !isAdminCtx ? `
+                ${(d.moduleApprovalStatus === 'disetujui') ? `
+                <p class="text-xs text-emerald-600 bg-emerald-50 rounded-lg px-2.5 py-1.5"><i class="fas fa-circle-check mr-1"></i> Modul sudah kamu setujui.</p>
+                ` : (d.moduleApprovalStatus === 'ditolak') ? `
+                <p class="text-xs text-slate-400">Modul akan disiapkan ulang oleh Admin/Tim Training sebelum diajukan approval lagi.</p>
+                ` : `
+                <p class="text-xs text-slate-400">Penyiapan modul &amp; permohonan approval untuk permintaan training ini dikerjakan oleh Admin/Tim Training. Kamu akan dihubungi lewat WhatsApp begitu modulnya siap diajukan approval.</p>
+                `}
+                ` : (d.moduleApprovalStatus === 'menunggu') ? `
+                <p class="text-xs text-amber-600 bg-amber-50 rounded-lg px-2.5 py-1.5"><i class="fas fa-hourglass-half mr-1"></i> Permohonan sudah dikirim, menunggu keputusan pembuat request.</p>
+                ` : (d.moduleApprovalStatus === 'disetujui') ? `
+                <p class="text-xs text-emerald-600 bg-emerald-50 rounded-lg px-2.5 py-1.5"><i class="fas fa-circle-check mr-1"></i> Modul sudah disetujui.</p>
+                ` : `
+                <p class="text-xs text-slate-400">Kalau modul/materi trainingnya sudah jadi, kirim notifikasi permohonan approval ke pembuat request lewat WhatsApp.</p>
+                <button type="button" ${canRequestApproval ? `onclick="window.guardedClick(this, () => window.openTnaApprovalRequest('${d._id}'))"` : 'disabled title="Simpan data ini dulu sebelum mengajukan approval"'} class="w-full ${canRequestApproval ? 'bg-indigo-600 hover:bg-indigo-700' : 'bg-slate-200 cursor-not-allowed'} text-white font-bold py-2.5 rounded-2xl transition text-sm"><i class="fas fa-paper-plane mr-1"></i> Kirim Notif Permohonan Approval Modul</button>
+                `}
+            </div>
+
             <div class="bg-white rounded-2xl border border-slate-100 shadow-sm p-3">
                 <button onclick="window.guardedClick(this, () => window.saveTnaResultDraft('${backRoute}'))" class="w-full bg-amber-500 hover:bg-amber-600 text-white font-bold py-3 rounded-2xl transition"><i class="fas fa-save mr-1"></i> Simpan</button>
             </div>
         </div>
     `);
 }
+window.rerenderTnaResultBuilder = function () { renderTnaResultBuilder(tnaResultDraft._id, tnaResultDraft._backRoute); };
+
+window.uploadTnaAttachment = async function () {
+    const fileInput = document.getElementById("tna-attachment-file-input");
+    const file = fileInput && fileInput.files[0];
+    if (!file) { window.toast("Pilih file dulu sebelum upload", "warn"); return; }
+    const btn = document.getElementById("tna-attachment-upload-btn");
+    if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i> Mengupload...'; }
+    try {
+        const url = await window.LMS_DB.uploadFile(file, "tna-results");
+        tnaResultDraft.attachmentUrl = url;
+        tnaResultDraft.attachmentName = file.name;
+        window.toast("Lampiran berhasil diupload", "success");
+        rerenderTnaResultBuilder();
+    } catch (e) {
+        console.error(e);
+        window.toast("Gagal upload lampiran: " + (e.message || e), "error");
+        if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-upload mr-1"></i> Upload'; }
+    }
+};
 
 window.saveTnaResultDraft = async function (backRoute) {
     const d = tnaResultDraft;
@@ -6245,6 +6542,10 @@ window.saveTnaResultDraft = async function (backRoute) {
         correctiveAction: (d.correctiveAction || "").trim(),
         actionRecommendation: (d.actionRecommendation || "").trim(),
         deadlineModul: d.deadlineModul || "", deadlinePelaksanaan: d.deadlinePelaksanaan || "",
+        notes: (d.notes || "").trim(),
+        attachmentUrl: d.attachmentUrl || "", attachmentName: d.attachmentName || "",
+        progressStatus: d.progressStatus || "belum_mulai",
+        moduleApprovalStatus: d.moduleApprovalStatus || "none",
         updatedAt: serverTimestamp()
     };
     if (d._id) {
@@ -6296,6 +6597,23 @@ function renderTnaInputList() {
                 <p><span class="font-bold text-slate-600">Corrective Action:</span> ${window.escapeHtml(t.correctiveAction || '-')}</p>
                 <p><span class="font-bold text-slate-600">Rekomendasi:</span> ${window.escapeHtml(t.actionRecommendation || '-')}</p>
                 <p><span class="font-bold text-slate-600">Deadline:</span> Modul ${tnaFmtDeadline(t.deadlineModul)} • Training ${tnaFmtDeadline(t.deadlinePelaksanaan)}</p>
+                ${t.notes ? `<p class="sm:col-span-2"><span class="font-bold text-slate-600">Notes:</span> ${window.escapeHtml(t.notes)}</p>` : ''}
+                ${t.attachmentUrl ? `<p class="sm:col-span-2"><a href="${window.escapeHtml(t.attachmentUrl)}" target="_blank" class="font-bold text-indigo-500 hover:underline"><i class="fas fa-paperclip mr-1"></i>${window.escapeHtml(t.attachmentName || 'Lihat lampiran')}</a></p>` : ''}
+            </div>
+            <div class="flex items-center justify-between flex-wrap gap-2 mt-3 pt-3 border-t border-slate-50">
+                <div class="flex flex-col gap-1.5">
+                    <span class="text-[10px] font-bold uppercase text-slate-400">Progress</span>
+                    ${tnaProgressBadgeHtml(t.progressStatus)}
+                    <div class="w-32">${tnaProgressBarHtml(t.progressStatus)}</div>
+                </div>
+                <div class="flex flex-col items-end gap-1.5">
+                    ${tnaApprovalBadgeHtml(t.moduleApprovalStatus || 'none')}
+                    ${t.moduleApprovalStatus === 'menunggu' ? `
+                    <div class="flex gap-1.5">
+                        <button onclick="window.guardedClick(this, () => window.decideTnaApproval('${t.id}','disetujui'))" class="text-[10px] font-black px-2 py-1 rounded-lg bg-emerald-500 hover:bg-emerald-600 text-white transition"><i class="fas fa-check mr-0.5"></i>Setujui</button>
+                        <button onclick="window.guardedClick(this, () => window.decideTnaApproval('${t.id}','ditolak'))" class="text-[10px] font-black px-2 py-1 rounded-lg bg-rose-100 hover:bg-rose-200 text-rose-600 transition"><i class="fas fa-xmark mr-0.5"></i>Tolak</button>
+                    </div>` : `<span class="text-[10px] text-slate-400 font-semibold text-right">Modul &amp; approval disiapkan<br>oleh Admin/Tim Training</span>`}
+                </div>
             </div>
         </div>`).join("");
 
@@ -6303,7 +6621,7 @@ function renderTnaInputList() {
         <div class="flex items-center justify-between flex-wrap gap-3 mb-1">
             <div>
                 <h1 class="text-xl font-black text-slate-800">Input Hasil TNA</h1>
-                <p class="text-sm text-slate-500">Isi hasil analisa Training Need Analysis (TNA) untuk tim/departemen kamu — masalah, akar penyebab, tindakan perbaikan, dan rekomendasi training.</p>
+                <p class="text-sm text-slate-500">Ajukan hasil analisa Training Need Analysis (TNA) &amp; permintaan training untuk tim/departemen kamu — masalah, akar penyebab, tindakan perbaikan, dan rekomendasi training. Penyiapan modul, progress, sampai pelaksanaan trainingnya akan dikerjakan oleh Admin/Tim Training.</p>
             </div>
             <a href="#/tna-input/new" class="bg-amber-500 hover:bg-amber-600 text-white text-sm font-bold px-4 py-2.5 rounded-2xl whitespace-nowrap"><i class="fas fa-plus mr-1"></i> Tambah Data</a>
         </div>
