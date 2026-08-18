@@ -2530,7 +2530,7 @@ function companyKpiPerformanceCard(stats) {
     return `
     <div class="bg-white rounded-3xl border border-slate-100 shadow-sm p-4 mb-3">
         <div class="flex flex-wrap items-center justify-between gap-2 mb-2">
-            <h3 class="font-black text-slate-700 text-sm"><i class="fas fa-chart-line text-emerald-500 mr-1"></i> Tren KPI Perusahaan ${stats.year || new Date().getFullYear()}</h3>
+            <h3 class="font-black text-slate-700 text-sm"><i class="fas fa-chart-line text-emerald-500 mr-1"></i> Tren Avg KPI All Karyawan ${stats.year || new Date().getFullYear()}</h3>
             <div class="flex items-center gap-2">${avgBadge}${deptToggle}</div>
         </div>
         ${stats.hasData
