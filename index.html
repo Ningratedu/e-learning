@@ -1367,6 +1367,49 @@ window.courseHasScopeRestriction = function (c) {
     return !!((p.departments || []).length || (p.positions || []).length || (p.employeeUsernames || []).length);
 };
 
+// Versi HTML (bukan plain text) dari scope peserta sebuah training onboarding — sama persis
+// konsepnya dengan window.trainingScopeSummaryHtml buat Training TNA: dipakai di list "Kelola
+// Onboarding" biar gak kepanjangan kalau departemen/level yang DIKECUALIKAN jumlahnya jauh lebih
+// banyak dari yang TERPILIH. Untuk tiap dimensi, otomatis pilih mana yang lebih PENDEK buat
+// ditampilkan (daftar terpilih atau daftar dikecualikan), lalu dipotong maksimal 2 nama dengan
+// sisanya bisa diklik buat dibuka ("+N lainnya"). uid = prefix unik (biasanya course id).
+window.courseScopeSummaryHtml = function (c, uid) {
+    const p = c && c.participants;
+    if (!p) return `<span class="text-emerald-600">Semua Karyawan</span>`;
+    const isNewModel = ("excludedDepartments" in p) || ("excludedPositions" in p) || ("excludedEmployeeUsernames" in p);
+    const parts = [];
+    if (isNewModel) {
+        const excludedDepartments = p.excludedDepartments || [];
+        const excludedPositions = p.excludedPositions || [];
+        const excludedEmployeeUsernames = p.excludedEmployeeUsernames || [];
+        if (!excludedDepartments.length && !excludedPositions.length && !excludedEmployeeUsernames.length) return `<span class="text-emerald-600">Semua Karyawan</span>`;
+        if (excludedDepartments.length) {
+            const allDepts = window.sel.allDeptNames();
+            const includedDepts = allDepts.filter(dep => !excludedDepartments.some(x => x.toLowerCase() === dep.toLowerCase()));
+            const useIncluded = includedDepts.length <= excludedDepartments.length;
+            parts.push(truncatedNamesChipHtml(useIncluded ? includedDepts : excludedDepartments, useIncluded ? "Dept: " : "Kecuali Dept: ", uid + "-dept"));
+        }
+        if (excludedPositions.length) {
+            const allPos = window.sel.allPosisiNames();
+            const includedPos = allPos.filter(pos => !excludedPositions.some(x => x.toLowerCase() === pos.toLowerCase()));
+            const useIncluded = includedPos.length <= excludedPositions.length;
+            parts.push(truncatedNamesChipHtml(useIncluded ? includedPos : excludedPositions, useIncluded ? "Level: " : "Kecuali Level: ", uid + "-level"));
+        }
+        if (excludedEmployeeUsernames.length) parts.push(window.escapeHtml(excludedEmployeeUsernames.length + " karyawan dikecualikan"));
+        return parts.join(' <span class="text-slate-300">•</span> ');
+    }
+    // ---- fallback model lama: departments/positions/employeeUsernames di sini SUDAH berupa
+    // daftar yang TERPILIH (bukan dikecualikan), jadi tinggal dipotong maksimal 2 nama juga. ----
+    const departments = p.departments || [];
+    const positions = p.positions || [];
+    const employeeUsernames = p.employeeUsernames || [];
+    if (!departments.length && !positions.length && !employeeUsernames.length) return `<span class="text-emerald-600">Semua Karyawan</span>`;
+    if (departments.length) parts.push(truncatedNamesChipHtml(departments, "Departemen: ", uid + "-dept"));
+    if (positions.length) parts.push(truncatedNamesChipHtml(positions, "Posisi: ", uid + "-level"));
+    if (employeeUsernames.length) parts.push(window.escapeHtml(employeeUsernames.length + " karyawan manual"));
+    return parts.join(' <span class="text-slate-300">•</span> ');
+};
+
 // ================= TARGET PESERTA TRAINING BY TNA =================
 // t.participants (model BARU, "semua by default, uncheck buat ngecualiin"):
 //   { excludedDepartments: [...], excludedPositions: [...], excludedEmployeeUsernames: [...] }
@@ -1447,6 +1490,65 @@ window.trainingScopeLabel = function (t) {
     if (positions.length) parts.push("Posisi: " + positions.join(", "));
     if (employeeUsernames.length) parts.push(employeeUsernames.length + " karyawan manual");
     return parts.join(" • ");
+};
+
+// Render 1 "chip" nama-nama (departemen/level) yang dipendekin: cuma nampilin maksimal 2 nama
+// duluan, sisanya dilipat di balik tombol "+N lainnya" yang bisa diklik buat expand/collapse
+// (tanpa perlu render ulang seluruh baris tabel). Dipakai buat window.scopeSummaryHtml di bawah,
+// supaya list departemen/level yang panjang gak bikin baris tabel jadi tinggi banget.
+function truncatedNamesChipHtml(names, prefixLabel, uid) {
+    const MAX_SHOW = 2;
+    if (!names.length) return `${window.escapeHtml(prefixLabel)}-`;
+    const shown = names.slice(0, MAX_SHOW);
+    const restCount = names.length - shown.length;
+    const shortText = window.escapeHtml(prefixLabel + shown.join(", "));
+    if (!restCount) return shortText;
+    const fullText = window.escapeHtml(prefixLabel + names.join(", "));
+    return `<span id="${uid}-short">${shortText} <button type="button" onclick="event.stopPropagation(); document.getElementById('${uid}-short').classList.add('hide'); document.getElementById('${uid}-full').classList.remove('hide');" class="underline decoration-dotted hover:text-slate-700">+${restCount} lainnya</button></span>` +
+        `<span id="${uid}-full" class="hide">${fullText} <button type="button" onclick="event.stopPropagation(); document.getElementById('${uid}-full').classList.add('hide'); document.getElementById('${uid}-short').classList.remove('hide');" class="underline decoration-dotted hover:text-slate-700">sembunyikan</button></span>`;
+}
+// Versi HTML (bukan plain text) dari scope peserta sebuah training — dipakai di list "Kelola
+// Training TNA" biar gak kepanjangan kalau departemen/level yang DIKECUALIKAN jumlahnya jauh
+// lebih banyak dari yang TERPILIH (kasus umum: cuma 1-2 departemen yang jadi target, sisanya
+// semua dikecualikan). Untuk tiap dimensi (departemen/level), otomatis pilih mana yang lebih
+// PENDEK buat ditampilkan — daftar yang TERPILIH ("Dept: A, B") atau daftar yang DIKECUALIKAN
+// ("Kecuali Dept: C, D, E, ...") — lalu dipotong maksimal 2 nama dengan sisanya bisa diklik
+// buat dibuka ("+N lainnya"). uid = prefix unik (biasanya training id) buat elemen toggle-nya.
+window.trainingScopeSummaryHtml = function (t, uid) {
+    const p = t && t.participants;
+    if (!p) return `<span class="text-emerald-600">Semua Karyawan</span>`;
+    const isNewModel = ("excludedDepartments" in p) || ("excludedPositions" in p) || ("excludedEmployeeUsernames" in p);
+    const parts = [];
+    if (isNewModel) {
+        const excludedDepartments = p.excludedDepartments || [];
+        const excludedPositions = p.excludedPositions || [];
+        const excludedEmployeeUsernames = p.excludedEmployeeUsernames || [];
+        if (!excludedDepartments.length && !excludedPositions.length && !excludedEmployeeUsernames.length) return `<span class="text-emerald-600">Semua Karyawan</span>`;
+        if (excludedDepartments.length) {
+            const allDepts = window.sel.allDeptNames();
+            const includedDepts = allDepts.filter(dep => !excludedDepartments.some(x => x.toLowerCase() === dep.toLowerCase()));
+            const useIncluded = includedDepts.length <= excludedDepartments.length;
+            parts.push(truncatedNamesChipHtml(useIncluded ? includedDepts : excludedDepartments, useIncluded ? "Dept: " : "Kecuali Dept: ", uid + "-dept"));
+        }
+        if (excludedPositions.length) {
+            const allPos = window.sel.allPosisiNames();
+            const includedPos = allPos.filter(pos => !excludedPositions.some(x => x.toLowerCase() === pos.toLowerCase()));
+            const useIncluded = includedPos.length <= excludedPositions.length;
+            parts.push(truncatedNamesChipHtml(useIncluded ? includedPos : excludedPositions, useIncluded ? "Level: " : "Kecuali Level: ", uid + "-level"));
+        }
+        if (excludedEmployeeUsernames.length) parts.push(window.escapeHtml(excludedEmployeeUsernames.length + " karyawan dikecualikan"));
+        return parts.join(' <span class="text-slate-300">•</span> ');
+    }
+    // ---- fallback model lama: departments/positions/employeeUsernames di sini SUDAH berupa
+    // daftar yang TERPILIH (bukan dikecualikan), jadi tinggal dipotong maksimal 2 nama juga. ----
+    const departments = p.departments || [];
+    const positions = p.positions || [];
+    const employeeUsernames = p.employeeUsernames || [];
+    if (!departments.length && !positions.length && !employeeUsernames.length) return `<span class="text-emerald-600">Semua Karyawan</span>`;
+    if (departments.length) parts.push(truncatedNamesChipHtml(departments, "Departemen: ", uid + "-dept"));
+    if (positions.length) parts.push(truncatedNamesChipHtml(positions, "Posisi: ", uid + "-level"));
+    if (employeeUsernames.length) parts.push(window.escapeHtml(employeeUsernames.length + " karyawan manual"));
+    return parts.join(' <span class="text-slate-300">•</span> ');
 };
 
 // ================= STATUS SESI TRAINING BY TNA (DIBUKA/DIMULAI ADMIN) =================
@@ -5218,7 +5320,7 @@ function renderCourseAdminList() {
             <td class="px-3 py-3 min-w-[220px]">
                 <p class="font-bold text-slate-700 text-sm">${window.escapeHtml(c.title)}</p>
                 <p class="text-[11px] text-slate-400">${(c.modules||[]).length} modul • ${window.escapeHtml(c.category||'-')}</p>
-                <p class="text-[11px] text-indigo-500 font-semibold mt-0.5"><i class="fas ${window.courseHasScopeRestriction(c) ? 'fa-sitemap' : 'fa-globe'} mr-1"></i>${window.escapeHtml(window.courseScopeLabel(c))}</p>
+                <p class="text-[11px] text-indigo-500 font-semibold mt-0.5"><i class="fas ${window.courseHasScopeRestriction(c) ? 'fa-sitemap' : 'fa-globe'} mr-1"></i>${window.courseScopeSummaryHtml(c, 'course-row-' + c.id)}</p>
             </td>
             <td class="px-3 py-3 text-center">
                 <span class="text-[10px] font-black px-2 py-1 rounded-full ${c.published ? 'bg-emerald-50 text-emerald-600' : 'bg-slate-100 text-slate-500'}">${c.published ? 'Terbit' : 'Draft'}</span>
@@ -5819,7 +5921,7 @@ function renderTrainingAdminList() {
             <td class="px-3 py-3 min-w-[220px]">
                 <p class="font-bold text-slate-700 text-sm">${window.escapeHtml(t.title)}</p>
                 <p class="text-[11px] text-slate-400">${window.fmtDate(t.date)} • ${window.escapeHtml(t.location||'-')} • <i class="fas fa-user-tie"></i> ${window.escapeHtml(t.trainer||'-')} • ${(t.modules||[]).length} modul</p>
-                <p class="text-[10px] font-bold text-amber-600 mt-0.5"><i class="fas fa-users mr-1"></i>${window.escapeHtml(window.trainingScopeLabel(t))}</p>
+                <p class="text-[10px] font-bold text-amber-600 mt-0.5"><i class="fas fa-users mr-1"></i>${window.trainingScopeSummaryHtml(t, 'tna-row-' + t.id)}</p>
             </td>
             <td class="px-3 py-3 text-center">
                 <div class="flex flex-col items-center gap-1.5">
