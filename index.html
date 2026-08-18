@@ -1083,6 +1083,7 @@ window.STATE = {
     assignmentSubmissions: [],
     settings: [],
     competencies: [],
+    tnaResults: [],
     ready: false
 };
 
@@ -1107,6 +1108,7 @@ function startLiveListeners() {
     bind("assignmentSubmissions", "assignmentSubmissions");
     bind("settings", "settings");
     bind("competencies", "competencies");
+    bind("tnaResults", "tnaResults");
 }
 window.startLiveListeners = startLiveListeners;
 
@@ -1263,6 +1265,18 @@ window.sel = {
         if (!user) return null;
         const uname = normalizeUsername(user.username);
         return (window.STATE.employees || []).find(e => normalizeUsername(e.username) === uname) || null;
+    },
+    // Cek apakah user yang login boleh mengisi form "Hasil TNA" (menu peserta). Admin selalu
+    // boleh (buat kelola/testing). Non-admin boleh kalau posisi/level jabatan mereka termasuk
+    // dalam daftar "Level Jabatan Supervisor ke Atas" yang dikonfigurasi admin lewat
+    // window.tnaInputConfig() (lihat definisi di bagian ADMIN: HASIL TNA).
+    canInputTna() {
+        const u = window.STATE.user;
+        if (!u) return false;
+        if (window.sel.isAdmin()) return true;
+        const emp = window.sel.employeeOfUser(u);
+        if (!emp) return false;
+        return window.isTnaInputEligiblePosition(emp.posisi);
     }
 };
 
@@ -2092,6 +2106,9 @@ window.renderSidebar = function () {
         { key: "courses", icon: "fa-book-open", label: "Onboarding Training" },
         { key: "trainings", icon: "fa-chalkboard-user", label: "Training By TNA" },
         { key: "certificates", icon: "fa-award", label: "Sertifikat Saya" },
+        // Menu khusus role peserta dengan level jabatan Supervisor ke atas (dikonfigurasi admin
+        // lewat window.tnaInputConfig()) — buat input data "Hasil TNA" timnya sendiri.
+        ...(window.sel.canInputTna() ? [{ key: "tna-input", icon: "fa-clipboard-list", label: "Input Hasil TNA" }] : []),
     ];
     // adminNav TANPA "Laporan" lagi di bawah, karena sudah dipindah & di-rename jadi
     // "Dashboard" di paling atas (lihat array nav di atas).
@@ -5267,6 +5284,7 @@ function renderAdminSectionTabs(active) {
     const ctx = window.adminNavContext === "tna" ? "tna" : "onboarding";
     const tabs = ctx === "tna" ? [
         { key: "admin/trainings", icon: "fa-calendar-days", label: "Jadwal Training" },
+        { key: "admin/tna-results", icon: "fa-clipboard-list", label: "Hasil TNA" },
         { key: "admin/competencies", icon: "fa-diagram-project", label: "Mapping Kompetensi" },
         { key: "admin/assignments", icon: "fa-file-signature", label: "Penilaian Tugas" },
         { key: "admin/quiz-attempts", icon: "fa-rotate-left", label: "Percobaan Kuis" },
@@ -5979,6 +5997,333 @@ window.deleteTraining = async function (id) {
     await window.LMS_DB.deleteDoc(window.LMS_DB.ref("trainings", id));
     window.toast("Training dihapus", "success");
     window.navigate("/admin/trainings");
+};
+
+// ================= ADMIN: HASIL TNA (REKAP) =================
+// Tab baru "Hasil TNA" di dalam "Kelola Training TNA" — rekap gap/problem hasil analisa
+// Training Need Analysis per departemen & level jabatan, lengkap dengan corrective action,
+// rekomendasi training, dan deadline modul/pelaksanaan. Data diisi lewat 2 jalur:
+//  1) Admin, langsung dari tab "Hasil TNA" ini ("Entri Baru" / edit / hapus, bebas semua data).
+//  2) Peserta dengan level jabatan "Supervisor ke atas" (dikonfigurasi admin di bawah), lewat
+//     menu sidebar "Input Hasil TNA" (route #/tna-input) — mereka cuma bisa edit/hapus entri
+//     yang mereka input sendiri.
+// Struktur dokumen di collection "tnaResults": { dept, levelJabatan, problem, identification,
+// correctiveAction, actionRecommendation, deadlineModul, deadlinePelaksanaan, createdBy,
+// createdByUsername, createdByName, createdAt, updatedAt }.
+
+// ---- Konfigurasi "Level Jabatan Supervisor ke Atas" ----
+// Sama polanya dengan window.isSalesMarketingDept: nama posisi/jabatan di data karyawan itu
+// teks bebas (hasil import Excel), jadi posisi mana saja yang dianggap "Supervisor ke atas"
+// HARUS dikonfigurasi admin (bukan ditebak dari nama), disimpan di collection "settings"
+// dokumen "tnaInputConfig".
+window.tnaInputConfig = function () {
+    const doc = (window.STATE.settings || []).find(s => s.id === "tnaInputConfig");
+    return { eligiblePositions: (doc && doc.eligiblePositions) || [] };
+};
+window.saveTnaInputConfig = async function (posList) {
+    const { ref, setDoc } = window.LMS_DB;
+    await setDoc(ref("settings", "tnaInputConfig"), { eligiblePositions: posList }, { merge: true });
+    window.toast("Konfigurasi level jabatan input TNA disimpan", "success");
+};
+window.isTnaInputEligiblePosition = function (posisiName) {
+    const cfg = window.tnaInputConfig();
+    const p = String(posisiName || "").trim().toLowerCase();
+    if (!p) return false;
+    return cfg.eligiblePositions.some(x => String(x).trim().toLowerCase() === p);
+};
+window.toggleTnaEligiblePosition = async function (posisiName) {
+    const cfg = window.tnaInputConfig();
+    const p = String(posisiName || "").trim();
+    const idx = cfg.eligiblePositions.findIndex(x => String(x).trim().toLowerCase() === p.toLowerCase());
+    const next = [...cfg.eligiblePositions];
+    if (idx >= 0) next.splice(idx, 1); else next.push(p);
+    await window.saveTnaInputConfig(next);
+};
+
+let tnaResultDraft = null;
+let tnaResultDeptFilter = "";
+let tnaEligibilitySettingsOpen = false;
+
+window.ROUTES["admin/tna-results"] = requireAdmin(function (id) {
+    window.adminNavContext = "tna";
+    if (id === "new" || (id && window.STATE.tnaResults.some(t => t.id === id))) { renderTnaResultBuilder(id === "new" ? null : id, "#/admin/tna-results"); return; }
+    renderTnaResultAdminList();
+});
+
+function tnaFmtDeadline(v) {
+    if (!v) return "—";
+    try {
+        const d = new Date(v);
+        if (isNaN(d)) return "—";
+        return d.toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" });
+    } catch (e) { return "—"; }
+}
+
+function renderTnaResultAdminList() {
+    const list = [...window.STATE.tnaResults]
+        .filter(t => !tnaResultDeptFilter || String(t.dept || "").toLowerCase() === tnaResultDeptFilter.toLowerCase())
+        .sort((a, b) => (a.dept || "").localeCompare(b.dept || "") || (a.levelJabatan || "").localeCompare(b.levelJabatan || ""));
+
+    const rows = list.map((t, i) => `
+        <tr class="border-b border-slate-50 hover:bg-slate-50/60 align-top">
+            <td class="px-3 py-3 text-center text-sm font-bold text-slate-500">${i + 1}</td>
+            <td class="px-3 py-3 text-sm font-bold text-slate-700 min-w-[130px]">${window.escapeHtml(t.dept || '-')}</td>
+            <td class="px-3 py-3 text-sm text-slate-600 min-w-[100px]">${window.escapeHtml(t.levelJabatan || '-')}</td>
+            <td class="px-3 py-3 text-sm text-slate-600 min-w-[180px]">${window.escapeHtml(t.problem || '-')}</td>
+            <td class="px-3 py-3 text-sm text-slate-600 min-w-[180px]">${window.escapeHtml(t.identification || '-')}</td>
+            <td class="px-3 py-3 text-sm text-slate-600 min-w-[180px]">${window.escapeHtml(t.correctiveAction || '-')}</td>
+            <td class="px-3 py-3 text-sm text-slate-600 min-w-[160px]">${window.escapeHtml(t.actionRecommendation || '-')}</td>
+            <td class="px-3 py-3 text-sm text-slate-500 text-center whitespace-nowrap">${tnaFmtDeadline(t.deadlineModul)}</td>
+            <td class="px-3 py-3 text-sm text-slate-500 text-center whitespace-nowrap">${tnaFmtDeadline(t.deadlinePelaksanaan)}</td>
+            <td class="px-3 py-3 text-right space-x-2 whitespace-nowrap">
+                <a href="#/admin/tna-results/${t.id}" class="text-indigo-500 hover:text-indigo-700"><i class="fas fa-pen"></i></a>
+                <button onclick="window.guardedClick(this, () => window.deleteTnaResult('${t.id}'))" class="text-rose-400 hover:text-rose-600"><i class="fas fa-trash"></i></button>
+            </td>
+        </tr>`).join("");
+
+    const deptOptions = window.sel.allDeptNames();
+    const eligiblePositions = window.tnaInputConfig().eligiblePositions;
+    const allPos = window.sel.allPosisiNames();
+
+    window.setPage(`
+        ${renderAdminSectionTabs("admin/tna-results")}
+        <div class="flex items-center justify-between flex-wrap gap-3 mb-1">
+            <div>
+                <h1 class="text-xl font-black text-slate-800">Hasil TNA</h1>
+                <p class="text-sm text-slate-500">Rekap gap/problem hasil Training Need Analysis per departemen & level jabatan, lengkap dengan corrective action dan rencana training.</p>
+            </div>
+            <a href="#/admin/tna-results/new" class="bg-amber-500 hover:bg-amber-600 text-white text-sm font-bold px-4 py-2.5 rounded-2xl whitespace-nowrap"><i class="fas fa-plus mr-1"></i> Entri Baru</a>
+        </div>
+
+        <div class="bg-white rounded-2xl border border-slate-100 shadow-sm p-3 mb-3">
+            <button onclick="tnaEligibilitySettingsOpen = !tnaEligibilitySettingsOpen; renderTnaResultAdminList()" class="w-full flex items-center justify-between text-xs font-bold text-slate-600">
+                <span><i class="fas fa-user-tie text-amber-500 mr-1.5"></i> Level Jabatan yang Boleh Input (Supervisor ke Atas)</span>
+                <i class="fas fa-chevron-${tnaEligibilitySettingsOpen ? 'up' : 'down'} text-slate-400"></i>
+            </button>
+            ${tnaEligibilitySettingsOpen ? `
+            <div class="mt-3 pt-3 border-t border-slate-100">
+                <p class="text-xs text-slate-400 mb-2">Centang posisi/level jabatan yang dianggap "Supervisor ke atas" — karyawan dengan level ini akan melihat menu "Input Hasil TNA" di sidebar mereka untuk mengisi tabel ini sendiri.</p>
+                ${!allPos.length ? '<p class="text-xs text-slate-400">Belum ada data posisi/jabatan dari karyawan.</p>' : `
+                <div class="flex flex-wrap gap-1.5">
+                    ${allPos.map(p => {
+                        const active = eligiblePositions.some(x => x.toLowerCase() === p.toLowerCase());
+                        return `<button type="button" onclick="window.guardedClick(this, () => window.toggleTnaEligiblePosition('${window.escapeHtml(p).replace(/'/g, "\\'")}').then(renderTnaResultAdminList))" class="text-[11px] font-bold px-2.5 py-1.5 rounded-full border transition ${active ? 'bg-amber-500 border-amber-500 text-white' : 'bg-white border-slate-200 text-slate-500 hover:border-amber-300'}">${active ? '<i class="fas fa-check mr-1"></i>' : ''}${window.escapeHtml(p)}</button>`;
+                    }).join("")}
+                </div>`}
+            </div>` : ''}
+        </div>
+
+        <div class="flex items-center gap-2 flex-wrap mb-3">
+            <select onchange="tnaResultDeptFilter=this.value; renderTnaResultAdminList()" class="border border-slate-200 rounded-xl px-3 py-2 text-xs">
+                <option value="" ${!tnaResultDeptFilter ? 'selected' : ''}>Semua Departemen</option>
+                ${deptOptions.map(dep => `<option value="${window.escapeHtml(dep)}" ${tnaResultDeptFilter.toLowerCase() === dep.toLowerCase() ? 'selected' : ''}>${window.escapeHtml(dep)}</option>`).join("")}
+            </select>
+        </div>
+
+        <div class="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-auto max-h-[70vh]">
+            <table class="w-full text-left border-separate border-spacing-0">
+                <thead class="text-[10px] font-black uppercase text-slate-400">
+                    <tr>
+                        <th class="sticky top-0 z-10 bg-slate-50 px-3 py-3 border-b border-slate-100">No</th>
+                        <th class="sticky top-0 z-10 bg-slate-50 px-3 py-3 border-b border-slate-100">Departemen</th>
+                        <th class="sticky top-0 z-10 bg-slate-50 px-3 py-3 border-b border-slate-100">Level Jabatan</th>
+                        <th class="sticky top-0 z-10 bg-slate-50 px-3 py-3 border-b border-slate-100">Problem</th>
+                        <th class="sticky top-0 z-10 bg-slate-50 px-3 py-3 border-b border-slate-100">Identification</th>
+                        <th class="sticky top-0 z-10 bg-slate-50 px-3 py-3 border-b border-slate-100">Corrective Action</th>
+                        <th class="sticky top-0 z-10 bg-slate-50 px-3 py-3 border-b border-slate-100">Action / Training Recommendation</th>
+                        <th class="sticky top-0 z-10 bg-slate-50 px-3 py-3 border-b border-slate-100 text-center">Deadline Modul</th>
+                        <th class="sticky top-0 z-10 bg-slate-50 px-3 py-3 border-b border-slate-100 text-center">Deadline Pelaksanaan Training</th>
+                        <th class="sticky top-0 z-10 bg-slate-50 px-3 py-3 border-b border-slate-100 text-right">Aksi</th>
+                    </tr>
+                </thead>
+                <tbody>${rows || `<tr><td colspan="10" class="text-center py-10 text-slate-400">Belum ada data Hasil TNA${tnaResultDeptFilter ? ' untuk departemen ini' : ''}.</td></tr>`}</tbody>
+            </table>
+        </div>
+    `);
+}
+
+window.deleteTnaResult = async function (id) {
+    if (!confirm("Hapus entri Hasil TNA ini?")) return;
+    await window.LMS_DB.deleteDoc(window.LMS_DB.ref("tnaResults", id));
+    window.toast("Entri Hasil TNA dihapus", "success");
+    window.navigate("/admin/tna-results");
+};
+
+// ---- Builder (form isi/edit) — dipakai bareng oleh admin (tab "Hasil TNA") dan peserta
+// (menu "Input Hasil TNA"). backRoute nentuin ke mana navigasi balik/simpan mengarah, dan
+// restrictToOwn (true buat peserta) mencegah mereka edit entri milik orang lain lewat URL. ----
+function renderTnaResultBuilder(id, backRoute) {
+    const isAdminCtx = backRoute === "#/admin/tna-results";
+    const restrictToOwn = !isAdminCtx;
+    const u = window.STATE.user;
+    const myEmp = window.sel.employeeOfUser(u);
+
+    if (restrictToOwn && id) {
+        const existing = window.STATE.tnaResults.find(t => t.id === id);
+        if (!existing || normalizeUsername(existing.createdByUsername) !== normalizeUsername(u.username)) {
+            window.setPage(`<p class="text-center text-rose-400 py-20 font-bold">Kamu cuma bisa mengedit data yang kamu input sendiri.</p>`);
+            return;
+        }
+    }
+
+    if (!tnaResultDraft || tnaResultDraft._loadedId !== (id || "new")) {
+        const existing = id ? window.STATE.tnaResults.find(t => t.id === id) : null;
+        tnaResultDraft = existing ? JSON.parse(JSON.stringify(existing)) : {
+            dept: (myEmp && myEmp.dept) || (u && u.dept) || "",
+            levelJabatan: "", problem: "", identification: "", correctiveAction: "",
+            actionRecommendation: "", deadlineModul: "", deadlinePelaksanaan: ""
+        };
+        tnaResultDraft._loadedId = id || "new";
+        tnaResultDraft._id = id;
+    }
+    const d = tnaResultDraft;
+    const deptOptions = window.sel.allDeptNames();
+    const posOptions = window.sel.allPosisiNames();
+
+    window.setPage(`
+        <a href="${backRoute}" class="text-xs font-bold text-slate-400 hover:text-amber-600"><i class="fas fa-arrow-left mr-1"></i> Kembali</a>
+        <h1 class="text-xl font-black text-slate-800 mt-2 mb-3">${d._id ? 'Edit Data Hasil TNA' : 'Input Hasil TNA'}</h1>
+        <datalist id="tna-dept-options">${deptOptions.map(p => `<option value="${window.escapeHtml(p)}">`).join("")}</datalist>
+        <datalist id="tna-pos-options">${posOptions.map(p => `<option value="${window.escapeHtml(p)}">`).join("")}</datalist>
+        <div class="space-y-2">
+            <div class="bg-white rounded-2xl border border-slate-100 shadow-sm p-3 space-y-2">
+                <div class="form-grid">
+                    <div>
+                        <label class="text-[10px] font-bold uppercase text-slate-400">Departemen</label>
+                        <input list="tna-dept-options" value="${window.escapeHtml(d.dept)}" oninput="tnaResultDraft.dept=this.value" placeholder="Nama departemen" class="w-full border border-slate-200 rounded-lg px-2.5 py-1.5 text-sm mt-1">
+                    </div>
+                    <div>
+                        <label class="text-[10px] font-bold uppercase text-slate-400">Level Jabatan</label>
+                        <input list="tna-pos-options" value="${window.escapeHtml(d.levelJabatan)}" oninput="tnaResultDraft.levelJabatan=this.value" placeholder="Mis. Sales" class="w-full border border-slate-200 rounded-lg px-2.5 py-1.5 text-sm mt-1">
+                    </div>
+                </div>
+                <div>
+                    <label class="text-[10px] font-bold uppercase text-slate-400">Problem</label>
+                    <textarea oninput="tnaResultDraft.problem=this.value" placeholder="Masalah yang ditemukan..." rows="2" class="w-full border border-slate-200 rounded-lg px-2.5 py-1.5 text-sm mt-1">${window.escapeHtml(d.problem)}</textarea>
+                </div>
+                <div>
+                    <label class="text-[10px] font-bold uppercase text-slate-400">Identification</label>
+                    <textarea oninput="tnaResultDraft.identification=this.value" placeholder="Identifikasi akar penyebab / gap..." rows="2" class="w-full border border-slate-200 rounded-lg px-2.5 py-1.5 text-sm mt-1">${window.escapeHtml(d.identification)}</textarea>
+                </div>
+                <div>
+                    <label class="text-[10px] font-bold uppercase text-slate-400">Corrective Action</label>
+                    <textarea oninput="tnaResultDraft.correctiveAction=this.value" placeholder="Tindakan perbaikan yang disarankan..." rows="2" class="w-full border border-slate-200 rounded-lg px-2.5 py-1.5 text-sm mt-1">${window.escapeHtml(d.correctiveAction)}</textarea>
+                </div>
+                <div>
+                    <label class="text-[10px] font-bold uppercase text-slate-400">Action / Training Recommendation</label>
+                    <input value="${window.escapeHtml(d.actionRecommendation)}" oninput="tnaResultDraft.actionRecommendation=this.value" placeholder="Mis. Sales Conversion & Closing" class="w-full border border-slate-200 rounded-lg px-2.5 py-1.5 text-sm mt-1">
+                </div>
+                <div class="form-grid">
+                    <div>
+                        <label class="text-[10px] font-bold uppercase text-slate-400">Deadline Modul</label>
+                        <input type="date" value="${window.escapeHtml(d.deadlineModul || '')}" oninput="tnaResultDraft.deadlineModul=this.value" class="w-full border border-slate-200 rounded-lg px-2.5 py-1.5 text-sm mt-1">
+                    </div>
+                    <div>
+                        <label class="text-[10px] font-bold uppercase text-slate-400">Deadline Pelaksanaan Training</label>
+                        <input type="date" value="${window.escapeHtml(d.deadlinePelaksanaan || '')}" oninput="tnaResultDraft.deadlinePelaksanaan=this.value" class="w-full border border-slate-200 rounded-lg px-2.5 py-1.5 text-sm mt-1">
+                    </div>
+                </div>
+            </div>
+            <div class="bg-white rounded-2xl border border-slate-100 shadow-sm p-3">
+                <button onclick="window.guardedClick(this, () => window.saveTnaResultDraft('${backRoute}'))" class="w-full bg-amber-500 hover:bg-amber-600 text-white font-bold py-3 rounded-2xl transition"><i class="fas fa-save mr-1"></i> Simpan</button>
+            </div>
+        </div>
+    `);
+}
+
+window.saveTnaResultDraft = async function (backRoute) {
+    const d = tnaResultDraft;
+    if (!d.dept.trim() || !d.levelJabatan.trim() || !d.problem.trim()) {
+        window.toast("Departemen, Level Jabatan, dan Problem wajib diisi", "warn");
+        return;
+    }
+    const { col, ref, addDoc, setDoc, serverTimestamp } = window.LMS_DB;
+    const u = window.STATE.user;
+    const payload = {
+        dept: d.dept.trim(), levelJabatan: d.levelJabatan.trim(),
+        problem: d.problem.trim(), identification: (d.identification || "").trim(),
+        correctiveAction: (d.correctiveAction || "").trim(),
+        actionRecommendation: (d.actionRecommendation || "").trim(),
+        deadlineModul: d.deadlineModul || "", deadlinePelaksanaan: d.deadlinePelaksanaan || "",
+        updatedAt: serverTimestamp()
+    };
+    if (d._id) {
+        await setDoc(ref("tnaResults", d._id), payload, { merge: true });
+    } else {
+        payload.createdAt = serverTimestamp();
+        payload.createdBy = u.id;
+        payload.createdByUsername = u.username || "";
+        payload.createdByName = u.name || u.nama || u.username || "";
+        await addDoc(col("tnaResults"), payload);
+    }
+    tnaResultDraft = null;
+    window.toast("Data Hasil TNA tersimpan", "success");
+    window.navigate(backRoute.replace(/^#/, ""));
+};
+
+// ================= PESERTA: INPUT HASIL TNA (SUPERVISOR KE ATAS) =================
+function requireTnaInputAccess(renderFn) {
+    return function (id) {
+        if (!window.sel.canInputTna()) { window.setPage(`<p class="text-center text-rose-400 py-20 font-bold">Akses ditolak. Menu ini khusus peserta dengan level jabatan Supervisor ke atas.</p>`); return; }
+        renderFn(id);
+    };
+}
+window.ROUTES["tna-input"] = requireTnaInputAccess(function (id) {
+    if (id === "new" || (id && window.STATE.tnaResults.some(t => t.id === id))) { renderTnaResultBuilder(id === "new" ? null : id, "#/tna-input"); return; }
+    renderTnaInputList();
+});
+
+function renderTnaInputList() {
+    const u = window.STATE.user;
+    const mine = window.STATE.tnaResults
+        .filter(t => normalizeUsername(t.createdByUsername) === normalizeUsername(u.username))
+        .sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
+
+    const cards = mine.map(t => `
+        <div class="bg-white rounded-2xl border border-slate-100 shadow-sm p-3.5">
+            <div class="flex items-start justify-between gap-2">
+                <div>
+                    <p class="text-[10px] font-black uppercase text-amber-500">${window.escapeHtml(t.dept || '-')} • ${window.escapeHtml(t.levelJabatan || '-')}</p>
+                    <p class="font-bold text-slate-700 text-sm mt-0.5">${window.escapeHtml(t.problem || '-')}</p>
+                </div>
+                <div class="flex items-center gap-2 shrink-0">
+                    <a href="#/tna-input/${t.id}" class="text-indigo-500 hover:text-indigo-700"><i class="fas fa-pen"></i></a>
+                    <button onclick="window.guardedClick(this, () => window.deleteMyTnaResult('${t.id}'))" class="text-rose-400 hover:text-rose-600"><i class="fas fa-trash"></i></button>
+                </div>
+            </div>
+            <div class="grid sm:grid-cols-2 gap-2 mt-2 text-xs text-slate-500">
+                <p><span class="font-bold text-slate-600">Identification:</span> ${window.escapeHtml(t.identification || '-')}</p>
+                <p><span class="font-bold text-slate-600">Corrective Action:</span> ${window.escapeHtml(t.correctiveAction || '-')}</p>
+                <p><span class="font-bold text-slate-600">Rekomendasi:</span> ${window.escapeHtml(t.actionRecommendation || '-')}</p>
+                <p><span class="font-bold text-slate-600">Deadline:</span> Modul ${tnaFmtDeadline(t.deadlineModul)} • Training ${tnaFmtDeadline(t.deadlinePelaksanaan)}</p>
+            </div>
+        </div>`).join("");
+
+    window.setPage(`
+        <div class="flex items-center justify-between flex-wrap gap-3 mb-1">
+            <div>
+                <h1 class="text-xl font-black text-slate-800">Input Hasil TNA</h1>
+                <p class="text-sm text-slate-500">Isi hasil analisa Training Need Analysis (TNA) untuk tim/departemen kamu — masalah, akar penyebab, tindakan perbaikan, dan rekomendasi training.</p>
+            </div>
+            <a href="#/tna-input/new" class="bg-amber-500 hover:bg-amber-600 text-white text-sm font-bold px-4 py-2.5 rounded-2xl whitespace-nowrap"><i class="fas fa-plus mr-1"></i> Tambah Data</a>
+        </div>
+        <div class="space-y-2 mt-3">
+            ${cards || dashboardEmptyState("fa-clipboard-list", "Kamu belum mengisi data Hasil TNA.", "/tna-input/new", "Tambah Data")}
+        </div>
+    `);
+}
+
+window.deleteMyTnaResult = async function (id) {
+    const u = window.STATE.user;
+    const existing = window.STATE.tnaResults.find(t => t.id === id);
+    if (!existing || normalizeUsername(existing.createdByUsername) !== normalizeUsername(u.username)) {
+        window.toast("Kamu cuma bisa menghapus data yang kamu input sendiri", "warn");
+        return;
+    }
+    if (!confirm("Hapus data Hasil TNA ini?")) return;
+    await window.LMS_DB.deleteDoc(window.LMS_DB.ref("tnaResults", id));
+    window.toast("Data Hasil TNA dihapus", "success");
+    window.navigate("/tna-input");
 };
 
 // ================= KIRIM UNDANGAN TRAINING TNA (VIA WHATSAPP) =================
