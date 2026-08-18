@@ -886,6 +886,17 @@ html.dark .corevalue-wire { background: rgba(96, 165, 250, .2); }
     </div>
 </div>
 
+<!-- ================= MODAL: FORM INPUT/EDIT HASIL TNA (POPUP) ================= -->
+<div id="modal-tna-result-builder" class="fixed inset-0 z-[10000] hide modal-overlay flex items-center justify-center p-4">
+    <div class="bg-white w-full max-w-2xl rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+        <div class="p-4 border-b flex justify-between items-center bg-amber-50 shrink-0">
+            <h3 id="tna-result-builder-title" class="text-sm font-black text-amber-600"><i class="fas fa-clipboard-list mr-1"></i> Input Hasil TNA</h3>
+            <button onclick="window.closeTnaResultBuilder()" class="text-slate-400 hover:text-slate-700"><i class="fas fa-times"></i></button>
+        </div>
+        <div id="tna-result-builder-body" class="p-4 overflow-y-auto space-y-2"></div>
+    </div>
+</div>
+
 <!-- ================= MODAL: KIRIM NOTIF PERMOHONAN APPROVAL MODUL (HASIL TNA) ================= -->
 <div id="modal-tna-approval-request" class="fixed inset-0 z-[10000] hide modal-overlay flex items-center justify-center p-4">
     <div class="bg-white w-full max-w-lg rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[85vh]">
@@ -2122,7 +2133,7 @@ window.renderSidebar = function () {
         { key: "certificates", icon: "fa-award", label: "Sertifikat Saya" },
         // Menu khusus role peserta dengan level jabatan Supervisor ke atas (dikonfigurasi admin
         // lewat window.tnaInputConfig()) — buat input data "Hasil TNA" timnya sendiri.
-        ...(window.sel.canInputTna() ? [{ key: "tna-input", icon: "fa-clipboard-list", label: "Input Hasil TNA" }] : []),
+        ...(window.sel.canInputTna() ? [{ key: "tna-input", icon: "fa-clipboard-list", label: "Request Training" }] : []),
     ];
     // adminNav TANPA "Laporan" lagi di bawah, karena sudah dipindah & di-rename jadi
     // "Dashboard" di paling atas (lihat array nav di atas).
@@ -6084,8 +6095,8 @@ let tnaEligibilitySettingsOpen = false;
 
 window.ROUTES["admin/tna-results"] = requireAdmin(function (id) {
     window.adminNavContext = "tna";
-    if (id === "new" || (id && window.STATE.tnaResults.some(t => t.id === id))) { renderTnaResultBuilder(id === "new" ? null : id, "#/admin/tna-results"); return; }
     renderTnaResultAdminList();
+    if (id === "new" || (id && window.STATE.tnaResults.some(t => t.id === id))) { renderTnaResultBuilder(id === "new" ? null : id, "#/admin/tna-results"); }
 });
 
 function tnaFmtDeadline(v) {
@@ -6424,7 +6435,7 @@ function renderTnaResultBuilder(id, backRoute) {
     if (restrictToOwn && id) {
         const existing = window.STATE.tnaResults.find(t => t.id === id);
         if (!existing || normalizeUsername(existing.createdByUsername) !== normalizeUsername(u.username)) {
-            window.setPage(`<p class="text-center text-rose-400 py-20 font-bold">Kamu cuma bisa mengedit data yang kamu input sendiri.</p>`);
+            window.toast("Kamu cuma bisa mengedit data yang kamu input sendiri", "warn");
             return;
         }
     }
@@ -6454,9 +6465,10 @@ function renderTnaResultBuilder(id, backRoute) {
     // punya banyak sesi/batch training sekaligus (linkedTnaResultId nunjuk balik ke sini).
     const linkedTrainings = d._id ? window.STATE.trainings.filter(tr => tr.linkedTnaResultId === d._id) : [];
 
-    window.setPage(`
-        <a href="${backRoute}" class="text-xs font-bold text-slate-400 hover:text-amber-600"><i class="fas fa-arrow-left mr-1"></i> Kembali</a>
-        <h1 class="text-xl font-black text-slate-800 mt-2 mb-3">${d._id ? 'Edit Data Hasil TNA' : 'Input Hasil TNA'}</h1>
+    const builderTitleEl = document.getElementById("tna-result-builder-title");
+    if (builderTitleEl) builderTitleEl.innerHTML = `<i class="fas fa-clipboard-list mr-1"></i> ${d._id ? 'Edit Data Hasil TNA' : 'Input Hasil TNA'}`;
+    const builderBodyEl = document.getElementById("tna-result-builder-body");
+    if (builderBodyEl) builderBodyEl.innerHTML = `
         <datalist id="tna-dept-options">${deptOptions.map(p => `<option value="${window.escapeHtml(p)}">`).join("")}</datalist>
         <datalist id="tna-pos-options">${posOptions.map(p => `<option value="${window.escapeHtml(p)}">`).join("")}</datalist>
         <div class="space-y-2">
@@ -6611,9 +6623,16 @@ function renderTnaResultBuilder(id, backRoute) {
                 <button onclick="window.guardedClick(this, () => window.saveTnaResultDraft('${backRoute}'))" class="w-full bg-amber-500 hover:bg-amber-600 text-white font-bold py-3 rounded-2xl transition"><i class="fas fa-save mr-1"></i> Simpan</button>
             </div>
         </div>
-    `);
+    `;
+    window.openModal("modal-tna-result-builder");
 }
 window.rerenderTnaResultBuilder = function () { renderTnaResultBuilder(tnaResultDraft._id, tnaResultDraft._backRoute); };
+window.closeTnaResultBuilder = function () {
+    const backRoute = (tnaResultDraft && tnaResultDraft._backRoute) || "#/tna-input";
+    tnaResultDraft = null;
+    window.closeModal("modal-tna-result-builder");
+    window.navigate(backRoute.replace(/^#/, ""));
+};
 
 window.uploadTnaAttachment = async function () {
     const fileInput = document.getElementById("tna-attachment-file-input");
@@ -6684,6 +6703,7 @@ window.saveTnaResultDraft = async function (backRoute) {
         await addDoc(col("tnaResults"), payload);
     }
     tnaResultDraft = null;
+    window.closeModal("modal-tna-result-builder");
     window.toast("Data Hasil TNA tersimpan", "success");
     window.navigate(backRoute.replace(/^#/, ""));
 };
@@ -6696,8 +6716,8 @@ function requireTnaInputAccess(renderFn) {
     };
 }
 window.ROUTES["tna-input"] = requireTnaInputAccess(function (id) {
-    if (id === "new" || (id && window.STATE.tnaResults.some(t => t.id === id))) { renderTnaResultBuilder(id === "new" ? null : id, "#/tna-input"); return; }
     renderTnaInputList();
+    if (id === "new" || (id && window.STATE.tnaResults.some(t => t.id === id))) { renderTnaResultBuilder(id === "new" ? null : id, "#/tna-input"); }
 });
 
 function renderTnaInputList() {
@@ -6724,9 +6744,10 @@ function renderTnaInputList() {
                     <div class="w-28">${tnaProgressBarHtml(t.progressStatus)}</div>
                 </div>
             </td>
-            <td class="px-3 py-3 min-w-[150px]">
+            <td class="px-3 py-3 min-w-[170px]">
                 <div class="flex flex-col gap-1.5 items-start">
                     ${tnaApprovalBadgeHtml(t.moduleApprovalStatus || 'none')}
+                    ${t.moduleFileUrl ? `<a href="${window.escapeHtml(t.moduleFileUrl)}" target="_blank" class="text-[11px] font-bold text-indigo-500 hover:underline"><i class="fas fa-file-circle-check mr-1"></i>${window.escapeHtml(t.moduleFileName || 'Lihat modul')}</a>` : `<span class="text-[10px] text-slate-400">Modul belum diupload</span>`}
                     ${t.moduleApprovalStatus === 'menunggu' ? `
                     <div class="flex gap-1">
                         <button onclick="window.guardedClick(this, () => window.decideTnaApproval('${t.id}','disetujui'))" class="text-[10px] font-black px-2 py-1 rounded-lg bg-emerald-500 hover:bg-emerald-600 text-white transition"><i class="fas fa-check mr-0.5"></i>Setujui</button>
