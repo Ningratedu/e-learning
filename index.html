@@ -8890,6 +8890,22 @@ function renderTrainingReport(id) {
         return [1, 2, 3, 4, 5].map(n => `<i class="fas fa-star text-[11px] ${n <= v ? "text-amber-400" : "text-slate-200"}"></i>`).join("");
     }
 
+    // ---- Card summary bergaya sama dengan Dashboard Admin (donut + panel gelap) ----
+    function ringStatCard(icon, color, pct, label, subLabel) {
+        const c = DONUT_STAT_COLORS[color] || DONUT_STAT_COLORS.indigo;
+        return diagramStatCardDark(icon, color, donutDiagramSvg(Math.max(0, Math.min(100, pct || 0)), c.hex), label, subLabel);
+    }
+    function valueStatCardDark(icon, color, value, label, subLabel) {
+        return diagramStatCardDark(icon, color, `<span class="text-lg font-black text-white">${value}</span>`, label, subLabel);
+    }
+    function ratingStatCardDark(icon, color, val, label) {
+        if (val === null) return diagramStatCardDark(icon, color, `<span class="text-lg font-black text-white/40">-</span>`, label, "Belum ada data");
+        const v = Math.round(val);
+        const stars = [1, 2, 3, 4, 5].map(n => `<i class="fas fa-star text-[9px] ${n <= v ? 'text-amber-300' : 'text-white/20'}"></i>`).join("");
+        const diagramHtml = `<div class="flex flex-col items-center gap-1.5"><span class="text-base font-black text-white leading-none">${val}</span><div class="flex gap-0.5">${stars}</div></div>`;
+        return diagramStatCardDark(icon, color, diagramHtml, label, `${val}/5`);
+    }
+
     // ---- Rincian feedback evaluasi per peserta (rating bintang & feedback teks per poin) ----
     const feedbackCards = evals.length ? evals.map(e => {
         const r = e.ratings || {};
@@ -8992,22 +9008,20 @@ function renderTrainingReport(id) {
             </div>
         </div>
 
-        <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
-            ${statCard("fa-users", "indigo", targetCount, "Jumlah Target Peserta")}
-            ${statCard("fa-user-check", "emerald", `${attendedCount} (${attendancePct}%)`, "Kehadiran (Jumlah & %)")}
-            ${statCard("fa-graduation-cap", "amber", `${passCount} (${passPct}%)`, "Kelulusan (dari yang Hadir)")}
-            ${statCard("fa-star", "rose", avgRating !== null ? avgRating + "/5" : "-", "Rata-rata Rating Feedback")}
-        </div>
-        <div class="grid grid-cols-2 ${hasAssignmentFeature ? 'lg:grid-cols-3' : ''} gap-3 mb-4">
-            ${statCard("fa-list-check", "violet", avgPre !== null ? avgPre : "-", "Rata-rata Nilai Pre-test")}
-            ${statCard("fa-clipboard-question", "violet", avgPost !== null ? avgPost : "-", "Rata-rata Nilai Post-test")}
-            ${hasAssignmentFeature ? statCard("fa-file-signature", "indigo", `${assignmentSubmittedCount} (${assignmentPct}%)`, "Penyelesaian Tugas") : ""}
-        </div>
-        <div class="grid grid-cols-3 gap-3 mb-4">
-            ${statCard("fa-book-open", "indigo", avgMateri !== null ? avgMateri + "/5" : "-", "Rating Materi")}
-            ${statCard("fa-chalkboard-user", "amber", avgTrainer !== null ? avgTrainer + "/5" : "-", "Rating Trainer")}
-            ${statCard("fa-building", "emerald", avgFasilitas !== null ? avgFasilitas + "/5" : "-", "Rating Fasilitas")}
-        </div>
+        ${(() => {
+            const cards = [
+                valueStatCardDark("fa-users", "indigo", targetCount, "Jumlah Target Peserta", ""),
+                ringStatCard("fa-user-check", "emerald", attendancePct, "Kehadiran (Jumlah & %)", `${attendedCount}/${targetCount}`),
+                ringStatCard("fa-graduation-cap", "amber", passPct, "Kelulusan (dari yang Hadir)", `${passCount}/${attendedCount}`),
+                ratingStatCardDark("fa-star", "rose", avgRating, "Rata-rata Rating Feedback"),
+            ];
+            if (avgPre !== null || avgPost !== null) cards.push(diagramStatCardDark("fa-chart-line", "violet", prePostBarDiagramSvg(avgPre || 0, avgPost || 0), "Progress Pre & Post-test", `${avgPre !== null ? avgPre : '-'} → ${avgPost !== null ? avgPost : '-'}`));
+            if (hasAssignmentFeature) cards.push(ringStatCard("fa-file-signature", "indigo", assignmentPct, "Penyelesaian Tugas", `${assignmentSubmittedCount}/${targetCount}`));
+            cards.push(ratingStatCardDark("fa-book-open", "indigo", avgMateri, "Rating Materi"));
+            cards.push(ratingStatCardDark("fa-chalkboard-user", "amber", avgTrainer, "Rating Trainer"));
+            cards.push(ratingStatCardDark("fa-building", "emerald", avgFasilitas, "Rating Fasilitas"));
+            return `<div class="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">${cards.join("")}</div>`;
+        })()}
 
         <div class="bg-white rounded-3xl border border-slate-100 shadow-sm p-4 mb-4">
             <div class="flex items-center justify-between flex-wrap gap-2 mb-3">
@@ -9143,6 +9157,26 @@ function renderCourseReport(id) {
         return [1, 2, 3, 4, 5].map(n => `<i class="fas fa-star text-[11px] ${n <= v ? "text-amber-400" : "text-slate-200"}"></i>`).join("");
     }
 
+    // ---- Card summary bergaya sama dengan Dashboard Admin (donut + panel gelap) ----
+    // Reuse diagramStatCardDark & donutDiagramSvg yang sama persis dipakai donutStatCard di
+    // Dashboard Admin, biar tampilannya konsisten di semua halaman laporan.
+    function ringStatCard(icon, color, pct, label, subLabel) {
+        const c = DONUT_STAT_COLORS[color] || DONUT_STAT_COLORS.indigo;
+        return diagramStatCardDark(icon, color, donutDiagramSvg(Math.max(0, Math.min(100, pct || 0)), c.hex), label, subLabel);
+    }
+    function valueStatCardDark(icon, color, value, label, subLabel) {
+        return diagramStatCardDark(icon, color, `<span class="text-lg font-black text-white">${value}</span>`, label, subLabel);
+    }
+    // Rating (dari 5) BUKAN rasio bagian-dari-keseluruhan, jadi dipakein bintang, bukan ring
+    // donat — konsisten sama gaya starRow yang sudah dipakai buat kartu feedback per peserta.
+    function ratingStatCardDark(icon, color, val, label) {
+        if (val === null) return diagramStatCardDark(icon, color, `<span class="text-lg font-black text-white/40">-</span>`, label, "Belum ada data");
+        const v = Math.round(val);
+        const stars = [1, 2, 3, 4, 5].map(n => `<i class="fas fa-star text-[9px] ${n <= v ? 'text-amber-300' : 'text-white/20'}"></i>`).join("");
+        const diagramHtml = `<div class="flex flex-col items-center gap-1.5"><span class="text-base font-black text-white leading-none">${val}</span><div class="flex gap-0.5">${stars}</div></div>`;
+        return diagramStatCardDark(icon, color, diagramHtml, label, `${val}/5`);
+    }
+
     // ---- Rincian per peserta target ----
     function participantStatus(p) {
         if (!p.user) return { label: "Belum Punya Akun", cls: "bg-slate-100 text-slate-400", key: "belum" };
@@ -9222,26 +9256,20 @@ function renderCourseReport(id) {
             </div>
         </div>
 
-        <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
-            ${statCard("fa-users", "indigo", targetCount, "Jumlah Target Peserta")}
-            ${statCard("fa-graduation-cap", "emerald", `${completedCount} (${completedPct}%)`, "Keterlaksanaan (Selesai)")}
-            ${statCard("fa-award", "amber", `${completedCount} (${gradPct}%)`, "Kelulusan (dari yang Sudah Mulai)")}
-            ${statCard("fa-star", "rose", avgRating !== null ? avgRating + "/5" : "-", "Rata-rata Rating Feedback")}
-        </div>
-        ${hasQuiz ? `
-        <div class="grid grid-cols-2 ${hasAssignmentFeature ? 'lg:grid-cols-3' : ''} gap-3 mb-4">
-            ${statCard("fa-list-check", "violet", avgPre !== null ? avgPre : "-", "Rata-rata Nilai Pre-test")}
-            ${statCard("fa-clipboard-question", "violet", avgPost !== null ? avgPost : "-", "Rata-rata Nilai Post-test")}
-            ${hasAssignmentFeature ? statCard("fa-file-signature", "indigo", `${assignmentSubmittedCount} (${assignmentPct}%)`, "Penyelesaian Tugas") : ""}
-        </div>` : (hasAssignmentFeature ? `
-        <div class="grid grid-cols-2 gap-3 mb-4">
-            ${statCard("fa-file-signature", "indigo", `${assignmentSubmittedCount} (${assignmentPct}%)`, "Penyelesaian Tugas")}
-        </div>` : "")}
-        <div class="grid grid-cols-3 gap-3 mb-4">
-            ${statCard("fa-book-open", "indigo", avgMateri !== null ? avgMateri + "/5" : "-", "Rating Materi")}
-            ${statCard("fa-chalkboard-user", "amber", avgTrainer !== null ? avgTrainer + "/5" : "-", "Rating Trainer")}
-            ${statCard("fa-building", "emerald", avgFasilitas !== null ? avgFasilitas + "/5" : "-", "Rating Fasilitas")}
-        </div>
+        ${(() => {
+            const cards = [
+                valueStatCardDark("fa-users", "indigo", targetCount, "Jumlah Target Peserta", ""),
+                ringStatCard("fa-graduation-cap", "emerald", completedPct, "Keterlaksanaan (Selesai)", `${completedCount}/${targetCount}`),
+                ringStatCard("fa-award", "amber", gradPct, "Kelulusan (dari yang Sudah Mulai)", `${completedCount}/${startedCount}`),
+                ratingStatCardDark("fa-star", "rose", avgRating, "Rata-rata Rating Feedback"),
+            ];
+            if (hasQuiz) cards.push(diagramStatCardDark("fa-chart-line", "violet", prePostBarDiagramSvg(avgPre || 0, avgPost || 0), "Progress Pre & Post-test", (avgPre !== null || avgPost !== null) ? `${avgPre !== null ? avgPre : '-'} → ${avgPost !== null ? avgPost : '-'}` : "Belum ada data"));
+            if (hasAssignmentFeature) cards.push(ringStatCard("fa-file-signature", "indigo", assignmentPct, "Penyelesaian Tugas", `${assignmentSubmittedCount}/${targetCount}`));
+            cards.push(ratingStatCardDark("fa-book-open", "indigo", avgMateri, "Rating Materi"));
+            cards.push(ratingStatCardDark("fa-chalkboard-user", "amber", avgTrainer, "Rating Trainer"));
+            cards.push(ratingStatCardDark("fa-building", "emerald", avgFasilitas, "Rating Fasilitas"));
+            return `<div class="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">${cards.join("")}</div>`;
+        })()}
 
         <div class="bg-white rounded-3xl border border-slate-100 shadow-sm p-4 mb-4">
             <div class="flex items-center justify-between flex-wrap gap-2 mb-3">
@@ -10252,7 +10280,7 @@ function onboardingWeekBucket(date) {
     const key = `${year}-${String(month).padStart(2, "0")}-w${weekNum}`;
     return {
         key, weekNum, monthNum: month + 1, monthName, year,
-        label: `Minggu ${weekNum} ${monthName} ${year}`,
+        label: `Minggu ke-${weekNum} Bulan ${monthName} ${year}`,
         rangeLabel: `${rangeStartDay}–${rangeEndDay} ${monthName} ${year}`,
         sortDate: new Date(year, month, rangeStartDay)
     };
@@ -10275,7 +10303,7 @@ function groupOnboardingBatchesByWeek(batches) {
 const ONBOARDING_MONTH_NAMES = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
 function defaultOnboardingScheduleFilters() {
     const now = new Date();
-    return { depts: [], years: [], months: [String(now.getMonth() + 1)], weeks: [] };
+    return { depts: [], years: [String(now.getFullYear())], months: [String(now.getMonth() + 1)], weeks: [] };
 }
 let onboardingScheduleFilters = null; // null = belum diinit
 let onboardingScheduleOpenFilter = null; // key filter yang dropdown-nya lagi dibuka, atau null
@@ -10308,7 +10336,246 @@ function renderOnboardingFilterDropdown(key, label, options) {
     </div>`;
 }
 
+// Isi & buka modal detail (reuse "modal-dashboard-detail", sama kayak
+// window.openEmployeeStatDetail / window.openReportDetail) waktu salah satu kartu di
+// "Ringkasan Sesuai Filter" (globalSummaryHtml) di halaman Penjadwalan Onboarding diklik.
+// Datanya dibaca dari window.__onboardingGlobalDetail yang diisi ulang tiap kali
+// renderOnboardingSchedule() jalan, jadi otomatis mengikuti filter Departemen/Tahun/
+// Bulan/Minggu yang lagi aktif waktu kartunya diklik.
+// type: 'total' | 'done' | 'progress' | 'notstarted' | 'rating' | 'prepost' | 'assignment'
+window.openOnboardingScheduleDetail = function (type) {
+    const titleEl = document.getElementById("dashboard-detail-title");
+    const bodyEl = document.getElementById("dashboard-detail-body");
+    const data = window.__onboardingGlobalDetail;
+    if (!titleEl || !bodyEl || !data) return;
+
+    const members = data.members || [];
+    const ext = data.ext || {};
+
+    function employeeOf(userId) {
+        const m = members.find(mm => mm.user && mm.user.id === userId);
+        return m ? m.employee : null;
+    }
+    function courseTitle(courseId) {
+        const c = (window.STATE.courses || []).find(cc => cc.id === courseId);
+        return c ? c.title : "-";
+    }
+    function memberRow(m, badgeHtml) {
+        const e = m.employee;
+        return `
+        <button type="button" onclick="window.closeModal('modal-dashboard-detail'); window.showEmployeeDetail('${e.id}')" class="w-full flex items-center justify-between gap-3 p-3 rounded-2xl border border-slate-100 hover:bg-indigo-50/40 transition text-left">
+            <div class="min-w-0">
+                <p class="text-sm font-bold text-slate-700 truncate">${window.escapeHtml(e.nama)}</p>
+                <p class="text-[11px] text-slate-400 truncate">${window.escapeHtml(e.dept || "-")} • ${window.fmtDate(e.tglBergabung)}</p>
+            </div>
+            ${badgeHtml}
+        </button>`;
+    }
+    function personRow(userId, courseId, color, right) {
+        const e = employeeOf(userId);
+        return `
+        <div class="flex items-center justify-between gap-3 p-3 rounded-2xl border border-slate-100 hover:bg-${color}-50/40 transition">
+            <div class="min-w-0">
+                <p class="text-sm font-bold text-slate-700 truncate">${window.escapeHtml(e ? e.nama : "-")}</p>
+                <p class="text-[11px] text-slate-400 truncate">${window.escapeHtml(e ? (e.dept || "-") : "-")} • ${window.escapeHtml(courseTitle(courseId))}</p>
+            </div>
+            ${right}
+        </div>`;
+    }
+
+    if (type === "total" || type === "done" || type === "progress" || type === "notstarted") {
+        const meta = {
+            total: { title: `<i class="fas fa-users mr-1"></i> Semua Target Peserta`, empty: "Belum ada peserta yang masuk batch sesuai filter ini.", filter: () => true },
+            done: { title: `<i class="fas fa-graduation-cap mr-1"></i> Peserta Selesai Onboarding`, empty: "Belum ada peserta yang selesai onboarding.", filter: m => m.isDone },
+            progress: { title: `<i class="fas fa-spinner mr-1"></i> Peserta Sedang Proses`, empty: "Tidak ada peserta yang sedang proses onboarding.", filter: m => !m.isDone && m.completedCount > 0 },
+            notstarted: { title: `<i class="fas fa-hourglass-half mr-1"></i> Peserta Belum Mulai`, empty: "Semua peserta sudah mulai onboarding.", filter: m => !m.isDone && m.completedCount === 0 },
+        }[type];
+        titleEl.innerHTML = meta.title;
+        const list = members.filter(meta.filter).slice().sort((a, b) => String(a.employee.nama || "").localeCompare(String(b.employee.nama || "")));
+        bodyEl.innerHTML = list.length ? list.map(m => {
+            const total = m.ordered.length || 0;
+            const badgeColor = m.isDone ? "bg-emerald-50 text-emerald-600" : (m.completedCount > 0 ? "bg-sky-50 text-sky-600" : "bg-rose-50 text-rose-500");
+            return memberRow(m, `<span class="shrink-0 text-[10px] font-black px-2 py-1 rounded-full ${badgeColor}">${m.completedCount}/${total}</span>`);
+        }).join("") : dashboardEmptyState("fa-users", meta.empty, "/admin/onboarding-schedule", "Kembali");
+    }
+
+    else if (type === "rating") {
+        titleEl.innerHTML = `<i class="fas fa-star mr-1"></i> Rincian Rating Feedback`;
+        const list = (ext.evals || []).slice().sort((a, b) => (b.submittedAt?.seconds || 0) - (a.submittedAt?.seconds || 0));
+        bodyEl.innerHTML = list.length ? list.map(ev => {
+            const r = ev.ratings || {};
+            const vals = [r.materi, r.trainer, r.fasilitas].filter(v => typeof v === "number");
+            const avgOne = vals.length ? Math.round((vals.reduce((a, b) => a + b, 0) / vals.length) * 10) / 10 : 0;
+            const v = Math.round(avgOne);
+            const stars = [1, 2, 3, 4, 5].map(n => `<i class="fas fa-star text-[9px] ${n <= v ? "text-amber-400" : "text-slate-200"}"></i>`).join("");
+            return personRow(ev.userId, ev.courseId, "amber", `<div class="shrink-0 flex items-center gap-1.5"><span class="text-xs font-black text-amber-600">${avgOne}</span><div class="flex gap-0.5">${stars}</div></div>`);
+        }).join("") : dashboardEmptyState("fa-star", "Belum ada feedback yang masuk.", "/admin/onboarding-schedule", "Kembali");
+    }
+
+    else if (type === "prepost") {
+        titleEl.innerHTML = `<i class="fas fa-chart-line mr-1"></i> Rincian Pre & Post-test`;
+        const preMap = {}, postMap = {};
+        (ext.preAttempts || []).forEach(a => { preMap[`${a.userId}:${a.courseId}`] = a.score; });
+        (ext.latestPostList || []).forEach(a => { postMap[`${a.userId}:${a.courseId}`] = a.score; });
+        const keys = Array.from(new Set([...Object.keys(preMap), ...Object.keys(postMap)]));
+        bodyEl.innerHTML = keys.length ? keys.map(k => {
+            const [userId, courseId] = k.split(":");
+            const pre = preMap[k], post = postMap[k];
+            const naik = (typeof pre === "number" && typeof post === "number") ? post - pre : null;
+            const trendHtml = naik === null ? "" : `<span class="text-[10px] font-bold ${naik >= 0 ? "text-emerald-500" : "text-rose-500"}">${naik >= 0 ? "+" : ""}${naik}</span>`;
+            return personRow(userId, courseId, "violet", `<div class="shrink-0 text-right"><p class="text-xs font-black text-slate-700">${typeof pre === "number" ? pre : "-"} → ${typeof post === "number" ? post : "-"}</p>${trendHtml}</div>`);
+        }).join("") : dashboardEmptyState("fa-chart-line", "Belum ada data pre/post-test.", "/admin/onboarding-schedule", "Kembali");
+    }
+
+    else if (type === "assignment") {
+        titleEl.innerHTML = `<i class="fas fa-file-signature mr-1"></i> Rincian Penyelesaian Tugas`;
+        const list = (ext.submissions || []).slice().sort((a, b) => (b.submittedAt?.seconds || 0) - (a.submittedAt?.seconds || 0));
+        bodyEl.innerHTML = list.length ? list.map(s => {
+            const badge = s.status === "graded" ? `<span class="shrink-0 text-[10px] font-black px-2 py-1 rounded-full bg-emerald-50 text-emerald-600">Nilai ${s.score ?? "-"}</span>` : `<span class="shrink-0 text-[10px] font-black px-2 py-1 rounded-full bg-amber-50 text-amber-600">Menunggu</span>`;
+            return personRow(s.userId, s.courseId, "indigo", badge);
+        }).join("") : dashboardEmptyState("fa-file-signature", "Belum ada tugas yang dikumpulkan.", "/admin/onboarding-schedule", "Kembali");
+    }
+
+    window.openModal("modal-dashboard-detail");
+};
+
 function renderOnboardingSchedule() {
+    // ---- Mini card summary per batch — versi kecil dari card konsep Dashboard Admin
+    // (panel gelap + ring donat), dipakai buat ringkasan tiap batch onboarding. ----
+    function miniRingCard(icon, color, pct, label, subLabel) {
+        const c = DONUT_STAT_COLORS[color] || DONUT_STAT_COLORS.indigo;
+        const dash = Math.max(0, Math.min(100, pct || 0));
+        return `
+        <div class="bg-white rounded-xl border border-slate-100 shadow-sm overflow-hidden flex items-stretch">
+            <div class="shrink-0 w-10 bg-slate-900 flex items-center justify-center py-1.5">
+                <div class="relative w-8 h-8">
+                    <svg viewBox="0 0 36 36" class="w-8 h-8 -rotate-90">
+                        <circle class="text-white/10" stroke="currentColor" stroke-width="4" fill="none" cx="18" cy="18" r="15.9155"></circle>
+                        <circle stroke="${c.hex}" stroke-width="4" fill="none" stroke-linecap="round" stroke-dasharray="${dash} ${100 - dash}" stroke-dashoffset="25" cx="18" cy="18" r="15.9155"></circle>
+                    </svg>
+                    <div class="absolute inset-0 flex items-center justify-center"><span class="text-[7px] font-black text-white">${dash}%</span></div>
+                </div>
+            </div>
+            <div class="flex-1 min-w-0 px-2 py-1 flex flex-col justify-center">
+                <div class="w-4 h-4 rounded ${c.bg} flex items-center justify-center mb-0.5"><i class="fas ${icon} ${c.text} text-[8px]"></i></div>
+                <p class="text-[9px] text-slate-400 font-semibold truncate leading-tight">${label}</p>
+                <p class="text-[9px] ${c.text} font-bold leading-tight">${subLabel}</p>
+            </div>
+        </div>`;
+    }
+    function miniValueCard(icon, color, value, label) {
+        const c = DONUT_STAT_COLORS[color] || DONUT_STAT_COLORS.indigo;
+        return `
+        <div class="bg-white rounded-xl border border-slate-100 shadow-sm overflow-hidden flex items-stretch">
+            <div class="shrink-0 w-10 bg-slate-900 flex items-center justify-center py-1.5"><span class="text-xs font-black text-white">${value}</span></div>
+            <div class="flex-1 min-w-0 px-2 py-1 flex flex-col justify-center">
+                <div class="w-4 h-4 rounded ${c.bg} flex items-center justify-center mb-0.5"><i class="fas ${icon} ${c.text} text-[8px]"></i></div>
+                <p class="text-[9px] text-slate-400 font-semibold truncate leading-tight">${label}</p>
+            </div>
+        </div>`;
+    }
+    // Rating (dari 5) BUKAN rasio bagian-dari-keseluruhan, jadi versi mini-nya dikasih bintang
+    // kecil, bukan ring donat — sama konsepnya kayak ratingStatCardDark di Laporan Keterlaksanaan.
+    function miniRatingCard(icon, color, val, label) {
+        const c = DONUT_STAT_COLORS[color] || DONUT_STAT_COLORS.indigo;
+        if (val === null) return `
+        <div class="bg-white rounded-xl border border-slate-100 shadow-sm overflow-hidden flex items-stretch">
+            <div class="shrink-0 w-10 bg-slate-900 flex items-center justify-center py-1.5"><span class="text-xs font-black text-white/40">-</span></div>
+            <div class="flex-1 min-w-0 px-2 py-1 flex flex-col justify-center">
+                <div class="w-4 h-4 rounded ${c.bg} flex items-center justify-center mb-0.5"><i class="fas ${icon} ${c.text} text-[8px]"></i></div>
+                <p class="text-[9px] text-slate-400 font-semibold truncate leading-tight">${label}</p>
+                <p class="text-[9px] text-slate-300 font-bold leading-tight">Belum ada data</p>
+            </div>
+        </div>`;
+        const v = Math.round(val);
+        const stars = [1, 2, 3, 4, 5].map(n => `<i class="fas fa-star text-[6px] ${n <= v ? 'text-amber-300' : 'text-white/20'}"></i>`).join("");
+        return `
+        <div class="bg-white rounded-xl border border-slate-100 shadow-sm overflow-hidden flex items-stretch">
+            <div class="shrink-0 w-10 bg-slate-900 flex flex-col items-center justify-center gap-0.5 py-1.5">
+                <span class="text-xs font-black text-white leading-none">${val}</span>
+                <div class="flex gap-[1px]">${stars}</div>
+            </div>
+            <div class="flex-1 min-w-0 px-2 py-1 flex flex-col justify-center">
+                <div class="w-4 h-4 rounded ${c.bg} flex items-center justify-center mb-0.5"><i class="fas ${icon} ${c.text} text-[8px]"></i></div>
+                <p class="text-[9px] text-slate-400 font-semibold truncate leading-tight">${label}</p>
+                <p class="text-[9px] ${c.text} font-bold leading-tight">${v}/5</p>
+            </div>
+        </div>`;
+    }
+    // Versi mini bar Pre vs Post (padanan kecil dari prePostBarDiagramSvg), dipas-in ke lebar
+    // panel gelap 40px (w-10) supaya gak overflow kayak versi besarnya.
+    function miniPrePostBarSvg(avgPre, avgPost) {
+        const maxH = 16, baseY = 18;
+        const preH = avgPre > 0 ? Math.max(2, Math.round((Math.min(100, avgPre) / 100) * maxH)) : 1;
+        const postH = avgPost > 0 ? Math.max(2, Math.round((Math.min(100, avgPost) / 100) * maxH)) : 1;
+        return `
+        <svg viewBox="0 0 20 20" class="w-6 h-5">
+            <line x1="1" y1="${baseY}" x2="19" y2="${baseY}" stroke="rgba(255,255,255,.15)" stroke-width="1"></line>
+            <rect x="4" y="${baseY - preH}" width="4" height="${preH}" rx="1" fill="rgba(255,255,255,.35)"></rect>
+            <rect x="12" y="${baseY - postH}" width="4" height="${postH}" rx="1" fill="#38bdf8"></rect>
+        </svg>`;
+    }
+    function miniPrePostCard(color, avgPre, avgPost, label) {
+        const c = DONUT_STAT_COLORS[color] || DONUT_STAT_COLORS.indigo;
+        const subLabel = (avgPre !== null || avgPost !== null) ? `${avgPre !== null ? avgPre : '-'} → ${avgPost !== null ? avgPost : '-'}` : "Belum ada data";
+        return `
+        <div class="bg-white rounded-xl border border-slate-100 shadow-sm overflow-hidden flex items-stretch">
+            <div class="shrink-0 w-10 bg-slate-900 flex items-center justify-center py-1.5">${miniPrePostBarSvg(avgPre || 0, avgPost || 0)}</div>
+            <div class="flex-1 min-w-0 px-2 py-1 flex flex-col justify-center">
+                <div class="w-4 h-4 rounded ${c.bg} flex items-center justify-center mb-0.5"><i class="fas fa-chart-line ${c.text} text-[8px]"></i></div>
+                <p class="text-[9px] text-slate-400 font-semibold truncate leading-tight">${label}</p>
+                <p class="text-[9px] ${c.text} font-bold leading-tight">${subLabel}</p>
+            </div>
+        </div>`;
+    }
+    // Agregat rating feedback, nilai pre/post-test, & penyelesaian tugas SEMUA training
+    // onboarding yang ditargetkan ke anggota 1 batch (bukan cuma 1 training seperti di Laporan
+    // Keterlaksanaan per-training) — dipakai buat mini card summary tiap batch.
+    function computeBatchExtendedStats(members) {
+        const validPairs = new Set();
+        let hasAnyAssignment = false;
+        members.forEach(m => {
+            if (!m.user) return;
+            (m.ordered || []).forEach(c => {
+                validPairs.add(`${m.user.id}:${c.id}`);
+                if (c.assignment && c.assignment.enabled) hasAnyAssignment = true;
+            });
+        });
+
+        const evals = window.STATE.evaluations.filter(e => validPairs.has(`${e.userId}:${e.courseId}`));
+        let avgRating = null;
+        if (evals.length) {
+            const sumAll = evals.reduce((s, e) => {
+                const r = e.ratings || {};
+                const vals = [r.materi, r.trainer, r.fasilitas].filter(v => typeof v === "number");
+                const avgOne = vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : 0;
+                return s + avgOne;
+            }, 0);
+            avgRating = Math.round((sumAll / evals.length) * 10) / 10;
+        }
+
+        const preAttempts = window.STATE.quizAttempts.filter(a => a.attemptType === "pretest" && validPairs.has(`${a.userId}:${a.courseId}`));
+        const postAttemptsAll = window.STATE.quizAttempts.filter(a => a.attemptType !== "pretest" && validPairs.has(`${a.userId}:${a.courseId}`));
+        const latestPostByKey = {};
+        postAttemptsAll.forEach(a => {
+            const key = `${a.userId}:${a.courseId}`;
+            const cur = latestPostByKey[key];
+            if (!cur || (a.attemptAt?.seconds || 0) > (cur.attemptAt?.seconds || 0)) latestPostByKey[key] = a;
+        });
+        const latestPostList = Object.values(latestPostByKey);
+        const avgPre = preAttempts.length ? Math.round(preAttempts.reduce((s, a) => s + (a.score || 0), 0) / preAttempts.length) : null;
+        const avgPost = latestPostList.length ? Math.round(latestPostList.reduce((s, a) => s + (a.score || 0), 0) / latestPostList.length) : null;
+
+        const submissions = window.STATE.assignmentSubmissions.filter(s => validPairs.has(`${s.userId}:${s.courseId}`));
+        const submittedUserIds = new Set(submissions.map(s => s.userId));
+
+        // Field mentah (evals, preAttempts, latestPostList, submissions) ikut dikembalikan
+        // (bukan cuma agregatnya) supaya popup drill-down ringkasan global (lihat
+        // window.openOnboardingScheduleDetail) bisa nampilin rincian per-orang/per-training,
+        // gak cuma angka rata-rata/total-nya doang.
+        return { avgRating, avgPre, avgPost, hasAnyAssignment, assignmentSubmittedCount: submittedUserIds.size, evals, preAttempts, latestPostList, submissions };
+    }
+
     if (onboardingScheduleDeptDraft === null) {
         onboardingScheduleDeptDraft = [...window.onboardingScheduleConfig().salesMarketingDepts];
     }
@@ -10404,12 +10671,34 @@ function renderOnboardingSchedule() {
         const isOpen = onboardingScheduleOpenWeeks.has(w.key);
         const isCurrentWeek = w.key === onboardingWeekBucket(today).key;
         const isOverdue = w.batches.some(b => b.deadline < today) && completed < target;
+        // Rentang tanggal ASLI siklus batch (Selasa-Sabtu / Rabu-Jumat / Sabtu-Selasa, dst),
+        // bukan potongan kalender generik (hari 1-7, 8-14, dst) — biar sesuai konteks jadwal
+        // batch onboarding yang sebenarnya, yang siklusnya bisa beda-beda per jenis batch.
+        const minStart = new Date(Math.min(...w.batches.map(b => +b.start)));
+        const maxDeadline = new Date(Math.max(...w.batches.map(b => +b.deadline)));
+        const batchDateRangeLabel = minStart.getTime() === maxDeadline.getTime()
+            ? window.fmtDate(minStart)
+            : `${window.fmtDate(minStart)} – ${window.fmtDate(maxDeadline)}`;
 
         const batchBlocks = w.batches.slice().sort((a, b) => a.deadline - b.deadline).map(b => {
             const bTarget = b.members.length;
             const bCompleted = b.members.filter(m => m.isDone).length;
+            const bProgress = b.members.filter(m => !m.isDone && m.completedCount > 0).length;
+            const bNotStarted = bTarget - bCompleted - bProgress;
             const bIsCurrent = b.start <= today && today <= b.deadline;
             const bIsOverdue = b.deadline < today && bCompleted < bTarget;
+            const bExt = computeBatchExtendedStats(b.members);
+
+            const bMiniCards = [
+                miniValueCard("fa-users", "indigo", bTarget, "Target Peserta"),
+                miniRingCard("fa-graduation-cap", "emerald", bTarget ? Math.round((bCompleted / bTarget) * 100) : 0, "Selesai", `${bCompleted}/${bTarget}`),
+                miniRingCard("fa-spinner", "sky", bTarget ? Math.round((bProgress / bTarget) * 100) : 0, "Proses", `${bProgress}/${bTarget}`),
+                miniRingCard("fa-hourglass-half", "rose", bTarget ? Math.round((bNotStarted / bTarget) * 100) : 0, "Belum Mulai", `${bNotStarted}/${bTarget}`),
+                miniRatingCard("fa-star", "amber", bExt.avgRating, "Rating Feedback"),
+            ];
+            if (bExt.avgPre !== null || bExt.avgPost !== null) bMiniCards.push(miniPrePostCard("violet", bExt.avgPre, bExt.avgPost, "Pre & Post-test"));
+            if (bExt.hasAnyAssignment) bMiniCards.push(miniRingCard("fa-file-signature", "indigo", bTarget ? Math.round((bExt.assignmentSubmittedCount / bTarget) * 100) : 0, "Penyelesaian Tugas", `${bExt.assignmentSubmittedCount}/${bTarget}`));
+            const bCardsHtml = `<div class="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-3">${bMiniCards.join("")}</div>`;
 
             const rows = b.members.slice().sort((a, z) => (a.isDone === z.isDone ? 0 : a.isDone ? 1 : -1)).map(m => {
                 const e = m.employee;
@@ -10433,6 +10722,7 @@ function renderOnboardingSchedule() {
             <div class="border border-slate-100 rounded-2xl p-3.5 mb-3 last:mb-0">
                 <div class="flex items-start justify-between flex-wrap gap-2 mb-2.5">
                     <div class="flex items-center gap-2 flex-wrap">
+                        <span class="text-[10px] font-black px-2.5 py-1 rounded-full bg-violet-50 text-violet-600">Minggu ke-${w.weekNum}</span>
                         <span class="text-[10px] font-black px-2.5 py-1 rounded-full ${onboardingBatchTypeBadgeClass(b)}">${onboardingBatchTypeLabel(b)}</span>
                         <span class="text-[10px] font-black px-2.5 py-1 rounded-full bg-slate-100 text-slate-500">${b.windowLabel} • ${window.fmtDate(b.start)}–${window.fmtDate(b.deadline)}</span>
                         ${bIsCurrent ? '<span class="text-[10px] font-black px-2.5 py-1 rounded-full bg-sky-50 text-sky-600"><i class="fas fa-circle-play mr-1"></i>Berjalan</span>' : ''}
@@ -10440,6 +10730,7 @@ function renderOnboardingSchedule() {
                     </div>
                     <span class="text-[10px] font-black px-2.5 py-1 rounded-full bg-slate-50 text-slate-500">${bCompleted}/${bTarget} selesai</span>
                 </div>
+                ${bCardsHtml}
                 <div class="overflow-x-auto">
                     <table class="w-full text-left">
                         <thead class="bg-slate-50 text-[10px] font-black uppercase text-slate-400">
@@ -10460,7 +10751,7 @@ function renderOnboardingSchedule() {
                         ${isCurrentWeek ? '<span class="text-[10px] font-black px-2.5 py-1 rounded-full bg-sky-50 text-sky-600"><i class="fas fa-circle-play mr-1"></i>Minggu Berjalan</span>' : ''}
                         ${isOverdue ? '<span class="text-[10px] font-black px-2.5 py-1 rounded-full bg-rose-50 text-rose-500"><i class="fas fa-triangle-exclamation mr-1"></i>Ada yang Lewat Deadline</span>' : ''}
                     </div>
-                    <p class="text-[11px] text-slate-400 mt-1">${w.rangeLabel} &nbsp;•&nbsp; ${w.batches.length} siklus batch</p>
+                    <p class="text-[11px] text-slate-400 mt-1">${batchDateRangeLabel} &nbsp;•&nbsp; ${w.batches.length} siklus batch</p>
                 </div>
                 <div class="flex items-center gap-2 shrink-0">
                     <span class="text-[10px] font-black px-2.5 py-1 rounded-full bg-indigo-50 text-indigo-600"><i class="fas fa-users mr-1"></i>${target} target peserta</span>
@@ -10472,6 +10763,57 @@ function renderOnboardingSchedule() {
         </div>`;
     }).join("");
 
+    // ---- Ringkasan global sesuai filter aktif — konsep sama dengan Laporan Keterlaksanaan
+    // (ring donat + bintang rating + bar pre/post), tapi ukuran NORMAL (bukan mini kayak per
+    // batch), dan datanya diagregat dari SEMUA batch yang lolos filter Departemen/Tahun/
+    // Bulan/Minggu di atas. ----
+    const globalSummaryHtml = (() => {
+        const allBatches = weeks.flatMap(w => w.batches);
+        const allMembers = allBatches.flatMap(b => b.members);
+        const gTarget = allMembers.length;
+        const gCompleted = allMembers.filter(m => m.isDone).length;
+        const gProgress = allMembers.filter(m => !m.isDone && m.completedCount > 0).length;
+        const gNotStarted = gTarget - gCompleted - gProgress;
+        const gExt = computeBatchExtendedStats(allMembers);
+
+        // Simpan data mentah di belakang ringkasan global (sesuai filter yang lagi aktif) ke
+        // variabel global, supaya waktu salah satu kartu di bawah diklik, popup-nya
+        // (window.openOnboardingScheduleDetail) tinggal baca dari sini — gak perlu itung ulang
+        // & otomatis selalu konsisten sama angka yang lagi ditampilkan di kartu.
+        window.__onboardingGlobalDetail = { members: allMembers, ext: gExt };
+
+        function ringCard(icon, color, pct, label, subLabel, onclick) {
+            const c = DONUT_STAT_COLORS[color] || DONUT_STAT_COLORS.indigo;
+            return diagramStatCardDark(icon, color, donutDiagramSvg(Math.max(0, Math.min(100, pct || 0)), c.hex), label, subLabel, onclick);
+        }
+        function valueCard(icon, color, value, label, onclick) {
+            return diagramStatCardDark(icon, color, `<span class="text-lg font-black text-white">${value}</span>`, label, "", onclick);
+        }
+        function ratingCard(icon, color, val, label, onclick) {
+            if (val === null) return diagramStatCardDark(icon, color, `<span class="text-lg font-black text-white/40">-</span>`, label, "Belum ada data", onclick);
+            const v = Math.round(val);
+            const stars = [1, 2, 3, 4, 5].map(n => `<i class="fas fa-star text-[9px] ${n <= v ? 'text-amber-300' : 'text-white/20'}"></i>`).join("");
+            const diagramHtml = `<div class="flex flex-col items-center gap-1.5"><span class="text-base font-black text-white leading-none">${val}</span><div class="flex gap-0.5">${stars}</div></div>`;
+            return diagramStatCardDark(icon, color, diagramHtml, label, `${v}/5`, onclick);
+        }
+
+        const cards = [
+            valueCard("fa-users", "indigo", gTarget, "Total Target Peserta", "window.openOnboardingScheduleDetail('total')"),
+            ringCard("fa-graduation-cap", "emerald", gTarget ? Math.round((gCompleted / gTarget) * 100) : 0, "Selesai Onboarding", `${gCompleted}/${gTarget}`, "window.openOnboardingScheduleDetail('done')"),
+            ringCard("fa-spinner", "sky", gTarget ? Math.round((gProgress / gTarget) * 100) : 0, "Sedang Proses", `${gProgress}/${gTarget}`, "window.openOnboardingScheduleDetail('progress')"),
+            ringCard("fa-hourglass-half", "rose", gTarget ? Math.round((gNotStarted / gTarget) * 100) : 0, "Belum Mulai", `${gNotStarted}/${gTarget}`, "window.openOnboardingScheduleDetail('notstarted')"),
+            ratingCard("fa-star", "amber", gExt.avgRating, "Rating Feedback", "window.openOnboardingScheduleDetail('rating')"),
+        ];
+        if (gExt.avgPre !== null || gExt.avgPost !== null) cards.push(diagramStatCardDark("fa-chart-line", "violet", prePostBarDiagramSvg(gExt.avgPre || 0, gExt.avgPost || 0), "Progress Pre & Post-test", `${gExt.avgPre !== null ? gExt.avgPre : '-'} → ${gExt.avgPost !== null ? gExt.avgPost : '-'}`, "window.openOnboardingScheduleDetail('prepost')"));
+        if (gExt.hasAnyAssignment) cards.push(ringCard("fa-file-signature", "indigo", gTarget ? Math.round((gExt.assignmentSubmittedCount / gTarget) * 100) : 0, "Penyelesaian Tugas", `${gExt.assignmentSubmittedCount}/${gTarget}`, "window.openOnboardingScheduleDetail('assignment')"));
+
+        return `
+        <div class="mb-4">
+            <p class="text-[11px] font-black text-slate-400 uppercase tracking-wide mb-2"><i class="fas fa-chart-simple mr-1"></i> Ringkasan Sesuai Filter</p>
+            <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">${cards.join("")}</div>
+        </div>`;
+    })();
+
     window.setPage(`
         ${renderAdminSectionTabs("admin/onboarding-schedule")}
         <h1 class="text-xl font-black text-slate-800 mb-1 select-none cursor-default" onclick="window.onboardingScheduleTitleClick()">Penjadwalan Onboarding</h1>
@@ -10479,6 +10821,7 @@ function renderOnboardingSchedule() {
         ${configHtml}
         ${bulkCompleteHtml}
         ${filterBarHtml}
+        ${globalSummaryHtml}
         <div class="text-xs text-slate-400 mb-3"><i class="fas fa-circle-info mr-1"></i> Sales &amp; Marketing: siklus Selasa-Sabtu (join setelah Selasa masuk batch minggu depan). Departemen lain: 2 siklus/minggu — Rabu-Jumat &amp; Sabtu-Selasa.</div>
         ${weekCards || '<div class="bg-white rounded-3xl border border-slate-100 shadow-sm p-10 text-center text-slate-400 text-sm">Tidak ada data yang cocok dengan filter saat ini.</div>'}
     `);
@@ -11407,7 +11750,7 @@ window.addEventListener("lms-firebase-ready", async () => {
     }
 
     // Re-render current page tiap ada perubahan data live, KECUALI sedang di course builder
-    // (supaya input yang lagi diketik admin gak ke-reset tiap ada snapshot baru). 
+    // (supaya input yang lagi diketik admin gak ke-reset tiap ada snapshot baru).
     window.addEventListener("lms-state-changed", () => {
         if (!window.STATE.user) return;
         const hash = location.hash.replace(/^#/, "");
