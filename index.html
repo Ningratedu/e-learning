@@ -3251,6 +3251,14 @@ function renderTnaMonthlyChart(stats, token) {
 // ditampilkan (di bawah itu = "data belum cukup").
 const TNA_GROWTH_MIN_SAMPLE = 2;
 
+// KPI karyawan disimpan dalam skala pecahan 0-1 (mis. 94% disimpan sebagai 0.94, lihat
+// excelCellToKpiValue). Fungsi ini mengonversinya ke skala persen (0-100) yang dibulatkan 1
+// desimal, konsisten dengan cara konversi yang sudah dipakai di ringkasan KPI karyawan &
+// chart dashboard (biar angkanya tampil bilangan bulat kalau memang datanya bulat, bukan "0,94%").
+function kpiToPct(raw) {
+    return typeof raw === "number" ? Math.round(raw * 1000) / 10 : null;
+}
+
 function computeTrainingGrowth(t) {
     const S = window.STATE;
     const trainingMonth = new Date(t.date).getMonth() + 1; // 1-12, konsisten dgn key employee.kpi
@@ -3263,9 +3271,11 @@ function computeTrainingGrowth(t) {
     const beforeMonth = trainingMonth - 1;
     const rows = attendees.map(a => {
         const emp = employeeOfUserId(a.userId);
-        const before = emp && emp.kpi ? (emp.kpi[beforeMonth] ?? emp.kpi[String(beforeMonth)]) : undefined;
-        const during = emp && emp.kpi ? (emp.kpi[trainingMonth] ?? emp.kpi[String(trainingMonth)]) : undefined;
-        const hasData = typeof before === "number" && typeof during === "number";
+        const beforeRaw = emp && emp.kpi ? (emp.kpi[beforeMonth] ?? emp.kpi[String(beforeMonth)]) : undefined;
+        const duringRaw = emp && emp.kpi ? (emp.kpi[trainingMonth] ?? emp.kpi[String(trainingMonth)]) : undefined;
+        const hasData = typeof beforeRaw === "number" && typeof duringRaw === "number";
+        const before = kpiToPct(beforeRaw);
+        const during = kpiToPct(duringRaw);
         return {
             userId: a.userId,
             name: emp ? emp.nama : null,
@@ -3273,7 +3283,7 @@ function computeTrainingGrowth(t) {
             before: hasData ? before : null,
             during: hasData ? during : null,
             growth: hasData ? Math.round((during - before) * 10) / 10 : null,
-            naik: hasData && during > before
+            naik: hasData && duringRaw > beforeRaw
         };
     });
 
@@ -11135,7 +11145,8 @@ window.ROUTES["admin/training-growth-detail"] = requireAdmin(function (id) {
             participants.forEach(p => {
                 if (p.baseline === null) return;
                 const raw = p.emp.kpi[m] ?? p.emp.kpi[String(m)];
-                if (typeof raw === "number" && raw > p.baseline) naikCount++;
+                const pctVal = kpiToPct(raw);
+                if (pctVal !== null && pctVal > p.baseline) naikCount++;
             });
             const pct = g.attendedCount ? Math.round((naikCount / g.attendedCount) * 1000) / 10 : null;
             trajectoryLabels.push(KPI_MONTH_NAMES_SHORT[m - 1]);
@@ -11160,26 +11171,60 @@ window.ROUTES["admin/training-growth-detail"] = requireAdmin(function (id) {
                 : `<p class="text-sm text-slate-400 text-center py-10">Belum ada data KPI lanjutan buat digambar tren-nya.</p>`}
         </div>
         <div class="bg-white rounded-3xl border border-slate-100 shadow-sm p-4">
-            <h3 class="font-black text-slate-700 text-sm mb-3">Rincian per Peserta</h3>
+            <h3 class="font-black text-slate-700 text-sm mb-1">Rincian per Peserta</h3>
+            <p class="text-[11px] text-slate-400 mb-3">KPI tiap bulan mulai dari bulan sebelum training sampai akhir tahun ${trainingYear}. Keterangan <b class="text-emerald-600">Naik</b>/<b class="text-rose-500">Turun</b> dihitung dibanding KPI bulan sebelum training.</p>
             <div class="overflow-x-auto">
-                <table class="w-full text-left">
-                    <thead><tr class="text-[10px] uppercase font-black text-slate-400"><th class="py-2 px-2">Nama</th><th class="py-2 px-2 text-center">KPI Sebelum</th><th class="py-2 px-2 text-center">KPI Training</th><th class="py-2 px-2 text-center">Status</th></tr></thead>
-                    <tbody>
-                        ${g.rows.map(r => {
-                            const statusHtml = !r.hasData
-                                ? `<span class="text-slate-400">Data tidak lengkap</span>`
-                                : (r.naik
-                                    ? `<span class="text-emerald-600">Naik (+${r.growth}%)</span>`
-                                    : `<span class="text-rose-500">${r.growth < 0 ? `Turun (${r.growth}%)` : "Tidak naik"}</span>`);
-                            return `<tr class="border-t border-slate-50">
-                            <td class="py-2 px-2 text-sm text-slate-600">${window.escapeHtml(r.name || "-")}</td>
-                            <td class="py-2 px-2 text-center text-sm text-slate-600">${r.hasData ? r.before + "%" : "-"}</td>
-                            <td class="py-2 px-2 text-center text-sm text-slate-600">${r.hasData ? r.during + "%" : "-"}</td>
-                            <td class="py-2 px-2 text-center text-sm font-black">${statusHtml}</td>
+                ${(() => {
+                    const monthsToShow = [];
+                    for (let m = g.beforeMonth; m <= 12; m++) monthsToShow.push(m);
+                    const headHtml = monthsToShow.map((m, idx) => {
+                        const tag = idx === 0 ? " (Sebelum)" : (m === g.month ? " (Training)" : "");
+                        return `<th class="py-2 px-2 text-center whitespace-nowrap">KPI ${KPI_MONTH_NAMES_FULL[m - 1]}${tag}</th>`;
+                    }).join("");
+
+                    const bodyHtml = g.rows.map((r, i) => {
+                        const emp = employeeOfUserId(r.userId);
+                        const baseline = r.hasData ? r.before : null; // sudah dalam skala persen (0-100)
+                        const cellsHtml = monthsToShow.map((m, idx) => {
+                            const raw = emp && emp.kpi ? (emp.kpi[m] ?? emp.kpi[String(m)]) : undefined;
+                            const val = kpiToPct(raw); // konversi skala pecahan (0-1) -> persen (0-100)
+                            const hasValue = val !== null;
+                            if (idx === 0) {
+                                // Kolom bulan sebelum training = baseline, tanpa keterangan naik/turun.
+                                return `<td class="py-2 px-2 text-center text-sm text-slate-600 whitespace-nowrap">${hasValue ? val + "%" : "-"}</td>`;
+                            }
+                            if (!hasValue) {
+                                return `<td class="py-2 px-2 text-center text-sm text-slate-300 whitespace-nowrap">-</td>`;
+                            }
+                            if (baseline === null) {
+                                return `<td class="py-2 px-2 text-center text-sm text-slate-600 whitespace-nowrap">${val}%<p class="text-[10px] text-slate-400 font-normal">Data tidak lengkap</p></td>`;
+                            }
+                            const diff = Math.round((val - baseline) * 10) / 10;
+                            const ketHtml = diff > 0
+                                ? `<p class="text-[10px] text-emerald-600 font-bold">Naik (+${diff}%)</p>`
+                                : (diff < 0
+                                    ? `<p class="text-[10px] text-rose-500 font-bold">Turun (${diff}%)</p>`
+                                    : `<p class="text-[10px] text-slate-400 font-bold">Tetap</p>`);
+                            return `<td class="py-2 px-2 text-center text-sm text-slate-600 whitespace-nowrap">${val}%${ketHtml}</td>`;
+                        }).join("");
+                        return `<tr class="border-t border-slate-50">
+                            <td class="py-2 px-2 text-center text-sm text-slate-500">${i + 1}</td>
+                            <td class="py-2 px-2 text-sm font-bold text-slate-700 whitespace-nowrap">${window.escapeHtml(r.name || "-")}</td>
+                            <td class="py-2 px-2 text-sm text-slate-500 whitespace-nowrap">${window.escapeHtml((emp && emp.dept) || "-")}</td>
+                            ${cellsHtml}
                         </tr>`;
-                        }).join("")}
-                    </tbody>
-                </table>
+                    }).join("");
+
+                    return `<table class="w-full text-left">
+                    <thead><tr class="text-[10px] uppercase font-black text-slate-400">
+                        <th class="py-2 px-2 text-center">No</th>
+                        <th class="py-2 px-2">Nama</th>
+                        <th class="py-2 px-2">Departemen</th>
+                        ${headHtml}
+                    </tr></thead>
+                    <tbody>${bodyHtml}</tbody>
+                </table>`;
+                })()}
             </div>
         </div>
     ` : `
