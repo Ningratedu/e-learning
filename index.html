@@ -2163,7 +2163,7 @@ window.renderSidebar = function () {
         { key: "certificates", icon: "fa-award", label: "Sertifikat Saya" },
         // Menu khusus role peserta dengan level jabatan Supervisor ke atas (dikonfigurasi admin
         // lewat window.tnaInputConfig()) — buat input data "Hasil TNA" timnya sendiri.
-        ...(window.sel.canInputTna() ? [{ key: "tna-input", icon: "fa-clipboard-list", label: "Input Hasil TNA" }] : []),
+        ...(window.sel.canInputTna() ? [{ key: "tna-input", icon: "fa-clipboard-list", label: "Request Training" }] : []),
     ];
     // adminNav TANPA "Laporan" lagi di bawah, karena sudah dipindah & di-rename jadi
     // "Dashboard" di paling atas (lihat array nav di atas).
