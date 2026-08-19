@@ -8444,6 +8444,16 @@ function renderTrainingReport(id) {
     const attendedCount = attendanceRecords.length;
     const attendancePct = targetCount ? Math.round((attendedCount / targetCount) * 100) : 0;
 
+    // ---- Penyelesaian Tugas (persentase target peserta yang SUDAH MENGUMPULKAN tugas,
+    // ngitung yang statusnya "submitted" ATAU "graded" — belum tentu udah dinilai admin,
+    // tapi udah dikumpulkan). Penyebutnya = targetCount, sama kayak Kehadiran. Cuma
+    // ditampilkan kalau training ini emang punya fitur Tugas yang diaktifkan admin. ----
+    const hasAssignmentFeature = !!(t.assignment && t.assignment.enabled);
+    const assignmentSubmittedCount = hasAssignmentFeature
+        ? window.STATE.assignmentSubmissions.filter(s => s.trainingId === id).length
+        : 0;
+    const assignmentPct = (hasAssignmentFeature && targetCount) ? Math.round((assignmentSubmittedCount / targetCount) * 100) : 0;
+
     // ---- Kelulusan (berdasarkan sertifikat terbit = lulus seluruh rangkaian training) ----
     // Beda dengan Keterlaksanaan & Kehadiran (penyebutnya = jumlah target peserta sesuai
     // penugasan admin), Kelulusan penyebutnya = jumlah yang HADIR saja (attendedCount) —
@@ -8597,9 +8607,10 @@ function renderTrainingReport(id) {
             ${statCard("fa-graduation-cap", "amber", `${passCount} (${passPct}%)`, "Kelulusan (dari yang Hadir)")}
             ${statCard("fa-star", "rose", avgRating !== null ? avgRating + "/5" : "-", "Rata-rata Rating Feedback")}
         </div>
-        <div class="grid grid-cols-2 gap-3 mb-4">
+        <div class="grid grid-cols-2 ${hasAssignmentFeature ? 'lg:grid-cols-3' : ''} gap-3 mb-4">
             ${statCard("fa-list-check", "violet", avgPre !== null ? avgPre : "-", "Rata-rata Nilai Pre-test")}
             ${statCard("fa-clipboard-question", "violet", avgPost !== null ? avgPost : "-", "Rata-rata Nilai Post-test")}
+            ${hasAssignmentFeature ? statCard("fa-file-signature", "indigo", `${assignmentSubmittedCount} (${assignmentPct}%)`, "Penyelesaian Tugas") : ""}
         </div>
         <div class="grid grid-cols-3 gap-3 mb-4">
             ${statCard("fa-book-open", "indigo", avgMateri !== null ? avgMateri + "/5" : "-", "Rating Materi")}
@@ -8693,6 +8704,16 @@ function renderCourseReport(id) {
         return false;
     }).length;
     const gradPct = startedCount ? Math.round((completedCount / startedCount) * 100) : 0;
+
+    // ---- Penyelesaian Tugas (persentase target peserta yang SUDAH MENGUMPULKAN tugas) ----
+    // Sama konsepnya dengan penambahan yang sama di Laporan Keterlaksanaan Training TNA.
+    // Penyebutnya = targetCount, cuma ditampilkan kalau training onboarding ini emang punya
+    // fitur Tugas yang diaktifkan admin.
+    const hasAssignmentFeature = !!(c.assignment && c.assignment.enabled);
+    const assignmentSubmittedCount = hasAssignmentFeature
+        ? window.STATE.assignmentSubmissions.filter(s => s.courseId === id).length
+        : 0;
+    const assignmentPct = (hasAssignmentFeature && targetCount) ? Math.round((assignmentSubmittedCount / targetCount) * 100) : 0;
 
     // ---- Rata-rata nilai Pre-test & Post-test (post-test = percobaan TERBARU tiap peserta) ----
     const hasQuiz = !!(c.quiz && (c.quiz.questions || []).length);
@@ -8817,10 +8838,14 @@ function renderCourseReport(id) {
             ${statCard("fa-star", "rose", avgRating !== null ? avgRating + "/5" : "-", "Rata-rata Rating Feedback")}
         </div>
         ${hasQuiz ? `
-        <div class="grid grid-cols-2 gap-3 mb-4">
+        <div class="grid grid-cols-2 ${hasAssignmentFeature ? 'lg:grid-cols-3' : ''} gap-3 mb-4">
             ${statCard("fa-list-check", "violet", avgPre !== null ? avgPre : "-", "Rata-rata Nilai Pre-test")}
             ${statCard("fa-clipboard-question", "violet", avgPost !== null ? avgPost : "-", "Rata-rata Nilai Post-test")}
-        </div>` : ""}
+            ${hasAssignmentFeature ? statCard("fa-file-signature", "indigo", `${assignmentSubmittedCount} (${assignmentPct}%)`, "Penyelesaian Tugas") : ""}
+        </div>` : (hasAssignmentFeature ? `
+        <div class="grid grid-cols-2 gap-3 mb-4">
+            ${statCard("fa-file-signature", "indigo", `${assignmentSubmittedCount} (${assignmentPct}%)`, "Penyelesaian Tugas")}
+        </div>` : "")}
         <div class="grid grid-cols-3 gap-3 mb-4">
             ${statCard("fa-book-open", "indigo", avgMateri !== null ? avgMateri + "/5" : "-", "Rating Materi")}
             ${statCard("fa-chalkboard-user", "amber", avgTrainer !== null ? avgTrainer + "/5" : "-", "Rating Trainer")}
