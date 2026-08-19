@@ -8597,7 +8597,7 @@ function renderTrainingReport(id) {
                     ? `<button onclick="window.guardedClick(this, () => window.setTrainingSessionStatus('${t.id}','finished').then(() => renderTrainingReport('${t.id}')))" class="text-xs font-black px-3 py-1.5 rounded-full bg-emerald-500 hover:bg-emerald-600 text-white transition"><i class="fas fa-flag-checkered mr-1"></i>Selesaikan Training</button>`
                     : `<button onclick="window.guardedClick(this, () => window.setTrainingSessionStatus('${t.id}','ongoing').then(() => renderTrainingReport('${t.id}')))" class="text-xs font-black px-3 py-1.5 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 transition"><i class="fas fa-rotate-left mr-1"></i>Buka Lagi</button>`}
                 <button onclick="window.openTrainingQr('${t.id}')" class="text-xs font-black px-3 py-1.5 rounded-full bg-sky-50 text-sky-600 hover:bg-sky-100 transition"><i class="fas fa-qrcode mr-1"></i>Tampilkan QR Presensi</button>
-                <span class="text-[11px] font-bold px-3 py-1.5 rounded-full ${hasScope ? 'bg-amber-50 text-amber-600' : 'bg-slate-100 text-slate-500'}"><i class="fas fa-users mr-1"></i>${window.escapeHtml(window.trainingScopeLabel(t))}</span>
+                <span class="text-[11px] font-bold px-3 py-1.5 rounded-full ${hasScope ? 'bg-amber-50 text-amber-600' : 'bg-slate-100 text-slate-500'}"><i class="fas fa-users mr-1"></i>${window.trainingScopeSummaryHtml(t, 'tna-report-' + t.id)}</span>
             </div>
         </div>
 
@@ -8827,7 +8827,7 @@ function renderCourseReport(id) {
             </div>
             <div class="flex items-center gap-2 flex-wrap">
                 <span class="text-[10px] font-black px-3 py-1.5 rounded-full ${c.published ? 'bg-emerald-50 text-emerald-600' : 'bg-slate-100 text-slate-500'}">${c.published ? 'Terbit' : 'Draft'}</span>
-                <span class="text-[11px] font-bold px-3 py-1.5 rounded-full ${window.courseHasScopeRestriction(c) ? 'bg-indigo-50 text-indigo-600' : 'bg-slate-100 text-slate-500'}"><i class="fas fa-users mr-1"></i>${window.escapeHtml(window.courseScopeLabel(c))}</span>
+                <span class="text-[11px] font-bold px-3 py-1.5 rounded-full ${window.courseHasScopeRestriction(c) ? 'bg-indigo-50 text-indigo-600' : 'bg-slate-100 text-slate-500'}"><i class="fas fa-users mr-1"></i>${window.courseScopeSummaryHtml(c, 'course-report-' + c.id)}</span>
             </div>
         </div>
 
