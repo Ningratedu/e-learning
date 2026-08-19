@@ -8676,6 +8676,24 @@ function renderCourseReport(id) {
     const completedCount = participants.filter(p => p.user && certOfUser(id, p.user.id)).length;
     const completedPct = targetCount ? Math.round((completedCount / targetCount) * 100) : 0;
 
+    // ---- Kelulusan (dari yang SUDAH MULAI, bukan dari seluruh target peserta) ----
+    // Sama konsepnya dengan Kelulusan di Laporan Keterlaksanaan Training TNA (penyebutnya =
+    // jumlah yang hadir, bukan jumlah target) — di Onboarding gak ada konsep "hadir", jadi
+    // padanannya = jumlah peserta yang SUDAH MULAI training ini (punya progress modul,
+    // pernah pretest/post-test, atau sudah lulus). Peserta yang belum sama sekali mulai
+    // gak ikut jadi penyebut, biar persentasenya nunjukin kualitas penyelesaian dari yang
+    // benar-benar udah jalan, bukan ketutup banyaknya peserta yang belum gerak sama sekali.
+    const startedCount = participants.filter(p => {
+        if (!p.user) return false;
+        if (certOfUser(id, p.user.id)) return true;
+        const enr = enrollmentOfUser(id, p.user.id);
+        if (enr && (enr.completedLessonIds || []).length) return true;
+        if (pretestAttemptOfUser(id, p.user.id)) return true;
+        if (postTestAttemptsOfUser(id, p.user.id).length) return true;
+        return false;
+    }).length;
+    const gradPct = startedCount ? Math.round((completedCount / startedCount) * 100) : 0;
+
     // ---- Rata-rata nilai Pre-test & Post-test (post-test = percobaan TERBARU tiap peserta) ----
     const hasQuiz = !!(c.quiz && (c.quiz.questions || []).length);
     const preAttempts = window.STATE.quizAttempts.filter(a => a.courseId === id && a.attemptType === "pretest");
@@ -8795,8 +8813,8 @@ function renderCourseReport(id) {
         <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
             ${statCard("fa-users", "indigo", targetCount, "Jumlah Target Peserta")}
             ${statCard("fa-graduation-cap", "emerald", `${completedCount} (${completedPct}%)`, "Keterlaksanaan (Selesai)")}
+            ${statCard("fa-award", "amber", `${completedCount} (${gradPct}%)`, "Kelulusan (dari yang Sudah Mulai)")}
             ${statCard("fa-star", "rose", avgRating !== null ? avgRating + "/5" : "-", "Rata-rata Rating Feedback")}
-            ${statCard("fa-comment-dots", "amber", evals.length, "Jumlah Evaluasi Masuk")}
         </div>
         ${hasQuiz ? `
         <div class="grid grid-cols-2 gap-3 mb-4">
