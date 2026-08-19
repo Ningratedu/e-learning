@@ -3236,6 +3236,339 @@ function renderTnaMonthlyChart(stats, token) {
     });
 }
 
+// ================= EFEKTIVITAS TRAINING TNA — GROWTH KPI PESERTA (Dashboard Admin) =================
+// Growth per peserta = KPI(bulan training) − KPI(bulan sebelum training), dihitung dari peserta
+// yang HADIR (attendance) — bukan cuma yang lulus (sertifikat terbit) — karena efek training ke
+// KPI harusnya udah mulai kekejar begitu ikut, gak perlu nunggu lulus post-test.
+// Training bulan Januari otomatis di-exclude dari kalkulasi, karena "bulan sebelum"-nya (Desember
+// tahun lalu) gak ada datanya — employee.kpi cuma nyimpan KPI tahun berjalan, gak ada histori
+// multi-tahun. Peserta yang datanya bolong di salah satu bulan (belum diisi) juga di-exclude dari
+// training itu, bukan dianggap 0, biar gak nyesatin. Minimal 2 peserta valid per training baru
+// dianggap punya angka growth yang layak ditampilkan (di bawah itu = "data belum cukup").
+const TNA_GROWTH_MIN_SAMPLE = 2;
+
+function computeTrainingGrowth(t) {
+    const S = window.STATE;
+    const trainingMonth = new Date(t.date).getMonth() + 1; // 1-12, konsisten dgn key employee.kpi
+    if (trainingMonth <= 1) {
+        return { training: t, month: trainingMonth, beforeMonth: null, attendedCount: S.attendance.filter(a => a.trainingId === t.id).length, validCount: 0, eligible: false, reason: "no-prev-month", rows: [] };
+    }
+
+    const beforeMonth = trainingMonth - 1;
+    const attendees = S.attendance.filter(a => a.trainingId === t.id);
+    const rows = [];
+    attendees.forEach(a => {
+        const emp = employeeOfUserId(a.userId);
+        if (!emp || !emp.kpi) return;
+        const before = emp.kpi[beforeMonth] ?? emp.kpi[String(beforeMonth)];
+        const during = emp.kpi[trainingMonth] ?? emp.kpi[String(trainingMonth)];
+        if (typeof before !== "number" || typeof during !== "number") return;
+        rows.push({ userId: a.userId, name: emp.nama, before, during, growth: Math.round((during - before) * 10) / 10 });
+    });
+
+    const validCount = rows.length;
+    if (validCount < TNA_GROWTH_MIN_SAMPLE) {
+        return { training: t, month: trainingMonth, beforeMonth, attendedCount: attendees.length, validCount, eligible: false, reason: "min-sample", rows };
+    }
+
+    const avgBefore = Math.round((rows.reduce((s, r) => s + r.before, 0) / validCount) * 10) / 10;
+    const avgDuring = Math.round((rows.reduce((s, r) => s + r.during, 0) / validCount) * 10) / 10;
+    const avgGrowth = Math.round((avgDuring - avgBefore) * 10) / 10;
+    const growthPct = avgBefore ? Math.round((avgGrowth / avgBefore) * 1000) / 10 : null;
+
+    return { training: t, month: trainingMonth, beforeMonth, attendedCount: attendees.length, validCount, eligible: true, avgBefore, avgDuring, avgGrowth, growthPct, rows };
+}
+
+function computeTnaGrowthStats() {
+    const year = new Date().getFullYear();
+    const now = Date.now();
+    const S = window.STATE;
+    const doneTrainings = S.trainings.filter(t => t.date && new Date(t.date).getFullYear() === year && new Date(t.date).getTime() <= now);
+
+    const perTraining = doneTrainings.map(computeTrainingGrowth).sort((a, b) => new Date(a.training.date) - new Date(b.training.date));
+    const eligible = perTraining.filter(x => x.eligible);
+
+    const monthlyGrowthSum = new Array(12).fill(0);
+    const monthlyValidCount = new Array(12).fill(0);
+    eligible.forEach(x => {
+        x.rows.forEach(r => {
+            monthlyGrowthSum[x.month - 1] += r.growth;
+            monthlyValidCount[x.month - 1] += 1;
+        });
+    });
+    const monthlyAvgGrowth = monthlyGrowthSum.map((sum, i) => monthlyValidCount[i] ? Math.round((sum / monthlyValidCount[i]) * 10) / 10 : null);
+
+    if (!eligible.length) {
+        return { perTraining, year, hasData: false, monthlyAvgGrowth, monthlyValidCount, totalTrainings: doneTrainings.length, eligibleCount: 0 };
+    }
+
+    const allGrowths = eligible.flatMap(x => x.rows.map(r => r.growth));
+    const overallAvgGrowth = Math.round((allGrowths.reduce((s, v) => s + v, 0) / allGrowths.length) * 10) / 10;
+    const best = eligible.reduce((a, b) => (b.avgGrowth > a.avgGrowth ? b : a));
+    const worst = eligible.reduce((a, b) => (b.avgGrowth < a.avgGrowth ? b : a));
+
+    return {
+        perTraining, year, hasData: true, monthlyAvgGrowth, monthlyValidCount,
+        eligibleCount: eligible.length, totalTrainings: doneTrainings.length,
+        overallAvgGrowth, best, worst
+    };
+}
+
+function buildTnaGrowthResumeSentence(stats) {
+    if (!stats.hasData) {
+        return `Belum ada training TNA tahun ${stats.year} yang datanya cukup buat dihitung growth KPI-nya (minimal ${TNA_GROWTH_MIN_SAMPLE} peserta hadir dengan data KPI bulan sebelum & bulan training lengkap, dan bukan training bulan Januari). Lengkapi data KPI lewat menu <b>Data Karyawan → Upload Data Karyawan</b>.`;
+    }
+    const { overallAvgGrowth, best, worst, eligibleCount, totalTrainings, year } = stats;
+    let s = `Dari <b>${eligibleCount}/${totalTrainings} training TNA</b> tahun ${year} yang datanya cukup dihitung, rata-rata growth KPI peserta (bulan training dibanding bulan sebelumnya) ada di <b>${overallAvgGrowth > 0 ? "+" : ""}${overallAvgGrowth} poin</b>. `;
+    if (best.training.id !== worst.training.id) {
+        s += `Growth tertinggi ada di training <b>${window.escapeHtml(best.training.title)}</b> (${best.avgGrowth > 0 ? "+" : ""}${best.avgGrowth} poin), sementara <b>${window.escapeHtml(worst.training.title)}</b> paling perlu dievaluasi lagi (${worst.avgGrowth > 0 ? "+" : ""}${worst.avgGrowth} poin).`;
+    }
+    return s;
+}
+
+function tnaGrowthTrendCard(stats) {
+    const resume = buildTnaGrowthResumeSentence(stats);
+    const badges = stats.hasData
+        ? `<span class="text-xs font-black px-2.5 py-1 rounded-full bg-indigo-50 text-indigo-600">${stats.overallAvgGrowth > 0 ? "+" : ""}${stats.overallAvgGrowth} Poin Rata²</span>
+           <span class="text-xs font-black px-2.5 py-1 rounded-full bg-slate-100 text-slate-500">${stats.eligibleCount}/${stats.totalTrainings} Training</span>`
+        : "";
+    return `
+    <div class="bg-white rounded-3xl border border-slate-100 shadow-sm p-4 mb-3">
+        <div class="flex flex-wrap items-center justify-between gap-2 mb-2">
+            <h3 class="font-black text-slate-700 text-sm"><i class="fas fa-arrow-trend-up text-indigo-500 mr-1"></i> Efektivitas Training TNA — Growth KPI Peserta ${stats.year || new Date().getFullYear()}</h3>
+            <div class="flex items-center gap-2">${badges}</div>
+        </div>
+        ${stats.hasData
+            ? `<div class="relative h-56 sm:h-72" id="tna-growth-chart-wrap"><canvas id="tna-growth-chart"></canvas></div>`
+            : `<div class="h-40 flex flex-col items-center justify-center text-center gap-1">
+                    <i class="fas fa-chart-simple text-3xl text-slate-200"></i>
+                    <p class="text-sm text-slate-400 max-w-xs">Belum ada training TNA dengan data growth KPI yang cukup tahun ini.</p>
+               </div>`}
+        <div class="mt-3 bg-indigo-50/60 rounded-2xl p-3.5 flex items-start gap-2.5">
+            <i class="fas fa-sparkles text-indigo-500 mt-0.5 shrink-0"></i>
+            <p class="text-[9px] text-slate-600 leading-relaxed">${resume}</p>
+        </div>
+        <a href="#/admin/training-growth" class="mt-3 inline-flex items-center gap-1 text-xs font-black text-indigo-500 hover:underline"><i class="fas fa-table-list"></i> Lihat rincian per training →</a>
+    </div>`;
+}
+
+window.__tnaGrowthRenderToken = window.__tnaGrowthRenderToken || 0;
+
+function waitForChartJsThenRenderTnaGrowth(stats, attempt, token) {
+    attempt = attempt || 0;
+    if (token !== window.__tnaGrowthRenderToken) return; // sudah ada render halaman yang lebih baru
+    const canvas = document.getElementById("tna-growth-chart");
+    if (!canvas) return; // halaman sudah berpindah, gak perlu render lagi
+
+    if (typeof Chart === "undefined") {
+        if (attempt < 20) {
+            setTimeout(() => waitForChartJsThenRenderTnaGrowth(stats, attempt + 1, token), 100);
+        } else {
+            console.error("Chart.js tidak tersedia, chart Growth KPI Training TNA tidak bisa ditampilkan.");
+            showTnaGrowthChartError("Grafik gagal dimuat. Coba muat ulang halaman.");
+        }
+        return;
+    }
+    renderTnaGrowthChart(stats, token);
+}
+
+function showTnaGrowthChartError(message) {
+    const wrap = document.getElementById("tna-growth-chart-wrap");
+    if (!wrap) return;
+    wrap.innerHTML = `
+        <div class="h-full flex flex-col items-center justify-center text-center gap-2">
+            <i class="fas fa-triangle-exclamation text-2xl text-amber-300"></i>
+            <p class="text-xs text-slate-400 max-w-[240px]">${window.escapeHtml(message)}</p>
+            <button onclick="window.location.reload()" class="text-xs font-black text-indigo-500 hover:underline">Muat ulang halaman</button>
+        </div>`;
+}
+
+let __tnaGrowthChartInstance = null;
+function renderTnaGrowthChart(stats, token) {
+    if (!stats.hasData) return;
+    if (typeof token !== "undefined" && token !== window.__tnaGrowthRenderToken) return;
+    const canvas = document.getElementById("tna-growth-chart");
+    if (!canvas || typeof Chart === "undefined") return;
+
+    requestAnimationFrame(() => {
+        if (typeof token !== "undefined" && token !== window.__tnaGrowthRenderToken) return;
+        const liveCanvas = document.getElementById("tna-growth-chart");
+        if (!liveCanvas) return;
+
+        try {
+            if (__tnaGrowthChartInstance) { __tnaGrowthChartInstance.destroy(); __tnaGrowthChartInstance = null; }
+            const ctx = liveCanvas.getContext("2d");
+
+            __tnaGrowthChartInstance = new Chart(ctx, {
+                type: "bar",
+                data: {
+                    labels: KPI_MONTH_NAMES_SHORT,
+                    datasets: [
+                        {
+                            type: "bar",
+                            label: "Peserta Valid Dihitung",
+                            data: stats.monthlyValidCount,
+                            backgroundColor: "rgba(99,102,241,.45)",
+                            borderColor: "#6366f1",
+                            borderWidth: 1.5,
+                            borderRadius: 6,
+                            maxBarThickness: 28,
+                            yAxisID: "y",
+                            order: 2,
+                        },
+                        {
+                            type: "line",
+                            label: "Rata² Growth KPI (poin)",
+                            data: stats.monthlyAvgGrowth,
+                            borderColor: "#f43f5e",
+                            backgroundColor: "#f43f5e",
+                            borderWidth: 2.5,
+                            tension: 0.4,
+                            pointRadius: 4,
+                            pointHoverRadius: 6,
+                            pointBackgroundColor: "#f43f5e",
+                            pointBorderColor: "#fff",
+                            pointBorderWidth: 2,
+                            spanGaps: true,
+                            yAxisID: "y1",
+                            order: 1,
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    layout: { padding: { top: 22 } },
+                    interaction: { intersect: false, mode: "index" },
+                    plugins: {
+                        legend: {
+                            display: true,
+                            position: "top",
+                            align: "end",
+                            labels: { boxWidth: 10, boxHeight: 10, usePointStyle: true, pointStyle: "circle", font: (c) => ({ size: c.chart.width < 480 ? 10 : 11, weight: "bold" }), color: "#64748b" }
+                        },
+                        tooltip: {
+                            backgroundColor: "#0f172a",
+                            titleFont: { weight: "bold" },
+                            padding: 10,
+                            cornerRadius: 10,
+                            callbacks: {
+                                label: (c) => c.dataset.yAxisID === "y1"
+                                    ? (c.parsed.y === null ? ` ${c.dataset.label}: belum ada data` : ` ${c.dataset.label}: ${c.parsed.y > 0 ? "+" : ""}${c.parsed.y}`)
+                                    : ` ${c.dataset.label}: ${c.parsed.y}`
+                            }
+                        }
+                    },
+                    scales: {
+                        y: {
+                            position: "left",
+                            beginAtZero: true,
+                            ticks: { precision: 0, font: (c) => ({ size: c.chart.width < 480 ? 9 : 10 }), color: "#94a3b8" },
+                            grid: { color: "#f1f5f9" },
+                            title: { display: true, text: "Peserta", font: { size: 10, weight: "bold" }, color: "#94a3b8" }
+                        },
+                        y1: {
+                            position: "right",
+                            ticks: { font: (c) => ({ size: c.chart.width < 480 ? 9 : 10 }), color: "#94a3b8", callback: (v) => (v > 0 ? "+" : "") + v },
+                            grid: { display: false },
+                            title: { display: true, text: "Growth KPI (poin)", font: { size: 10, weight: "bold" }, color: "#94a3b8" }
+                        },
+                        x: {
+                            grid: { display: false },
+                            ticks: { font: (c) => ({ size: c.chart.width < 480 ? 9 : 10, weight: "bold" }), color: "#94a3b8" }
+                        }
+                    }
+                }
+            });
+        } catch (err) {
+            console.error("Gagal render chart Growth KPI Training TNA:", err);
+            showTnaGrowthChartError("Terjadi kesalahan saat menggambar grafik.");
+        }
+    });
+}
+
+// ---- Trajectory KPI per training (halaman detail /admin/training-growth-detail/:id) ----
+window.__trainingGrowthDetailRenderToken = window.__trainingGrowthDetailRenderToken || 0;
+let __trainingGrowthDetailChartInstance = null;
+
+function waitForChartJsThenRenderTrainingGrowthDetail(labels, data, attempt, token) {
+    attempt = attempt || 0;
+    if (token !== window.__trainingGrowthDetailRenderToken) return;
+    const canvas = document.getElementById("training-growth-detail-chart");
+    if (!canvas) return;
+
+    if (typeof Chart === "undefined") {
+        if (attempt < 20) {
+            setTimeout(() => waitForChartJsThenRenderTrainingGrowthDetail(labels, data, attempt + 1, token), 100);
+        } else {
+            console.error("Chart.js tidak tersedia, chart trajectory KPI training tidak bisa ditampilkan.");
+        }
+        return;
+    }
+
+    requestAnimationFrame(() => {
+        if (token !== window.__trainingGrowthDetailRenderToken) return;
+        const liveCanvas = document.getElementById("training-growth-detail-chart");
+        if (!liveCanvas) return;
+
+        try {
+            if (__trainingGrowthDetailChartInstance) { __trainingGrowthDetailChartInstance.destroy(); __trainingGrowthDetailChartInstance = null; }
+            const ctx = liveCanvas.getContext("2d");
+
+            __trainingGrowthDetailChartInstance = new Chart(ctx, {
+                type: "line",
+                data: {
+                    labels,
+                    datasets: [{
+                        label: "Rata² KPI Peserta",
+                        data,
+                        borderColor: "#6366f1",
+                        backgroundColor: "rgba(99,102,241,.12)",
+                        borderWidth: 2.5,
+                        tension: 0.35,
+                        fill: true,
+                        spanGaps: true,
+                        pointRadius: 4,
+                        pointHoverRadius: 6,
+                        pointBackgroundColor: "#6366f1",
+                        pointBorderColor: "#fff",
+                        pointBorderWidth: 2,
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    layout: { padding: { top: 22 } },
+                    interaction: { intersect: false, mode: "index" },
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            backgroundColor: "#0f172a",
+                            titleFont: { weight: "bold" },
+                            padding: 10,
+                            cornerRadius: 10,
+                            callbacks: { label: (c) => c.parsed.y === null ? " Belum ada data" : ` Rata² KPI: ${c.parsed.y}%` }
+                        }
+                    },
+                    scales: {
+                        y: {
+                            min: 0, max: 100,
+                            ticks: { callback: (v) => v + "%", font: (c) => ({ size: c.chart.width < 480 ? 9 : 10 }), color: "#94a3b8" },
+                            grid: { color: "#f1f5f9" }
+                        },
+                        x: {
+                            grid: { display: false },
+                            ticks: { font: (c) => ({ size: c.chart.width < 480 ? 9 : 10, weight: "bold" }), color: "#94a3b8" }
+                        }
+                    }
+                }
+            });
+        } catch (err) {
+            console.error("Gagal render chart trajectory KPI training:", err);
+        }
+    });
+}
+
 function tsMillis(ts) {
     if (!ts) return 0;
     if (ts.seconds) return ts.seconds * 1000;
@@ -10516,6 +10849,7 @@ window.ROUTES["admin/reports"] = requireAdmin(function () {
     const companyKpiStats = computeCompanyKpiStats();
     window.__companyKpiView = "overall"; // reset ke tampilan default tiap kali halaman ini dibuka
     const tnaMonthlyStats = computeTnaMonthlyStats();
+    const tnaGrowthStats = computeTnaGrowthStats();
 
     const topCourses = [...S.courses].map(c => ({
         c, count: S.enrollments.filter(e => e.courseId === c.id).length
@@ -10597,6 +10931,7 @@ window.ROUTES["admin/reports"] = requireAdmin(function () {
 
         ${companyKpiPerformanceCard(companyKpiStats)}
         ${tnaMonthlyTrendCard(tnaMonthlyStats)}
+        ${tnaGrowthTrendCard(tnaGrowthStats)}
 
         <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
             ${clickableStatCard("fa-book-open", "indigo", totalCourses, "Total Onboarding", "window.openReportDetail('onboarding')")}
@@ -10647,6 +10982,156 @@ window.ROUTES["admin/reports"] = requireAdmin(function () {
 
     const tnaMonthlyToken = ++window.__tnaMonthlyRenderToken;
     waitForChartJsThenRenderTnaMonthly(tnaMonthlyStats, 0, tnaMonthlyToken);
+
+    const tnaGrowthToken = ++window.__tnaGrowthRenderToken;
+    waitForChartJsThenRenderTnaGrowth(tnaGrowthStats, 0, tnaGrowthToken);
+});
+
+// ================= ADMIN: GROWTH KPI PER TRAINING TNA (rincian) =================
+// Halaman tabel semua training TNA tahun berjalan lengkap dengan KPI bulan sebelum, KPI bulan
+// training, dan growth-nya — reuse computeTnaGrowthStats/computeTrainingGrowth yang sama persis
+// dengan yang dipakai buat chart di Dashboard Admin, biar angkanya konsisten.
+window.ROUTES["admin/training-growth"] = requireAdmin(function () {
+    const stats = computeTnaGrowthStats();
+
+    const rows = stats.perTraining.map(x => {
+        const t = x.training;
+        const dateStr = window.fmtDate ? window.fmtDate(t.date) : new Date(t.date).toLocaleDateString("id-ID");
+        if (!x.eligible) {
+            const reasonText = x.reason === "no-prev-month"
+                ? "Training bulan Januari — data KPI bulan sebelumnya tidak tersedia"
+                : `Data belum cukup (min. ${TNA_GROWTH_MIN_SAMPLE} peserta valid, baru ${x.validCount || 0})`;
+            return `
+            <tr class="border-b border-slate-50">
+                <td class="py-2.5 px-3">
+                    <p class="font-bold text-slate-700 text-sm">${window.escapeHtml(t.title)}</p>
+                    <p class="text-[11px] text-slate-400">${dateStr}</p>
+                </td>
+                <td class="py-2.5 px-3 text-center text-slate-300 text-xs" colspan="4">${reasonText}</td>
+            </tr>`;
+        }
+        const growthClass = x.avgGrowth > 0 ? "text-emerald-600" : (x.avgGrowth < 0 ? "text-rose-600" : "text-slate-500");
+        return `
+        <tr class="border-b border-slate-50 hover:bg-indigo-50/30 cursor-pointer" onclick="window.navigate('/admin/training-growth-detail/${t.id}')">
+            <td class="py-2.5 px-3">
+                <p class="font-bold text-slate-700 text-sm">${window.escapeHtml(t.title)}</p>
+                <p class="text-[11px] text-slate-400">${dateStr} • ${x.validCount}/${x.attendedCount} peserta valid</p>
+            </td>
+            <td class="py-2.5 px-3 text-center text-sm text-slate-600">${x.avgBefore}%</td>
+            <td class="py-2.5 px-3 text-center text-sm text-slate-600">${x.avgDuring}%</td>
+            <td class="py-2.5 px-3 text-center text-sm font-black ${growthClass}">${x.avgGrowth > 0 ? "+" : ""}${x.avgGrowth} poin${x.growthPct !== null ? ` (${x.growthPct > 0 ? "+" : ""}${x.growthPct}%)` : ""}</td>
+            <td class="py-2.5 px-3 text-center"><i class="fas fa-chevron-right text-slate-300"></i></td>
+        </tr>`;
+    }).join("") || `<tr><td colspan="5" class="py-10 text-center text-slate-400 text-sm">Belum ada training TNA tahun ${stats.year}.</td></tr>`;
+
+    window.setPage(`
+        <a href="#/admin/reports" class="text-xs font-bold text-slate-400 hover:text-indigo-600"><i class="fas fa-arrow-left mr-1"></i> Kembali ke Laporan</a>
+        <div class="flex items-center justify-between gap-2 mt-2 mb-1">
+            <h1 class="text-xl font-black text-slate-800">Growth KPI per Training TNA</h1>
+        </div>
+        <p class="text-xs text-slate-400 mb-3">Growth dihitung dari rata-rata KPI peserta hadir pada bulan training dibanding bulan sebelumnya. Klik salah satu training buat lihat tren lanjutannya sampai bulan berjalan.</p>
+        <div class="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden">
+            <div class="overflow-x-auto">
+                <table class="w-full text-left">
+                    <thead class="bg-slate-50">
+                        <tr class="text-[10px] uppercase font-black text-slate-400">
+                            <th class="py-2.5 px-3">Training</th>
+                            <th class="py-2.5 px-3 text-center">KPI Bulan Sebelum</th>
+                            <th class="py-2.5 px-3 text-center">KPI Bulan Training</th>
+                            <th class="py-2.5 px-3 text-center">Growth</th>
+                            <th class="py-2.5 px-3"></th>
+                        </tr>
+                    </thead>
+                    <tbody>${rows}</tbody>
+                </table>
+            </div>
+        </div>
+    `);
+});
+
+// Halaman detail 1 training: ringkasan growth + trajectory rata-rata KPI peserta (dari bulan
+// sebelum training sampai bulan berjalan sekarang) + rincian per peserta.
+window.ROUTES["admin/training-growth-detail"] = requireAdmin(function (id) {
+    const t = window.STATE.trainings.find(x => x.id === id);
+    if (!t) {
+        window.setPage(`<p class="text-center text-slate-400 py-20">Training tidak ditemukan.</p><a href="#/admin/training-growth" class="block text-center text-xs font-bold text-amber-600 hover:underline">Kembali ke Growth KPI per Training TNA</a>`);
+        return;
+    }
+
+    const g = computeTrainingGrowth(t);
+    const dateStr = window.fmtDate ? window.fmtDate(t.date) : new Date(t.date).toLocaleDateString("id-ID");
+    const trainingYear = new Date(t.date).getFullYear();
+    const now = new Date();
+    const currentMonth = now.getFullYear() === trainingYear ? now.getMonth() + 1 : 12;
+
+    let trajectoryLabels = [];
+    let trajectoryData = [];
+    let trajectoryHasData = false;
+
+    if (g.eligible) {
+        const employeesValid = g.rows.map(r => employeeOfUserId(r.userId)).filter(Boolean);
+        for (let m = g.beforeMonth; m <= currentMonth; m++) {
+            const values = [];
+            employeesValid.forEach(emp => {
+                const raw = emp.kpi[m] ?? emp.kpi[String(m)];
+                if (typeof raw === "number") values.push(raw);
+            });
+            trajectoryLabels.push(KPI_MONTH_NAMES_SHORT[m - 1]);
+            trajectoryData.push(values.length ? Math.round((values.reduce((s, v) => s + v, 0) / values.length) * 10) / 10 : null);
+        }
+        trajectoryHasData = trajectoryData.some(v => v !== null);
+    }
+
+    const summaryHtml = g.eligible ? `
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
+            ${statCard("fa-chart-line", "indigo", `${g.avgBefore}%`, "Rata² KPI Bulan Sebelum")}
+            ${statCard("fa-chart-line", "amber", `${g.avgDuring}%`, "Rata² KPI Bulan Training")}
+            ${statCard("fa-arrow-trend-up", g.avgGrowth >= 0 ? "emerald" : "rose", `${g.avgGrowth > 0 ? "+" : ""}${g.avgGrowth} poin`, "Growth")}
+        </div>
+        <div class="bg-white rounded-3xl border border-slate-100 shadow-sm p-4 mb-3">
+            <h3 class="font-black text-slate-700 text-sm mb-3"><i class="fas fa-timeline text-indigo-500 mr-1"></i> Trajectory KPI Peserta (${g.validCount} peserta valid) — dari bulan sebelum training sampai bulan berjalan</h3>
+            ${trajectoryHasData
+                ? `<div class="relative h-56 sm:h-64" id="training-growth-detail-chart-wrap"><canvas id="training-growth-detail-chart"></canvas></div>`
+                : `<p class="text-sm text-slate-400 text-center py-10">Belum ada data KPI lanjutan buat digambar tren-nya.</p>`}
+        </div>
+        <div class="bg-white rounded-3xl border border-slate-100 shadow-sm p-4">
+            <h3 class="font-black text-slate-700 text-sm mb-3">Rincian per Peserta</h3>
+            <div class="overflow-x-auto">
+                <table class="w-full text-left">
+                    <thead><tr class="text-[10px] uppercase font-black text-slate-400"><th class="py-2 px-2">Nama</th><th class="py-2 px-2 text-center">KPI Sebelum</th><th class="py-2 px-2 text-center">KPI Training</th><th class="py-2 px-2 text-center">Growth</th></tr></thead>
+                    <tbody>
+                        ${g.rows.map(r => `<tr class="border-t border-slate-50">
+                            <td class="py-2 px-2 text-sm text-slate-600">${window.escapeHtml(r.name || "-")}</td>
+                            <td class="py-2 px-2 text-center text-sm text-slate-600">${r.before}%</td>
+                            <td class="py-2 px-2 text-center text-sm text-slate-600">${r.during}%</td>
+                            <td class="py-2 px-2 text-center text-sm font-black ${r.growth > 0 ? "text-emerald-600" : (r.growth < 0 ? "text-rose-600" : "text-slate-500")}">${r.growth > 0 ? "+" : ""}${r.growth} poin</td>
+                        </tr>`).join("")}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    ` : `
+        <div class="bg-white rounded-3xl border border-slate-100 shadow-sm p-8 text-center">
+            <i class="fas fa-chart-simple text-3xl text-slate-200 mb-2"></i>
+            <p class="text-sm text-slate-400">${g.reason === "no-prev-month"
+                ? "Training ini terjadi di bulan Januari, sehingga data KPI bulan sebelumnya (Desember tahun lalu) tidak tersedia."
+                : `Data belum cukup untuk dihitung growth-nya (minimal ${TNA_GROWTH_MIN_SAMPLE} peserta hadir dengan data KPI bulan sebelum & bulan training lengkap, saat ini baru ${g.validCount || 0}).`}</p>
+        </div>
+    `;
+
+    window.setPage(`
+        <a href="#/admin/training-growth" class="text-xs font-bold text-slate-400 hover:text-indigo-600"><i class="fas fa-arrow-left mr-1"></i> Kembali</a>
+        <div class="mt-2 mb-4">
+            <h1 class="text-xl font-black text-slate-800">${window.escapeHtml(t.title)}</h1>
+            <p class="text-xs text-slate-400">${dateStr}</p>
+        </div>
+        ${summaryHtml}
+    `);
+
+    if (g.eligible && trajectoryHasData) {
+        const token = ++window.__trainingGrowthDetailRenderToken;
+        waitForChartJsThenRenderTrainingGrowthDetail(trajectoryLabels, trajectoryData, 0, token);
+    }
 });
 
 // Mengisi & membuka modal detail (reuse "modal-dashboard-detail") untuk tiap kartu di halaman
