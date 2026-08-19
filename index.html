@@ -9501,9 +9501,17 @@ function excelCellToString(v) {
 }
 function excelCellToDate(v) {
     if (!v) return null;
-    if (v instanceof Date && !isNaN(v)) return v;
-    const d = new Date(v);
-    return isNaN(d) ? null : d;
+    let d = v instanceof Date ? v : new Date(v);
+    if (isNaN(d)) return null;
+    // PENTING: XLSX (cellDates:true) merekonstruksi Date dari serial Excel memakai
+    // timezone perangkat yang lagi buka file saat itu (jadi jam 00:00 LOKAL di device
+    // pengimpor). Kalau disimpan apa adanya, device lain dengan timezone berbeda saat
+    // menampilkan bisa membaca instant yang sama sebagai tanggal H-1 ("mundur 1 hari").
+    // Fix: kunci ulang jadi tanggal murni dengan jam 12:00 UTC (bukan 00:00), supaya
+    // instant-nya nggak nyeberang batas hari selama ditampilkan dari timezone manapun
+    // yang wajar (UTC-12 s/d UTC+12). Pakai getter LOKAL di sini karena itu tanggal yang
+    // benar-benar dimaksud si device pengimpor.
+    return new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate(), 12, 0, 0));
 }
 
 // Nama bulan (huruf kecil) sesuai urutan index array 0-11, dipakai buat mencocokkan header
