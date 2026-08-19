@@ -2372,8 +2372,13 @@ function renderUserDashboard() {
     // "Selesai" Training by TNA = sudah lulus (sertifikat terbit) untuk training yang jadi target.
     const myCompletedTnaTrainings = myTargetTrainings.filter(t => myCerts.some(c => c.trainingId === t.id)).length;
 
-    const upcoming = window.STATE.trainings
-        .filter(t => myRegs.some(r => r.trainingId === t.id) && new Date(t.date).getTime() >= Date.now() - 86400000)
+    // Training Mendatang = training TNA yang user ini jadi TARGET PESERTA-nya (sesuai penugasan
+    // admin: semua karyawan/departemen/posisi/manual — pakai window.trainingAllowedForUser, sama
+    // seperti myTargetTrainings di atas), BUKAN cuma yang sudah didaftar sendiri oleh user. Jadi
+    // begitu training dijadwalkan & target-nya kena ke user ini, langsung muncul di sini tanpa
+    // harus daftar dulu.
+    const upcoming = myTargetTrainings
+        .filter(t => t.date && new Date(t.date).getTime() >= Date.now() - 86400000)
         .sort((a, b) => new Date(a.date) - new Date(b.date)).slice(0, 3);
 
     const inProgress = myEnr.filter(e => e.status !== "completed").slice(0, 4).map(e => {
