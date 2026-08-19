@@ -5414,11 +5414,13 @@ function renderAdminSectionTabs(active) {
         { key: "admin/competencies", icon: "fa-diagram-project", label: "Mapping Kompetensi" },
         { key: "admin/assignments", icon: "fa-file-signature", label: "Penilaian Tugas" },
         { key: "admin/quiz-attempts", icon: "fa-rotate-left", label: "Percobaan Kuis" },
+        { key: "admin/tna-feedback", icon: "fa-star", label: "Rekap Rating & Feedback" },
     ] : [
         { key: "admin/courses", icon: "fa-layer-group", label: "Daftar Training" },
         { key: "admin/onboarding-schedule", icon: "fa-calendar-week", label: "Penjadwalan Onboarding" },
         { key: "admin/assignments", icon: "fa-file-signature", label: "Penilaian Tugas" },
         { key: "admin/quiz-attempts", icon: "fa-rotate-left", label: "Percobaan Kuis" },
+        { key: "admin/onboarding-feedback", icon: "fa-star", label: "Rekap Rating & Feedback" },
     ];
     return `
     <div class="flex items-center gap-1 flex-wrap mb-3 bg-slate-100/70 p-1.5 rounded-2xl w-fit max-w-full">
@@ -5508,6 +5510,260 @@ function renderCourseAdminList() {
                 </thead>
                 <tbody>${rows || `<tr><td colspan="7" class="text-center py-10 text-slate-400">Belum ada training</td></tr>`}</tbody>
             </table>
+        </div>
+    `);
+}
+
+// ================= ADMIN: REKAP RATING & FEEDBACK ONBOARDING =================
+// Tab baru di halaman "Kelola Onboarding": rekap SEMUA evaluasi (rating bintang + feedback
+// teks) yang diisi peserta untuk Training Onboarding (evaluations dengan field courseId,
+// BEDA dengan evaluasi Training TNA yang pakai field trainingId — lihat submitEvaluation).
+// Bisa difilter per training tertentu, dan menampilkan rata-rata rating (keseluruhan +
+// per poin materi/trainer/fasilitas) plus rincian feedback teks per peserta.
+window.ROUTES["admin/onboarding-feedback"] = requireAdmin(function () {
+    renderOnboardingFeedbackRecap();
+});
+
+let onboardingFeedbackCourseFilter = "all"; // "all" | courseId
+
+function renderOnboardingFeedbackRecap() {
+    window.adminNavContext = "onboarding";
+
+    const allEvals = window.STATE.evaluations.filter(e => !!e.courseId);
+    const evals = onboardingFeedbackCourseFilter === "all"
+        ? allEvals
+        : allEvals.filter(e => e.courseId === onboardingFeedbackCourseFilter);
+
+    function avgOf(list, key) {
+        const vals = key
+            ? list.map(e => e.ratings && e.ratings[key]).filter(v => typeof v === "number")
+            : list.map(e => {
+                const r = e.ratings || {};
+                const vs = [r.materi, r.trainer, r.fasilitas].filter(v => typeof v === "number");
+                return vs.length ? vs.reduce((a, b) => a + b, 0) / vs.length : null;
+            }).filter(v => v !== null);
+        return vals.length ? Math.round((vals.reduce((a, b) => a + b, 0) / vals.length) * 10) / 10 : null;
+    }
+    const avgRating = avgOf(evals);
+    const avgMateri = avgOf(evals, "materi");
+    const avgTrainer = avgOf(evals, "trainer");
+    const avgFasilitas = avgOf(evals, "fasilitas");
+
+    function starRow(val) {
+        const v = Math.round(val || 0);
+        return [1, 2, 3, 4, 5].map(n => `<i class="fas fa-star text-[11px] ${n <= v ? "text-amber-400" : "text-slate-200"}"></i>`).join("");
+    }
+
+    // ---- Rekap per training onboarding (buat lihat training mana yang ratingnya rendah/tinggi) ----
+    const perCourseRows = [...window.STATE.courses]
+        .map(c => {
+            const list = allEvals.filter(e => e.courseId === c.id);
+            return { c, count: list.length, avg: avgOf(list) };
+        })
+        .filter(row => row.count > 0)
+        .sort((a, b) => b.count - a.count)
+        .map(row => `
+        <tr class="border-b border-slate-50 hover:bg-slate-50/60 cursor-pointer" onclick="onboardingFeedbackCourseFilter='${row.c.id}'; renderOnboardingFeedbackRecap()">
+            <td class="px-3 py-3 font-bold text-slate-700 text-sm">${window.escapeHtml(row.c.title)}</td>
+            <td class="px-3 py-3 text-center text-sm font-bold text-slate-600">${row.count}</td>
+            <td class="px-3 py-3 text-center">${row.avg !== null ? `<span class="text-amber-500 mr-1">${starRow(row.avg)}</span><span class="text-xs font-black text-slate-500">${row.avg}/5</span>` : '-'}</td>
+        </tr>`).join("") || `<tr><td colspan="3" class="text-center py-6 text-slate-400 text-sm">Belum ada evaluasi masuk</td></tr>`;
+
+    // ---- Rincian feedback teks per peserta (sesuai filter training yang lagi aktif) ----
+    const feedbackCards = evals.length ? [...evals].sort((a, b) => tsMillis(b.submittedAt) - tsMillis(a.submittedAt)).map(e => {
+        const r = e.ratings || {};
+        const fb = e.feedbacks || {};
+        const legacyComment = (!fb.materi && !fb.trainer && !fb.fasilitas) ? e.comment : null; // data lama sebelum feedback per-poin
+        const rows = [["Materi", r.materi, fb.materi], ["Trainer", r.trainer, fb.trainer], ["Fasilitas", r.fasilitas, fb.fasilitas]];
+        return `
+        <div class="border border-slate-100 rounded-2xl p-4">
+            <div class="flex items-center justify-between gap-2 mb-2">
+                <p class="text-sm font-bold text-slate-700">${window.escapeHtml(e.userName || userName(e.userId))}</p>
+                <span class="text-[10px] font-bold text-slate-400">${itemTitleOf("course", e.courseId)}</span>
+            </div>
+            <div class="space-y-2">
+                ${rows.map(([label, rating, feedback]) => `
+                    <div class="bg-slate-50 rounded-xl px-3 py-2">
+                        <div class="flex items-center justify-between">
+                            <span class="text-[11px] font-black text-slate-500">${label}</span>
+                            <span>${typeof rating === "number" ? starRow(rating) : '-'}</span>
+                        </div>
+                        ${feedback ? `<p class="text-xs text-slate-500 mt-1">${window.escapeHtml(feedback)}</p>` : ""}
+                    </div>`).join("")}
+                ${legacyComment ? `<div class="bg-slate-50 rounded-xl px-3 py-2"><span class="text-[11px] font-black text-slate-500">Catatan</span><p class="text-xs text-slate-500 mt-1">${window.escapeHtml(legacyComment)}</p></div>` : ""}
+            </div>
+        </div>`;
+    }).join("") : `<p class="text-center text-slate-400 text-sm py-6 sm:col-span-2">Belum ada feedback masuk${onboardingFeedbackCourseFilter !== "all" ? " untuk training ini" : ""}</p>`;
+
+    const courseOptions = [...window.STATE.courses].sort((a, b) => String(a.title || "").localeCompare(String(b.title || "")));
+
+    window.setPage(`
+        ${renderAdminSectionTabs("admin/onboarding-feedback")}
+        <div class="flex items-center justify-between flex-wrap gap-2 mb-3">
+            <h1 class="text-xl font-black text-slate-800">Rekap Rating & Feedback</h1>
+            <select onchange="onboardingFeedbackCourseFilter=this.value; renderOnboardingFeedbackRecap()" class="text-xs font-bold border border-slate-200 rounded-xl px-3 py-2 outline-none focus:ring-2 focus:ring-indigo-400">
+                <option value="all" ${onboardingFeedbackCourseFilter === "all" ? "selected" : ""}>Semua Training Onboarding</option>
+                ${courseOptions.map(c => `<option value="${c.id}" ${onboardingFeedbackCourseFilter === c.id ? "selected" : ""}>${window.escapeHtml(c.title)}</option>`).join("")}
+            </select>
+        </div>
+        <p class="text-xs text-slate-400 mb-3">Rekap evaluasi Kirkpatrick Level 1 (Reaction) yang diisi peserta setelah menyelesaikan materi Training Onboarding.</p>
+
+        <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
+            ${statCard("fa-comment-dots", "indigo", evals.length, "Jumlah Evaluasi Masuk")}
+            ${statCard("fa-star", "rose", avgRating !== null ? avgRating + "/5" : "-", "Rata-rata Rating Keseluruhan")}
+            ${statCard("fa-book-open", "amber", avgMateri !== null ? avgMateri + "/5" : "-", "Rating Materi")}
+            ${statCard("fa-chalkboard-user", "emerald", avgTrainer !== null ? avgTrainer + "/5" : "-", "Rating Trainer")}
+        </div>
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
+            ${statCard("fa-building", "violet", avgFasilitas !== null ? avgFasilitas + "/5" : "-", "Rating Fasilitas")}
+        </div>
+
+        ${onboardingFeedbackCourseFilter === "all" ? `
+        <div class="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-auto max-h-[50vh] mb-4">
+            <table class="w-full text-left border-separate border-spacing-0">
+                <thead class="text-[10px] font-black uppercase text-slate-400">
+                    <tr>
+                        <th class="sticky top-0 z-10 bg-slate-50 px-3 py-3 border-b border-slate-100">Training</th>
+                        <th class="sticky top-0 z-10 bg-slate-50 px-3 py-3 border-b border-slate-100 text-center">Jumlah Evaluasi</th>
+                        <th class="sticky top-0 z-10 bg-slate-50 px-3 py-3 border-b border-slate-100 text-center">Rata-rata Rating</th>
+                    </tr>
+                </thead>
+                <tbody>${perCourseRows}</tbody>
+            </table>
+        </div>` : `
+        <button onclick="onboardingFeedbackCourseFilter='all'; renderOnboardingFeedbackRecap()" class="text-xs font-bold text-indigo-500 hover:text-indigo-700 mb-3"><i class="fas fa-arrow-left mr-1"></i> Kembali ke semua training</button>`}
+
+        <div class="bg-white rounded-3xl border border-slate-100 shadow-sm p-4">
+            <h3 class="font-black text-sm text-slate-700 mb-3"><i class="fas fa-comment-dots text-amber-400 mr-1"></i> Rincian Feedback per Peserta</h3>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">${feedbackCards}</div>
+        </div>
+    `);
+}
+
+// ================= ADMIN: REKAP RATING & FEEDBACK TRAINING TNA =================
+// Sama persis konsepnya dengan renderOnboardingFeedbackRecap di atas, tapi buat evaluasi
+// Training By TNA (evaluations dengan field trainingId, BUKAN courseId — lihat submitEvaluation).
+// Sengaja dipisah jadi 2 fungsi (bukan 1 fungsi generic) biar gampang dibaca & di-maintain,
+// sama kayak pola renderCourseAdminList vs renderTrainingAdminList di modul lain.
+window.ROUTES["admin/tna-feedback"] = requireAdmin(function () {
+    renderTnaFeedbackRecap();
+});
+
+let tnaFeedbackTrainingFilter = "all"; // "all" | trainingId
+
+function renderTnaFeedbackRecap() {
+    window.adminNavContext = "tna";
+
+    const allEvals = window.STATE.evaluations.filter(e => !!e.trainingId);
+    const evals = tnaFeedbackTrainingFilter === "all"
+        ? allEvals
+        : allEvals.filter(e => e.trainingId === tnaFeedbackTrainingFilter);
+
+    function avgOf(list, key) {
+        const vals = key
+            ? list.map(e => e.ratings && e.ratings[key]).filter(v => typeof v === "number")
+            : list.map(e => {
+                const r = e.ratings || {};
+                const vs = [r.materi, r.trainer, r.fasilitas].filter(v => typeof v === "number");
+                return vs.length ? vs.reduce((a, b) => a + b, 0) / vs.length : null;
+            }).filter(v => v !== null);
+        return vals.length ? Math.round((vals.reduce((a, b) => a + b, 0) / vals.length) * 10) / 10 : null;
+    }
+    const avgRating = avgOf(evals);
+    const avgMateri = avgOf(evals, "materi");
+    const avgTrainer = avgOf(evals, "trainer");
+    const avgFasilitas = avgOf(evals, "fasilitas");
+
+    function starRow(val) {
+        const v = Math.round(val || 0);
+        return [1, 2, 3, 4, 5].map(n => `<i class="fas fa-star text-[11px] ${n <= v ? "text-amber-400" : "text-slate-200"}"></i>`).join("");
+    }
+
+    // ---- Rekap per jadwal training TNA (buat lihat sesi mana yang ratingnya rendah/tinggi) ----
+    const perTrainingRows = [...window.STATE.trainings]
+        .map(t => {
+            const list = allEvals.filter(e => e.trainingId === t.id);
+            return { t, count: list.length, avg: avgOf(list) };
+        })
+        .filter(row => row.count > 0)
+        .sort((a, b) => b.count - a.count)
+        .map(row => `
+        <tr class="border-b border-slate-50 hover:bg-slate-50/60 cursor-pointer" onclick="tnaFeedbackTrainingFilter='${row.t.id}'; renderTnaFeedbackRecap()">
+            <td class="px-3 py-3">
+                <p class="font-bold text-slate-700 text-sm">${window.escapeHtml(row.t.title)}</p>
+                <p class="text-[11px] text-slate-400">${window.fmtDate(row.t.date)}</p>
+            </td>
+            <td class="px-3 py-3 text-center text-sm font-bold text-slate-600">${row.count}</td>
+            <td class="px-3 py-3 text-center">${row.avg !== null ? `<span class="text-amber-500 mr-1">${starRow(row.avg)}</span><span class="text-xs font-black text-slate-500">${row.avg}/5</span>` : '-'}</td>
+        </tr>`).join("") || `<tr><td colspan="3" class="text-center py-6 text-slate-400 text-sm">Belum ada evaluasi masuk</td></tr>`;
+
+    // ---- Rincian feedback teks per peserta (sesuai filter training yang lagi aktif) ----
+    const feedbackCards = evals.length ? [...evals].sort((a, b) => tsMillis(b.submittedAt) - tsMillis(a.submittedAt)).map(e => {
+        const r = e.ratings || {};
+        const fb = e.feedbacks || {};
+        const legacyComment = (!fb.materi && !fb.trainer && !fb.fasilitas) ? e.comment : null; // data lama sebelum feedback per-poin
+        const rows = [["Materi", r.materi, fb.materi], ["Trainer", r.trainer, fb.trainer], ["Fasilitas", r.fasilitas, fb.fasilitas]];
+        return `
+        <div class="border border-slate-100 rounded-2xl p-4">
+            <div class="flex items-center justify-between gap-2 mb-2">
+                <p class="text-sm font-bold text-slate-700">${window.escapeHtml(e.userName || userName(e.userId))}</p>
+                <span class="text-[10px] font-bold text-slate-400">${itemTitleOf("training", e.trainingId)}</span>
+            </div>
+            <div class="space-y-2">
+                ${rows.map(([label, rating, feedback]) => `
+                    <div class="bg-slate-50 rounded-xl px-3 py-2">
+                        <div class="flex items-center justify-between">
+                            <span class="text-[11px] font-black text-slate-500">${label}</span>
+                            <span>${typeof rating === "number" ? starRow(rating) : '-'}</span>
+                        </div>
+                        ${feedback ? `<p class="text-xs text-slate-500 mt-1">${window.escapeHtml(feedback)}</p>` : ""}
+                    </div>`).join("")}
+                ${legacyComment ? `<div class="bg-slate-50 rounded-xl px-3 py-2"><span class="text-[11px] font-black text-slate-500">Catatan</span><p class="text-xs text-slate-500 mt-1">${window.escapeHtml(legacyComment)}</p></div>` : ""}
+            </div>
+        </div>`;
+    }).join("") : `<p class="text-center text-slate-400 text-sm py-6 sm:col-span-2">Belum ada feedback masuk${tnaFeedbackTrainingFilter !== "all" ? " untuk training ini" : ""}</p>`;
+
+    const trainingOptions = [...window.STATE.trainings].sort((a, b) => tsMillis(b.date) - tsMillis(a.date));
+
+    window.setPage(`
+        ${renderAdminSectionTabs("admin/tna-feedback")}
+        <div class="flex items-center justify-between flex-wrap gap-2 mb-3">
+            <h1 class="text-xl font-black text-slate-800">Rekap Rating & Feedback</h1>
+            <select onchange="tnaFeedbackTrainingFilter=this.value; renderTnaFeedbackRecap()" class="text-xs font-bold border border-slate-200 rounded-xl px-3 py-2 outline-none focus:ring-2 focus:ring-amber-400">
+                <option value="all" ${tnaFeedbackTrainingFilter === "all" ? "selected" : ""}>Semua Training TNA</option>
+                ${trainingOptions.map(t => `<option value="${t.id}" ${tnaFeedbackTrainingFilter === t.id ? "selected" : ""}>${window.escapeHtml(t.title)} — ${window.fmtDate(t.date)}</option>`).join("")}
+            </select>
+        </div>
+        <p class="text-xs text-slate-400 mb-3">Rekap evaluasi Kirkpatrick Level 1 (Reaction) yang diisi peserta setelah menyelesaikan sesi Training TNA.</p>
+
+        <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
+            ${statCard("fa-comment-dots", "indigo", evals.length, "Jumlah Evaluasi Masuk")}
+            ${statCard("fa-star", "rose", avgRating !== null ? avgRating + "/5" : "-", "Rata-rata Rating Keseluruhan")}
+            ${statCard("fa-book-open", "amber", avgMateri !== null ? avgMateri + "/5" : "-", "Rating Materi")}
+            ${statCard("fa-chalkboard-user", "emerald", avgTrainer !== null ? avgTrainer + "/5" : "-", "Rating Trainer")}
+        </div>
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
+            ${statCard("fa-building", "violet", avgFasilitas !== null ? avgFasilitas + "/5" : "-", "Rating Fasilitas")}
+        </div>
+
+        ${tnaFeedbackTrainingFilter === "all" ? `
+        <div class="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-auto max-h-[50vh] mb-4">
+            <table class="w-full text-left border-separate border-spacing-0">
+                <thead class="text-[10px] font-black uppercase text-slate-400">
+                    <tr>
+                        <th class="sticky top-0 z-10 bg-slate-50 px-3 py-3 border-b border-slate-100">Training</th>
+                        <th class="sticky top-0 z-10 bg-slate-50 px-3 py-3 border-b border-slate-100 text-center">Jumlah Evaluasi</th>
+                        <th class="sticky top-0 z-10 bg-slate-50 px-3 py-3 border-b border-slate-100 text-center">Rata-rata Rating</th>
+                    </tr>
+                </thead>
+                <tbody>${perTrainingRows}</tbody>
+            </table>
+        </div>` : `
+        <button onclick="tnaFeedbackTrainingFilter='all'; renderTnaFeedbackRecap()" class="text-xs font-bold text-amber-600 hover:text-amber-700 mb-3"><i class="fas fa-arrow-left mr-1"></i> Kembali ke semua training</button>`}
+
+        <div class="bg-white rounded-3xl border border-slate-100 shadow-sm p-4">
+            <h3 class="font-black text-sm text-slate-700 mb-3"><i class="fas fa-comment-dots text-amber-400 mr-1"></i> Rincian Feedback per Peserta</h3>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">${feedbackCards}</div>
         </div>
     `);
 }
