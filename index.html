@@ -876,6 +876,20 @@ html.dark .corevalue-wire { background: rgba(96, 165, 250, .2); }
     </div>
 </div>
 
+<!-- ================= MODAL: KIRIM REMINDER TRAINING ONBOARDING ================= -->
+<div id="modal-course-reminder" class="fixed inset-0 z-[10000] hide modal-overlay flex items-center justify-center p-4">
+    <div class="bg-white w-full max-w-lg rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[85vh]">
+        <div class="p-4 border-b flex justify-between items-center bg-indigo-50 shrink-0">
+            <div>
+                <h3 class="text-sm font-black text-indigo-600"><i class="fas fa-paper-plane mr-1"></i> Kirim Reminder Training</h3>
+                <p id="course-reminder-sub" class="text-[11px] text-slate-400 font-semibold mt-0.5"></p>
+            </div>
+            <button onclick="window.closeModal('modal-course-reminder')" class="text-slate-400 hover:text-slate-700"><i class="fas fa-times"></i></button>
+        </div>
+        <div id="course-reminder-body" class="p-4 overflow-y-auto space-y-2"></div>
+    </div>
+</div>
+
 <!-- ================= MODAL: FORM INPUT/EDIT HASIL TNA (POPUP) ================= -->
 <div id="modal-tna-result-builder" class="fixed inset-0 z-[10000] hide modal-overlay flex items-center justify-center p-4">
     <div class="bg-white w-full max-w-2xl rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
@@ -2163,7 +2177,7 @@ window.renderSidebar = function () {
         { key: "certificates", icon: "fa-award", label: "Sertifikat Saya" },
         // Menu khusus role peserta dengan level jabatan Supervisor ke atas (dikonfigurasi admin
         // lewat window.tnaInputConfig()) — buat input data "Hasil TNA" timnya sendiri.
-        ...(window.sel.canInputTna() ? [{ key: "tna-input", icon: "fa-clipboard-list", label: "Input Hasil TNA" }] : []),
+        ...(window.sel.canInputTna() ? [{ key: "tna-input", icon: "fa-clipboard-list", label: "Request Training" }] : []),
     ];
     // adminNav TANPA "Laporan" lagi di bawah, karena sudah dipindah & di-rename jadi
     // "Dashboard" di paling atas (lihat array nav di atas).
@@ -5460,7 +5474,15 @@ function renderCourseAdminList() {
         // departemen" (departemen/posisi/manual) training ini, BUKAN jumlah yang udah
         // register — supaya konsisten sama window.courseScopeLabel di atasnya.
         const targetCount = window.courseTargetEmployees(c).length;
-        const completedCount = window.STATE.certificates.filter(cert => cert.type === "course" && cert.courseId === c.id).length;
+        // Sertifikat dihitung cuma yang pemiliknya MASIH termasuk target peserta terbaru (bukan
+        // seluruh sertifikat yang pernah terbit) — supaya kalau target/scope-nya diubah admin
+        // (misal ada karyawan yang di-exclude belakangan, atau dept/level-nya berubah), angka
+        // "Selesai" & "% Selesai" ikut nyesuaiin dan gak bisa lebih dari 100%.
+        const completedCount = window.STATE.certificates.filter(cert => {
+            if (cert.type !== "course" || cert.courseId !== c.id) return false;
+            const emp = employeeOfUserId(cert.userId);
+            return !!emp && window.courseParticipantMatch(c, emp, null);
+        }).length;
         // Pakai Math.floor, BUKAN Math.round: kalau dibulatkan (round), training yang
         // misalnya baru 199 dari 200 target peserta selesai (99.5%) bisa kebulet jadi
         // tampil "100%" — padahal senyatanya belum semua kelar. Math.floor memastikan
@@ -5488,6 +5510,7 @@ function renderCourseAdminList() {
             <td class="px-3 py-3 text-center"><span class="text-[10px] font-black px-2 py-1 rounded-full bg-emerald-50 text-emerald-600">${completedPct}%</span></td>
             <td class="px-3 py-3 text-right space-x-2">
                 <a href="#/admin/course-report/${c.id}" title="Laporan Keterlaksanaan" class="text-emerald-500 hover:text-emerald-700"><i class="fas fa-chart-simple"></i></a>
+                <button onclick="window.openCourseReminder('${c.id}')" title="Kirim Reminder" class="text-amber-500 hover:text-amber-700"><i class="fas fa-paper-plane"></i></button>
                 <a href="#/admin/courses/${c.id}" class="text-indigo-500 hover:text-indigo-700"><i class="fas fa-pen"></i></a>
                 <button onclick="window.guardedClick(this, () => window.deleteCourse('${c.id}'))" class="text-rose-400 hover:text-rose-600"><i class="fas fa-trash"></i></button>
             </td>
@@ -7248,6 +7271,73 @@ window.sendTrainingInvite = function (trainingId, empId) {
 
     window.open(`https://wa.me/${phone}?text=${encodeURIComponent(text)}`, "_blank");
     window.toast(`Undangan WhatsApp untuk ${e.nama} berhasil dibuka.`, "success");
+};
+
+// ================= KIRIM REMINDER TRAINING ONBOARDING (VIA WHATSAPP) =================
+// Sama persis konsepnya dengan "Kirim Undangan Training TNA" di atas (window.openTrainingInvite
+// / window.sendTrainingInvite): menampilkan daftar karyawan yang termasuk target peserta
+// training onboarding ini (window.courseTargetEmployees), ditandai kalau sudah selesai (punya
+// sertifikat), lengkap dengan tombol kirim reminder WhatsApp per karyawan.
+window.openCourseReminder = function (id) {
+    const c = window.STATE.courses.find(x => x.id === id);
+    if (!c) { window.toast("Training tidak ditemukan", "error"); return; }
+
+    const usersByUsername = {};
+    window.STATE.users.forEach(u => { usersByUsername[normalizeUsername(u.username)] = u; });
+
+    // Cuma tampilin karyawan target yang BELUM selesai (belum punya sertifikat training ini) —
+    // yang udah selesai gak perlu direminder lagi.
+    const targets = [...window.courseTargetEmployees(c)]
+        .filter(e => {
+            const user = usersByUsername[normalizeUsername(e.username)];
+            const completed = !!(user && window.STATE.certificates.some(cert => cert.type === "course" && cert.courseId === c.id && cert.userId === user.id));
+            return !completed;
+        })
+        .sort((a, b) => String(a.nama||"").localeCompare(String(b.nama||"")));
+
+    document.getElementById("course-reminder-sub").textContent = c.title;
+
+    const rows = targets.map(e => {
+        const phoneDigits = String(e.kontak || "").replace(/[^\d]/g, "");
+        return `
+        <div class="flex items-center gap-3 p-3 rounded-2xl border border-slate-100">
+            <div class="w-10 h-10 rounded-full bg-indigo-50 text-indigo-600 flex items-center justify-center font-black text-xs shrink-0">${window.escapeHtml((e.nama || "?").slice(0, 1).toUpperCase())}</div>
+            <div class="flex-1 min-w-0">
+                <p class="text-sm font-bold text-slate-700 truncate">${window.escapeHtml(e.nama || e.username || "-")}</p>
+                <p class="text-[11px] text-slate-400 truncate">${window.escapeHtml(e.dept || "-")}</p>
+            </div>
+            ${phoneDigits
+                ? `<button onclick="window.guardedClick(this, () => window.sendCourseReminder('${c.id}','${e.id}'))" class="shrink-0 bg-amber-500 hover:bg-amber-600 text-white text-[11px] font-black px-3 py-2 rounded-xl transition"><i class="fab fa-whatsapp mr-1"></i> Kirim</button>`
+                : `<span class="shrink-0 text-[10px] text-slate-300 font-bold text-right">No. HP<br>kosong</span>`}
+        </div>`;
+    }).join("");
+
+    document.getElementById("course-reminder-body").innerHTML = targets.length ? `
+        <p class="text-xs text-slate-400 mb-1"><i class="fas fa-users mr-1"></i>${targets.length} karyawan target training ini yang belum menyelesaikannya. Klik "Kirim" untuk membuka WhatsApp berisi reminder ke masing-masing karyawan.</p>
+        ${rows}
+    ` : `<div class="text-center py-10 text-slate-400"><i class="fas fa-circle-check text-3xl mb-2 text-emerald-400"></i><p class="font-bold text-sm">Semua karyawan target sudah menyelesaikan training ini.</p></div>`;
+
+    window.openModal("modal-course-reminder");
+};
+
+window.sendCourseReminder = function (courseId, empId) {
+    const c = window.STATE.courses.find(x => x.id === courseId);
+    const e = window.STATE.employees.find(x => x.id === empId);
+    if (!c || !e) { window.toast("Data tidak lengkap, reminder gagal dibuat.", "error"); return; }
+
+    const phoneDigits = String(e.kontak || "").replace(/[^\d]/g, "");
+    if (!phoneDigits) { window.toast("Nomor kontak karyawan ini belum tersedia di data karyawan.", "warn"); return; }
+    let phone = phoneDigits;
+    if (phone.startsWith("0")) phone = "62" + phone.slice(1);
+    else if (!phone.startsWith("62")) phone = "62" + phone;
+
+    const link = `${location.origin}${location.pathname}#/courses/${c.id}`;
+    const text = `Halo ${e.nama}, ini pengingat untuk Training Onboarding berikut 👋\n\n`
+        + `📘 *${c.title}*\n\n`
+        + `Kamu masih punya tugas menyelesaikan training ini. Yuk cek & lanjutkan materinya di sini:\n${link}\n\nTerima kasih!`;
+
+    window.open(`https://wa.me/${phone}?text=${encodeURIComponent(text)}`, "_blank");
+    window.toast(`Reminder WhatsApp untuk ${e.nama} berhasil dibuka.`, "success");
 };
 
 // ================= QR CODE PRESENSI (ADMIN) =================
