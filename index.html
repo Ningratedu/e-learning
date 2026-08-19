@@ -9977,6 +9977,7 @@ function buildEmployeeTrainingSummary(emp, user) {
     const percent = ordered.length ? Math.round((completedCount / ordered.length) * 100) : 0;
     const remaining = ordered.length - completedCount;
     const allDone = ordered.length > 0 && remaining === 0;
+    const dept = (emp.dept || "").trim();
 
     return `
     <div class="mt-4 pt-4 border-t border-slate-100 space-y-3">
