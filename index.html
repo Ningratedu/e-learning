@@ -2434,7 +2434,7 @@ function renderUserDashboard() {
             ${diagramStatCardDark("fa-book-open", "indigo", donutDiagramSvg(onboardingPct, DONUT_STAT_COLORS.indigo.hex, true), "Training Onboarding", `${completedCourses}/${myAssignedCourses.length} selesai`, "window.openDashboardDetail('enrolled')", true)}
             ${diagramStatCardDark("fa-chart-line", "sky", prePostBarDiagramSvg(prePostStats.avgPre, prePostStats.avgPost, true), "Progres Training", prePostStats.n ? `<span class="block" style="font-size:10.5px;line-height:1.3">Nilai rata² Pre test ${prePostStats.avgPre}</span><span class="block" style="font-size:10.5px;line-height:1.3">Nilai rata² Post test ${prePostStats.avgPost}</span>` : "Belum ada data", "window.openDashboardDetail('prepost')", true)}
             ${diagramStatCardDark("fa-chalkboard-user", "amber", donutDiagramSvg(tnaPct, DONUT_STAT_COLORS.amber.hex, true), "Training by TNA", `${myCompletedTnaTrainings}/${myTargetTrainings.length} selesai`, "window.openDashboardDetail('registered')", true)}
-            ${clickableStatCard("fa-award", "rose", myCerts.length, "Sertifikat", "window.openDashboardDetail('certificates')", true)}
+            ${clickableStatCard("fa-award", "violet", myCerts.length, "Sertifikat", "window.openDashboardDetail('certificates')", true)}
         </div>
         <div class="grid grid-cols-1 lg:grid-cols-2 gap-3">
             <div class="bg-white rounded-3xl border border-slate-100 shadow-sm p-4">
@@ -3441,13 +3441,13 @@ function renderTnaGrowthChart(stats, token) {
                             type: "line",
                             label: "Rata² % Peserta KPI Naik",
                             data: stats.monthlyAvgEffectiveness,
-                            borderColor: "#f43f5e",
-                            backgroundColor: "#f43f5e",
+                            borderColor: "#10b981",
+                            backgroundColor: "#10b981",
                             borderWidth: 2.5,
                             tension: 0.4,
                             pointRadius: 4,
                             pointHoverRadius: 6,
-                            pointBackgroundColor: "#f43f5e",
+                            pointBackgroundColor: "#10b981",
                             pointBorderColor: "#fff",
                             pointBorderWidth: 2,
                             spanGaps: true,
@@ -6030,7 +6030,7 @@ function renderOnboardingFeedbackRecap() {
 
         <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
             ${statCard("fa-comment-dots", "indigo", evals.length, "Jumlah Evaluasi Masuk")}
-            ${statCard("fa-star", "rose", avgRating !== null ? avgRating + "/5" : "-", "Rata-rata Rating Keseluruhan")}
+            ${statCard("fa-star", "amber", avgRating !== null ? avgRating + "/5" : "-", "Rata-rata Rating Keseluruhan")}
             ${statCard("fa-book-open", "amber", avgMateri !== null ? avgMateri + "/5" : "-", "Rating Materi")}
             ${statCard("fa-chalkboard-user", "emerald", avgTrainer !== null ? avgTrainer + "/5" : "-", "Rating Trainer")}
         </div>
@@ -6158,7 +6158,7 @@ function renderTnaFeedbackRecap() {
 
         <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
             ${statCard("fa-comment-dots", "indigo", evals.length, "Jumlah Evaluasi Masuk")}
-            ${statCard("fa-star", "rose", avgRating !== null ? avgRating + "/5" : "-", "Rata-rata Rating Keseluruhan")}
+            ${statCard("fa-star", "amber", avgRating !== null ? avgRating + "/5" : "-", "Rata-rata Rating Keseluruhan")}
             ${statCard("fa-book-open", "amber", avgMateri !== null ? avgMateri + "/5" : "-", "Rating Materi")}
             ${statCard("fa-chalkboard-user", "emerald", avgTrainer !== null ? avgTrainer + "/5" : "-", "Rating Trainer")}
         </div>
@@ -9013,7 +9013,7 @@ function renderTrainingReport(id) {
                 valueStatCardDark("fa-users", "indigo", targetCount, "Jumlah Target Peserta", ""),
                 ringStatCard("fa-user-check", "emerald", attendancePct, "Kehadiran (Jumlah & %)", `${attendedCount}/${targetCount}`),
                 ringStatCard("fa-graduation-cap", "amber", passPct, "Kelulusan (dari yang Hadir)", `${passCount}/${attendedCount}`),
-                ratingStatCardDark("fa-star", "rose", avgRating, "Rata-rata Rating Feedback"),
+                ratingStatCardDark("fa-star", "amber", avgRating, "Rata-rata Rating Feedback"),
             ];
             if (avgPre !== null || avgPost !== null) cards.push(diagramStatCardDark("fa-chart-line", "violet", prePostBarDiagramSvg(avgPre || 0, avgPost || 0), "Progress Pre & Post-test", `${avgPre !== null ? avgPre : '-'} → ${avgPost !== null ? avgPost : '-'}`));
             if (hasAssignmentFeature) cards.push(ringStatCard("fa-file-signature", "indigo", assignmentPct, "Penyelesaian Tugas", `${assignmentSubmittedCount}/${targetCount}`));
@@ -9261,7 +9261,7 @@ function renderCourseReport(id) {
                 valueStatCardDark("fa-users", "indigo", targetCount, "Jumlah Target Peserta", ""),
                 ringStatCard("fa-graduation-cap", "emerald", completedPct, "Keterlaksanaan (Selesai)", `${completedCount}/${targetCount}`),
                 ringStatCard("fa-award", "amber", gradPct, "Kelulusan (dari yang Sudah Mulai)", `${completedCount}/${startedCount}`),
-                ratingStatCardDark("fa-star", "rose", avgRating, "Rata-rata Rating Feedback"),
+                ratingStatCardDark("fa-star", "amber", avgRating, "Rata-rata Rating Feedback"),
             ];
             if (hasQuiz) cards.push(diagramStatCardDark("fa-chart-line", "violet", prePostBarDiagramSvg(avgPre || 0, avgPost || 0), "Progress Pre & Post-test", (avgPre !== null || avgPost !== null) ? `${avgPre !== null ? avgPre : '-'} → ${avgPost !== null ? avgPost : '-'}` : "Belum ada data"));
             if (hasAssignmentFeature) cards.push(ringStatCard("fa-file-signature", "indigo", assignmentPct, "Penyelesaian Tugas", `${assignmentSubmittedCount}/${targetCount}`));
@@ -11316,7 +11316,7 @@ window.ROUTES["admin/reports"] = requireAdmin(function () {
     S.enrollments.forEach(e => activities.push({ t: tsMillis(e.enrolledAt), icon: "fa-book-open", color: "text-indigo-500 bg-indigo-50", text: `${userName(e.userId)} mulai training "${itemTitleOf('course', e.courseId)}"` }));
     S.trainingRegs.forEach(r => activities.push({ t: tsMillis(r.registeredAt), icon: "fa-chalkboard-user", color: "text-amber-500 bg-amber-50", text: `${userName(r.userId)} daftar training "${itemTitleOf('training', r.trainingId)}"` }));
     S.assignmentSubmissions.forEach(s => activities.push({ t: tsMillis(s.submittedAt), icon: "fa-file-signature", color: "text-violet-500 bg-violet-50", text: `${window.escapeHtml(s.userName||'-')} mengumpulkan tugas "${window.escapeHtml(s.itemTitle||'-')}"` }));
-    S.certificates.forEach(c => activities.push({ t: tsMillis(c.issuedAt), icon: "fa-award", color: "text-rose-500 bg-rose-50", text: `Sertifikat terbit untuk ${window.escapeHtml(c.userName||'-')} — "${window.escapeHtml(c.title)}"` }));
+    S.certificates.forEach(c => activities.push({ t: tsMillis(c.issuedAt), icon: "fa-award", color: "text-sky-500 bg-sky-50", text: `Sertifikat terbit untuk ${window.escapeHtml(c.userName||'-')} — "${window.escapeHtml(c.title)}"` }));
     S.users.forEach(us => activities.push({ t: tsMillis(us.createdAt), icon: "fa-user-plus", color: "text-emerald-500 bg-emerald-50", text: `${window.escapeHtml(us.username)} bergabung sebagai pengguna baru` }));
     const recentActivities = activities.filter(a => a.t > 0).sort((a, b) => b.t - a.t).slice(0, 8);
     const activitiesHtml = recentActivities.map(a => `
@@ -11345,7 +11345,7 @@ window.ROUTES["admin/reports"] = requireAdmin(function () {
         <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
             ${clickableStatCard("fa-book-open", "indigo", totalCourses, "Total Onboarding", "window.openReportDetail('onboarding')")}
             ${clickableStatCard("fa-chalkboard-user", "amber", totalTrainings, "Total Training TNA", "window.openReportDetail('tna')")}
-            ${clickableStatCard("fa-award", "rose", totalCerts, "Sertifikat Terbit", "window.openReportDetail('certificates')")}
+            ${clickableStatCard("fa-award", "violet", totalCerts, "Sertifikat Terbit", "window.openReportDetail('certificates')")}
             ${clickableStatCard("fa-users", "emerald", totalUsers, "Total Pengguna", "window.openReportDetail('users')")}
         </div>
         <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
