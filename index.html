@@ -721,6 +721,7 @@ html.dark .corevalue-wire { background: rgba(96, 165, 250, .2); }
         </div>
         <div class="p-4 space-y-3 overflow-y-auto">
             <input type="hidden" id="eval-training-id">
+            <input type="hidden" id="eval-kind" value="training">
             <input type="hidden" id="eval-rating-materi" value="5">
             <input type="hidden" id="eval-rating-trainer" value="5">
             <input type="hidden" id="eval-rating-fasilitas" value="5">
@@ -3803,10 +3804,14 @@ function renderCourseDetail(id) {
     const hasAssignment = !!(c.assignment && c.assignment.enabled);
     const assignmentSub = window.sel.myAssignmentSubmission("course", c.id);
     const quizPassed = !hasQuiz || !!(attempt && attempt.passed);
-    const assignmentUnlocked = !hasAssignment || quizPassed; // penugasan baru bisa dibuka setelah post-test lulus
+    // Rating & Feedback (Kirkpatrick level 1 - Reaction) diisi begitu materi kelar, SEBELUM
+    // Post-test (level 2 - Learning), sama seperti alur Training By TNA. Urutan lengkap:
+    // Pre-test -> Materi -> Rating & Feedback -> Post-test -> Tugas -> Sertifikat.
+    const evalDone = window.STATE.evaluations.find(e => e.courseId === c.id && e.userId === window.STATE.user.id);
+    const assignmentUnlocked = !hasAssignment || (!!evalDone && quizPassed); // penugasan baru bisa dibuka setelah evaluasi diisi & post-test lulus
     const assignmentDone = !hasAssignment || !!assignmentSub;
-    const evalReady = allLessonsDone; // materi kelar, siap ke kuis/tugas
-    const allDone = allLessonsDone && quizPassed && assignmentDone;
+    const evalReady = allLessonsDone; // materi kelar, siap ke evaluasi/kuis/tugas
+    const allDone = allLessonsDone && !!evalDone && quizPassed && assignmentDone;
     const overallLocked = !enr || !pretestDone; // materi terbuka setelah daftar & (kalau ada) pre-test dikerjakan
 
     const modulesHtml = renderModuleLessonList("course", c.id, c, enr ? enr.completedLessonIds : [], "indigo", overallLocked);
@@ -3820,7 +3825,12 @@ function renderCourseDetail(id) {
         ctaBlock = `<div class="text-center text-sm text-slate-500 bg-slate-50 rounded-2xl py-3">Selesaikan semua materi secara berurutan untuk lanjut${(hasQuiz||hasAssignment) ? ' ke evaluasi' : ''}.</div>`;
     } else {
         const parts = [];
-        if (hasQuiz) {
+        // Rating & Feedback wajib diisi dulu (kalau belum) sebelum Post-test bisa dibuka —
+        // selaras Kirkpatrick: Reaction sebelum Learning.
+        if (!evalDone) {
+            parts.push(`<button onclick="openEvaluation('course','${c.id}')" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-2xl transition"><i class="fas fa-star mr-1"></i> Isi Rating & Feedback</button>`);
+            if (hasQuiz) parts.push(`<p class="text-center text-xs text-slate-400">Isi Rating & Feedback dulu untuk membuka Post-test.</p>`);
+        } else if (hasQuiz) {
             // Sudah lulus -> gak boleh ulangi lagi, tombolnya diganti preview biar peserta bisa
             // lihat soal mana yang benar/salah dari percobaan terakhir. Belum lulus -> tetap
             // tombol ulangi/kerjakan seperti biasa (dibatasi MAX_POSTTEST_ATTEMPTS). Tombol
@@ -3836,7 +3846,8 @@ function renderCourseDetail(id) {
         }
         if (hasAssignment) {
             if (!assignmentUnlocked) {
-                parts.push(`<button disabled class="w-full bg-slate-100 text-slate-400 font-bold py-3 rounded-2xl cursor-not-allowed"><i class="fas fa-lock mr-1"></i> Lulus Post-test dulu untuk buka tugas</button>`);
+                const assignmentLockMsg = !evalDone ? 'Isi Rating & Feedback dulu untuk buka tugas' : 'Lulus Post-test dulu untuk buka tugas';
+                parts.push(`<button disabled class="w-full bg-slate-100 text-slate-400 font-bold py-3 rounded-2xl cursor-not-allowed"><i class="fas fa-lock mr-1"></i> ${assignmentLockMsg}</button>`);
             } else {
                 // "Lihat Status Tugas" ini juga tetap tampil walau training sudah lulus, biar
                 // peserta bisa cek lagi tugas yang pernah dikumpulkan & nilainya kapan saja.
@@ -4793,7 +4804,7 @@ function renderTrainingDetail(id) {
                 </div>
                 ${evalDone
                     ? `<span class="bg-emerald-50 text-emerald-600 text-xs font-bold px-4 py-2.5 rounded-xl"><i class="fas fa-check mr-1"></i> Sudah diisi</span>`
-                    : `<button ${!allLessonsDone ? 'disabled' : ''} onclick="openEvaluation('${t.id}')" class="bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold px-4 py-2.5 rounded-xl transition disabled:opacity-40 disabled:cursor-not-allowed"><i class="fas fa-star mr-1"></i> Isi Rating & Feedback</button>`}
+                    : `<button ${!allLessonsDone ? 'disabled' : ''} onclick="openEvaluation('training','${t.id}')" class="bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold px-4 py-2.5 rounded-xl transition disabled:opacity-40 disabled:cursor-not-allowed"><i class="fas fa-star mr-1"></i> Isi Rating & Feedback</button>`}
             </div>
             ${hasQuiz ? `
             <div class="bg-white border border-slate-100 rounded-2xl p-4 flex items-center justify-between flex-wrap gap-2">
@@ -4865,7 +4876,7 @@ function renderTrainingDetail(id) {
     } else if (hasMateri && !allLessonsDone) {
         ctaBlock = `<div class="text-center text-sm text-slate-500 bg-slate-50 rounded-2xl py-3">Selesaikan semua materi di bawah untuk lanjut ke evaluasi.</div>`;
     } else if (!evalDone) {
-        ctaBlock = `<button onclick="openEvaluation('${t.id}')" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-2xl transition"><i class="fas fa-star mr-1"></i> Isi Rating & Feedback</button>`;
+        ctaBlock = `<button onclick="openEvaluation('training','${t.id}')" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-2xl transition"><i class="fas fa-star mr-1"></i> Isi Rating & Feedback</button>`;
     } else if ((hasQuiz || hasAssignment) && !materiComplete) {
         ctaBlock = `<div class="text-center text-sm text-slate-500 bg-slate-50 rounded-2xl py-3">${hasQuiz ? 'Lulus post-test' : ''}${hasQuiz && hasAssignment ? ' & ' : ''}${hasAssignment ? 'kumpulkan tugas' : ''} di bawah untuk menyelesaikan training.</div>`;
     } else if (cert) {
@@ -5042,8 +5053,12 @@ window.stopQrScan = function () {
     if (qrScanStream) { qrScanStream.getTracks().forEach(tr => tr.stop()); qrScanStream = null; }
 };
 
-window.openEvaluation = function (trainingId) {
-    document.getElementById("eval-training-id").value = trainingId;
+// kind: 'training' (Training By TNA) atau 'course' (Onboarding Training) — dipakai supaya
+// modal & tombol submit yang sama bisa dipakai untuk kedua alur, masing-masing dengan field
+// FK-nya sendiri di collection "evaluations" (trainingId vs courseId).
+window.openEvaluation = function (kind, id) {
+    document.getElementById("eval-training-id").value = id;
+    document.getElementById("eval-kind").value = kind;
     ["materi", "trainer", "fasilitas"].forEach(cat => {
         document.getElementById(`eval-feedback-${cat}`).value = "";
         window.setEvalStar(cat, 5);
@@ -5066,11 +5081,14 @@ window.setEvalStar = function (category, value) {
 };
 
 window.submitEvaluation = async function () {
-    const trainingId = document.getElementById("eval-training-id").value;
-    const t = window.STATE.trainings.find(x => x.id === trainingId);
+    const id = document.getElementById("eval-training-id").value;
+    const kind = document.getElementById("eval-kind").value || "training";
     const { col, addDoc, serverTimestamp } = window.LMS_DB;
     await addDoc(col("evaluations"), {
-        trainingId, userId: window.STATE.user.id,
+        // trainingId dipakai untuk Training By TNA, courseId untuk Onboarding Training — biar
+        // laporan admin yang sudah ada (filter by trainingId) gak ketuker sama data onboarding.
+        ...(kind === "course" ? { courseId: id } : { trainingId: id }),
+        userId: window.STATE.user.id,
         userName: window.STATE.user.name || window.STATE.user.username,
         ratings: {
             materi: parseInt(document.getElementById("eval-rating-materi").value),
@@ -5084,12 +5102,13 @@ window.submitEvaluation = async function () {
         },
         submittedAt: serverTimestamp()
     });
-    // Sertifikat BELUM diterbitkan di sini — evaluasi sekarang diisi SEBELUM Post-test/Tugas
-    // (selaras Kirkpatrick: Reaction dulu baru Learning). Sertifikat baru terbit lewat tombol
-    // "Selesaikan & Ambil Sertifikat" setelah Post-test lulus & Tugas terkumpul. Lihat finishTrainingFlow.
+    // Sertifikat BELUM diterbitkan di sini — evaluasi diisi SEBELUM Post-test/Tugas (selaras
+    // Kirkpatrick: Reaction dulu baru Learning). Sertifikat baru terbit lewat tombol
+    // "Selesaikan & Ambil Sertifikat" setelah Post-test lulus & Tugas terkumpul. Lihat
+    // finishTrainingFlow / finishCourseFlow.
     window.closeModal("modal-evaluation");
     window.toast("Evaluasi terkirim, terima kasih! Lanjutkan ke Post-test.", "success");
-    renderTrainingDetail(trainingId);
+    if (kind === "course") { renderCourseDetail(id); } else { renderTrainingDetail(id); }
 };
 
 // Menyelesaikan Training By TNA & menerbitkan sertifikat setelah semua syarat terpenuhi
