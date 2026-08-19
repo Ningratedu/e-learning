@@ -2163,7 +2163,7 @@ window.renderSidebar = function () {
         { key: "certificates", icon: "fa-award", label: "Sertifikat Saya" },
         // Menu khusus role peserta dengan level jabatan Supervisor ke atas (dikonfigurasi admin
         // lewat window.tnaInputConfig()) — buat input data "Hasil TNA" timnya sendiri.
-        ...(window.sel.canInputTna() ? [{ key: "tna-input", icon: "fa-clipboard-list", label: "Request Training" }] : []),
+        ...(window.sel.canInputTna() ? [{ key: "tna-input", icon: "fa-clipboard-list", label: "Input Hasil TNA" }] : []),
     ];
     // adminNav TANPA "Laporan" lagi di bawah, karena sudah dipindah & di-rename jadi
     // "Dashboard" di paling atas (lihat array nav di atas).
@@ -5487,6 +5487,7 @@ function renderCourseAdminList() {
             <td class="px-3 py-3 text-center text-sm font-bold text-slate-600">${completedCount}</td>
             <td class="px-3 py-3 text-center"><span class="text-[10px] font-black px-2 py-1 rounded-full bg-emerald-50 text-emerald-600">${completedPct}%</span></td>
             <td class="px-3 py-3 text-right space-x-2">
+                <a href="#/admin/course-report/${c.id}" title="Laporan Keterlaksanaan" class="text-emerald-500 hover:text-emerald-700"><i class="fas fa-chart-simple"></i></a>
                 <a href="#/admin/courses/${c.id}" class="text-indigo-500 hover:text-indigo-700"><i class="fas fa-pen"></i></a>
                 <button onclick="window.guardedClick(this, () => window.deleteCourse('${c.id}'))" class="text-rose-400 hover:text-rose-600"><i class="fas fa-trash"></i></button>
             </td>
@@ -6423,7 +6424,7 @@ window.deleteTraining = async function (id) {
 //  1) Admin, langsung dari tab "Hasil TNA" ini ("Entri Baru" / edit / hapus, bebas semua data,
 //     termasuk menyiapkan modul, update progress, minta approval, sampai laksanain training).
 //  2) Peserta dengan level jabatan "Supervisor ke atas" (dikonfigurasi admin di bawah), lewat
-//     menu sidebar "Input Hasil TNA" (route #/tna-input) — mereka cuma mengajukan permintaan
+//     menu sidebar "Request Training" (route #/tna-input) — mereka cuma mengajukan permintaan
 //     training (problem, identifikasi, rekomendasi, dll) buat timnya dan cuma bisa edit/hapus
 //     entri yang mereka input sendiri. Penyiapan modul, update progress, permohonan approval,
 //     sampai pelaksanaan trainingnya sepenuhnya jadi tanggung jawab Admin/Tim Training.
@@ -8536,6 +8537,208 @@ function renderTrainingReport(id) {
                             <th class="px-3 py-2.5 text-center">Tugas</th>
                             <th class="px-3 py-2.5 text-center">Evaluasi</th>
                             <th class="px-3 py-2.5">Progress</th>
+                            <th class="px-3 py-2.5 text-center">Status</th>
+                            <th class="px-3 py-2.5 text-center">Aksi</th>
+                        </tr>
+                    </thead>
+                    <tbody>${detailRows}</tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="bg-white rounded-3xl border border-slate-100 shadow-sm p-4">
+            <h3 class="font-black text-sm text-slate-700 mb-3"><i class="fas fa-comment-dots text-amber-400 mr-1"></i> Rincian Feedback Evaluasi Peserta</h3>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">${feedbackCards}</div>
+        </div>
+    `);
+}
+
+// ================= ADMIN: LAPORAN KETERLAKSANAAN ONBOARDING (per training) =================
+// Sama konsepnya dengan renderTrainingReport (Training TNA), tapi buat 1 training Onboarding
+// tertentu: target peserta dari window.courseTargetEmployees (bukan trainingTargetEmployees),
+// dan progress per peserta reuse helper yang sama persis dipakai di modal Detail Karyawan
+// (certOfUser/pretestAttemptOfUser/postTestAttemptsOfUser/enrollmentOfUser/courseLockInfoOfUser
+// — lihat buildOnboardingTableRow) supaya angkanya selalu konsisten di semua tempat.
+window.ROUTES["admin/course-report"] = requireAdmin(function (id) {
+    renderCourseReport(id);
+});
+
+let courseReportStatusFilter = "all"; // all | selesai | proses | belum
+
+function renderCourseReport(id) {
+    const c = window.STATE.courses.find(x => x.id === id);
+    if (!c) { window.setPage(`<p class="text-center text-slate-400 py-20">Training tidak ditemukan.</p><a href="#/admin/courses" class="block text-center text-xs font-bold text-indigo-600 hover:underline">Kembali ke Kelola Onboarding</a>`); return; }
+
+    // ---- Peserta target (sesuai scope departemen/level/manual training ini) & urutan
+    // sequential onboarding buat masing-masing (dipakai buat cek status "Terkunci"). ----
+    const targetEmployees = window.courseTargetEmployees(c);
+    const targetCount = targetEmployees.length;
+    const usersByUsername = {};
+    window.STATE.users.forEach(u => { usersByUsername[normalizeUsername(u.username)] = u; });
+
+    const participants = targetEmployees.map(e => {
+        const user = usersByUsername[normalizeUsername(e.username)];
+        const ordered = user ? orderedPublishedCoursesForEmployee(e) : [];
+        return { emp: e, user, ordered };
+    });
+
+    // ---- Keterlaksanaan (kelulusan = sertifikat sudah terbit) ----
+    const completedCount = participants.filter(p => p.user && certOfUser(id, p.user.id)).length;
+    const completedPct = targetCount ? Math.round((completedCount / targetCount) * 100) : 0;
+
+    // ---- Rata-rata nilai Pre-test & Post-test (post-test = percobaan TERBARU tiap peserta) ----
+    const hasQuiz = !!(c.quiz && (c.quiz.questions || []).length);
+    const preAttempts = window.STATE.quizAttempts.filter(a => a.courseId === id && a.attemptType === "pretest");
+    const postAttemptsAll = window.STATE.quizAttempts.filter(a => a.courseId === id && a.attemptType !== "pretest");
+    const latestPostByUser = {};
+    postAttemptsAll.forEach(a => {
+        const cur = latestPostByUser[a.userId];
+        if (!cur || (a.attemptAt?.seconds || 0) > (cur.attemptAt?.seconds || 0)) latestPostByUser[a.userId] = a;
+    });
+    const latestPostList = Object.values(latestPostByUser);
+    const avgPre = preAttempts.length ? Math.round(preAttempts.reduce((s, a) => s + (a.score || 0), 0) / preAttempts.length) : null;
+    const avgPost = latestPostList.length ? Math.round(latestPostList.reduce((s, a) => s + (a.score || 0), 0) / latestPostList.length) : null;
+
+    // ---- Rata-rata rating feedback evaluasi (materi, trainer, fasilitas) ----
+    const evals = window.STATE.evaluations.filter(e => e.courseId === id);
+    let avgRating = null;
+    if (evals.length) {
+        const sumAll = evals.reduce((s, e) => {
+            const r = e.ratings || {};
+            const vals = [r.materi, r.trainer, r.fasilitas].filter(v => typeof v === "number");
+            const avgOne = vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : 0;
+            return s + avgOne;
+        }, 0);
+        avgRating = Math.round((sumAll / evals.length) * 10) / 10;
+    }
+    function avgRatingOf(key) {
+        const vals = evals.map(e => e.ratings && e.ratings[key]).filter(v => typeof v === "number");
+        return vals.length ? Math.round((vals.reduce((a, b) => a + b, 0) / vals.length) * 10) / 10 : null;
+    }
+    const avgMateri = avgRatingOf("materi");
+    const avgTrainer = avgRatingOf("trainer");
+    const avgFasilitas = avgRatingOf("fasilitas");
+    function starRow(val) {
+        const v = Math.round(val || 0);
+        return [1, 2, 3, 4, 5].map(n => `<i class="fas fa-star text-[11px] ${n <= v ? "text-amber-400" : "text-slate-200"}"></i>`).join("");
+    }
+
+    // ---- Rincian per peserta target ----
+    function participantStatus(p) {
+        if (!p.user) return { label: "Belum Punya Akun", cls: "bg-slate-100 text-slate-400", key: "belum" };
+        const lock = courseLockInfoOfUser(id, p.user.id, p.ordered);
+        const cert = certOfUser(id, p.user.id);
+        if (cert) return { label: "Selesai", cls: "bg-emerald-50 text-emerald-600", key: "selesai" };
+        if (lock.locked) return { label: "Terkunci", cls: "bg-slate-100 text-slate-400", key: "belum", blockingTitle: lock.blockingTitle };
+        const enr = enrollmentOfUser(id, p.user.id);
+        const pretest = pretestAttemptOfUser(id, p.user.id);
+        const postList = postTestAttemptsOfUser(id, p.user.id);
+        if ((enr && (enr.completedLessonIds || []).length) || pretest || postList.length) return { label: "Sedang Berjalan", cls: "bg-amber-50 text-amber-600", key: "proses" };
+        return { label: "Belum Mulai", cls: "bg-rose-50 text-rose-500", key: "belum" };
+    }
+
+    const filtered = participants.filter(p => courseReportStatusFilter === "all" || participantStatus(p).key === courseReportStatusFilter);
+
+    const detailRows = filtered.map(p => {
+        const st = participantStatus(p);
+        const totalLessons = (c.modules || []).reduce((s, m) => s + (m.lessons || []).length, 0);
+        const enr = p.user ? enrollmentOfUser(id, p.user.id) : null;
+        const doneLessons = Math.min(totalLessons, (enr?.completedLessonIds || []).length);
+        const pretest = p.user ? pretestAttemptOfUser(id, p.user.id) : null;
+        const postList = p.user ? postTestAttemptsOfUser(id, p.user.id) : [];
+        const latestPost = postList[0] || null;
+        const asub = p.user ? window.STATE.assignmentSubmissions.find(s => s.courseId === id && s.userId === p.user.id) : null;
+        const ev = p.user ? window.STATE.evaluations.find(e => e.courseId === id && e.userId === p.user.id) : null;
+        return `<tr class="border-b border-slate-50 hover:bg-slate-50/60">
+            <td class="px-3 py-2.5 text-sm font-bold text-slate-700">${window.escapeHtml(p.emp.nama || p.emp.username)}<p class="text-[10px] text-slate-400 font-normal">${window.escapeHtml(p.emp.dept || '-')} • ${window.escapeHtml(p.emp.posisi || '-')}</p></td>
+            <td class="px-3 py-2.5 text-center text-xs text-slate-600">${totalLessons ? `${doneLessons}/${totalLessons}` : '-'}</td>
+            <td class="px-3 py-2.5 text-center text-xs text-slate-600">${pretest ? pretest.score : '-'}</td>
+            <td class="px-3 py-2.5 text-center text-xs text-slate-600">${latestPost ? `${latestPost.score} ${latestPost.passed ? '<span class="text-emerald-600 font-bold">(Lulus)</span>' : '<span class="text-rose-500 font-bold">(Belum)</span>'}` : '-'}</td>
+            <td class="px-3 py-2.5 text-center text-xs text-slate-600">${asub ? (asub.status === 'graded' ? asub.score : 'Menunggu nilai') : '-'}</td>
+            <td class="px-3 py-2.5 text-center">${ev ? '<i class="fas fa-circle-check text-emerald-500"></i>' : '<i class="fas fa-circle-xmark text-slate-300"></i>'}</td>
+            <td class="px-3 py-2.5 text-center">
+                <span class="text-[10px] font-black px-2 py-1 rounded-full ${st.cls} whitespace-nowrap">${st.label}</span>
+                ${st.blockingTitle ? `<p class="text-[9px] text-slate-400 mt-0.5">Menunggu "${window.escapeHtml(st.blockingTitle)}"</p>` : ""}
+            </td>
+            <td class="px-3 py-2.5 text-center whitespace-nowrap">
+                ${(p.user && st.key !== "selesai") ? `<button onclick="window.guardedClick(this, () => window.sendTrainingReminder('${p.emp.id}'))" title="Kirim Reminder via WhatsApp" class="text-indigo-500 hover:text-indigo-700 mx-1"><i class="fab fa-whatsapp"></i></button>` : '<span class="text-slate-200 text-xs">-</span>'}
+            </td>
+        </tr>`;
+    }).join("") || `<tr><td colspan="8" class="text-center py-6 text-slate-400 text-sm">${courseReportStatusFilter === "all" ? "Belum ada target peserta" : "Tidak ada peserta yang cocok dengan filter ini"}</td></tr>`;
+
+    // ---- Rincian feedback evaluasi per peserta ----
+    const feedbackCards = evals.length ? evals.map(e => {
+        const r = e.ratings || {};
+        const fb = e.feedbacks || {};
+        const legacyComment = (!fb.materi && !fb.trainer && !fb.fasilitas) ? e.comment : null;
+        const rows = [["Materi", r.materi, fb.materi], ["Trainer", r.trainer, fb.trainer], ["Fasilitas", r.fasilitas, fb.fasilitas]];
+        return `
+        <div class="border border-slate-100 rounded-2xl p-4">
+            <p class="text-sm font-bold text-slate-700 mb-2">${window.escapeHtml(e.userName || userName(e.userId))}</p>
+            <div class="space-y-2">
+                ${rows.map(([label, rating, feedback]) => `
+                    <div class="bg-slate-50 rounded-xl px-3 py-2">
+                        <div class="flex items-center justify-between gap-2">
+                            <span class="text-xs font-bold text-slate-600">${label}</span>
+                            <span>${starRow(rating)}</span>
+                        </div>
+                        ${feedback ? `<p class="text-xs text-slate-500 mt-1">${window.escapeHtml(feedback)}</p>` : ""}
+                    </div>`).join("")}
+                ${legacyComment ? `<div class="bg-slate-50 rounded-xl px-3 py-2"><span class="text-xs font-bold text-slate-600">Komentar</span><p class="text-xs text-slate-500 mt-1">${window.escapeHtml(legacyComment)}</p></div>` : ""}
+            </div>
+        </div>`;
+    }).join("") : `<p class="text-sm text-slate-400 text-center py-5">Belum ada evaluasi yang diisi peserta.</p>`;
+
+    window.setPage(`
+        <a href="#/admin/courses" class="text-xs font-bold text-slate-400 hover:text-indigo-600"><i class="fas fa-arrow-left mr-1"></i> Kembali</a>
+        <div class="flex items-start justify-between flex-wrap gap-2 mt-2 mb-3">
+            <div>
+                <h1 class="text-xl font-black text-slate-800">Laporan Keterlaksanaan Onboarding</h1>
+                <p class="text-sm text-slate-500">${window.escapeHtml(c.title)}</p>
+            </div>
+            <div class="flex items-center gap-2 flex-wrap">
+                <span class="text-[10px] font-black px-3 py-1.5 rounded-full ${c.published ? 'bg-emerald-50 text-emerald-600' : 'bg-slate-100 text-slate-500'}">${c.published ? 'Terbit' : 'Draft'}</span>
+                <span class="text-[11px] font-bold px-3 py-1.5 rounded-full ${window.courseHasScopeRestriction(c) ? 'bg-indigo-50 text-indigo-600' : 'bg-slate-100 text-slate-500'}"><i class="fas fa-users mr-1"></i>${window.escapeHtml(window.courseScopeLabel(c))}</span>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
+            ${statCard("fa-users", "indigo", targetCount, "Jumlah Target Peserta")}
+            ${statCard("fa-graduation-cap", "emerald", `${completedCount} (${completedPct}%)`, "Keterlaksanaan (Selesai)")}
+            ${statCard("fa-star", "rose", avgRating !== null ? avgRating + "/5" : "-", "Rata-rata Rating Feedback")}
+            ${statCard("fa-comment-dots", "amber", evals.length, "Jumlah Evaluasi Masuk")}
+        </div>
+        ${hasQuiz ? `
+        <div class="grid grid-cols-2 gap-3 mb-4">
+            ${statCard("fa-list-check", "violet", avgPre !== null ? avgPre : "-", "Rata-rata Nilai Pre-test")}
+            ${statCard("fa-clipboard-question", "violet", avgPost !== null ? avgPost : "-", "Rata-rata Nilai Post-test")}
+        </div>` : ""}
+        <div class="grid grid-cols-3 gap-3 mb-4">
+            ${statCard("fa-book-open", "indigo", avgMateri !== null ? avgMateri + "/5" : "-", "Rating Materi")}
+            ${statCard("fa-chalkboard-user", "amber", avgTrainer !== null ? avgTrainer + "/5" : "-", "Rating Trainer")}
+            ${statCard("fa-building", "emerald", avgFasilitas !== null ? avgFasilitas + "/5" : "-", "Rating Fasilitas")}
+        </div>
+
+        <div class="bg-white rounded-3xl border border-slate-100 shadow-sm p-4 mb-4">
+            <div class="flex items-center justify-between flex-wrap gap-2 mb-3">
+                <h3 class="font-black text-sm text-slate-700">Rincian per Peserta Target</h3>
+                <div class="flex gap-1 bg-slate-100 rounded-xl p-1">
+                    <button onclick="courseReportStatusFilter='all'; renderCourseReport('${id}')" class="text-[11px] font-bold px-2.5 py-1.5 rounded-lg transition ${courseReportStatusFilter === 'all' ? 'bg-white shadow text-slate-700' : 'text-slate-500'}">Semua</button>
+                    <button onclick="courseReportStatusFilter='selesai'; renderCourseReport('${id}')" class="text-[11px] font-bold px-2.5 py-1.5 rounded-lg transition ${courseReportStatusFilter === 'selesai' ? 'bg-white shadow text-emerald-600' : 'text-slate-500'}">Selesai</button>
+                    <button onclick="courseReportStatusFilter='proses'; renderCourseReport('${id}')" class="text-[11px] font-bold px-2.5 py-1.5 rounded-lg transition ${courseReportStatusFilter === 'proses' ? 'bg-white shadow text-amber-600' : 'text-slate-500'}">Sedang Berjalan</button>
+                    <button onclick="courseReportStatusFilter='belum'; renderCourseReport('${id}')" class="text-[11px] font-bold px-2.5 py-1.5 rounded-lg transition ${courseReportStatusFilter === 'belum' ? 'bg-white shadow text-rose-600' : 'text-slate-500'}">Belum Mulai</button>
+                </div>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="w-full text-left">
+                    <thead class="bg-slate-50 text-[10px] font-black uppercase text-slate-400">
+                        <tr>
+                            <th class="px-3 py-2.5">Nama</th>
+                            <th class="px-3 py-2.5 text-center">Lesson</th>
+                            <th class="px-3 py-2.5 text-center">Pre-test</th>
+                            <th class="px-3 py-2.5 text-center">Post-test</th>
+                            <th class="px-3 py-2.5 text-center">Tugas</th>
+                            <th class="px-3 py-2.5 text-center">Evaluasi</th>
                             <th class="px-3 py-2.5 text-center">Status</th>
                             <th class="px-3 py-2.5 text-center">Aksi</th>
                         </tr>
