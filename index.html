@@ -11407,7 +11407,7 @@ window.addEventListener("lms-firebase-ready", async () => {
     }
 
     // Re-render current page tiap ada perubahan data live, KECUALI sedang di course builder
-    // (supaya input yang lagi diketik admin gak ke-reset tiap ada snapshot baru).
+    // (supaya input yang lagi diketik admin gak ke-reset tiap ada snapshot baru). 
     window.addEventListener("lms-state-changed", () => {
         if (!window.STATE.user) return;
         const hash = location.hash.replace(/^#/, "");
