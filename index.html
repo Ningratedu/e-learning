@@ -957,7 +957,8 @@ html.dark .corevalue-wire { background: rgba(96, 165, 250, .2); }
 
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import {
-    getFirestore, collection, doc, addDoc, getDoc, getDocs, setDoc, updateDoc,
+    initializeFirestore, persistentLocalCache, persistentMultipleTabManager,
+    collection, doc, addDoc, getDoc, getDocs, setDoc, updateDoc,
     deleteDoc, onSnapshot, query, where, orderBy, serverTimestamp, writeBatch
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
@@ -971,7 +972,17 @@ const firebaseConfig = {
 };
 
 const appFb = initializeApp(firebaseConfig);
-const db = getFirestore(appFb);
+// CATATAN PERFORMA FIRESTORE: pakai initializeFirestore() dengan persistentLocalCache
+// (bukan getFirestore() biasa) supaya Firestore nyimpen data di IndexedDB browser.
+// Efeknya: reload/refresh berikutnya di device yang SAMA dibaca dari cache lokal dulu,
+// listener onSnapshot cuma narik PERUBAHAN (delta) dari server, bukan re-fetch seluruh
+// collection dari awal tiap kali app dibuka. Ini yang paling motong "reads" harian,
+// karena sebelumnya tiap reload = full collection reads lagi buat 8 collection yang
+// di-subscribe realtime tanpa filter (lihat startLiveListeners()).
+// persistentMultipleTabManager supaya tetap jalan normal kalau user buka >1 tab.
+const db = initializeFirestore(appFb, {
+    localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() })
+});
 const appId = "booking-ruang-training";
 const NS = "lms"; // namespace khusus data LMS
 
