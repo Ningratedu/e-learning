@@ -923,6 +923,17 @@ html.dark .corevalue-wire { background: rgba(96, 165, 250, .2); }
     </div>
 </div>
 
+<!-- ================= MODAL: FORM BUILD/EDIT KOMPETENSI (POPUP) ================= -->
+<div id="modal-competency-builder" class="fixed inset-0 z-[10000] hide modal-overlay flex items-center justify-center p-4">
+    <div class="bg-white w-full max-w-3xl rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh]">
+        <div class="p-4 border-b flex justify-between items-center bg-indigo-50 shrink-0">
+            <h3 id="competency-builder-title" class="text-sm font-black text-indigo-600"><i class="fas fa-diagram-project mr-1"></i> Kompetensi Baru</h3>
+            <button onclick="window.closeCompetencyBuilder()" class="text-slate-400 hover:text-slate-700"><i class="fas fa-times"></i></button>
+        </div>
+        <div id="competency-builder-body" class="p-4 overflow-y-auto space-y-2"></div>
+    </div>
+</div>
+
 <!-- ================= MODAL: KIRIM NOTIF PERMOHONAN APPROVAL MODUL (HASIL TNA) ================= -->
 <div id="modal-tna-approval-request" class="fixed inset-0 z-[10000] hide modal-overlay flex items-center justify-center p-4">
     <div class="bg-white w-full max-w-lg rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[85vh]">
@@ -2878,14 +2889,30 @@ function companyKpiPerformanceCard(stats) {
                 <button id="company-kpi-view-dept" onclick="window.setCompanyKpiView('dept')" class="px-2.5 py-1 rounded-full transition text-slate-500">Per Departemen</button>
            </div>`
         : "";
+    // Tombol + panel dropdown buat milih departemen mana aja yang mau ditampilkan di mode
+    // "Per Departemen" (multi-select, bukan cuma otomatis top 5 lagi).
+    const deptFilterBtn = (stats.hasData && Object.keys(stats.deptMonthly || {}).length > 1)
+        ? `<div class="relative">
+                <button id="company-kpi-dept-filter-btn" onclick="window.toggleCompanyKpiDeptFilter(event)" title="Pilih departemen" class="w-7 h-7 rounded-full bg-slate-100 text-slate-500 hover:bg-slate-200 transition flex items-center justify-center">
+                    <i class="fas fa-sliders text-[11px]"></i>
+                </button>
+                <div id="company-kpi-dept-filter-panel" class="hide absolute right-0 mt-1 w-56 bg-white rounded-2xl shadow-lg border border-slate-100 z-20 overflow-hidden" onclick="event.stopPropagation()"></div>
+           </div>`
+        : "";
     return `
     <div class="bg-white rounded-3xl border border-slate-100 shadow-sm p-4 mb-3">
         <div class="flex flex-wrap items-center justify-between gap-2 mb-2">
             <h3 class="font-black text-slate-700 text-sm"><i class="fas fa-chart-line text-emerald-500 mr-1"></i> Tren Avg KPI All Karyawan ${stats.year || new Date().getFullYear()}</h3>
-            <div class="flex items-center gap-2">${avgBadge}${deptToggle}</div>
+            <div class="flex items-center gap-2">${avgBadge}${deptToggle}${deptFilterBtn}</div>
         </div>
         ${stats.hasData
-            ? `<div class="relative h-56 sm:h-72" id="company-kpi-chart-wrap"><canvas id="company-kpi-chart"></canvas></div>
+            ? `<div class="relative h-56 sm:h-72" id="company-kpi-chart-wrap">
+                    <canvas id="company-kpi-chart"></canvas>
+                    <div id="company-kpi-empty-dept-msg" class="hide absolute inset-0 h-full flex flex-col items-center justify-center text-center gap-2">
+                        <i class="fas fa-filter-circle-xmark text-2xl text-slate-300"></i>
+                        <p class="text-xs text-slate-400 max-w-[220px]">Belum ada departemen yang dipilih. Klik ikon <i class="fas fa-sliders"></i> di pojok kanan atas buat pilih departemen.</p>
+                    </div>
+               </div>
                <div id="company-kpi-dept-legend" class="hide flex flex-wrap gap-2 mt-2"></div>`
             : `<div class="h-40 flex flex-col items-center justify-center text-center gap-1">
                     <i class="fas fa-chart-simple text-3xl text-slate-200"></i>
@@ -2944,7 +2971,185 @@ window.setCompanyKpiView = function (mode) {
     if (window.__companyKpiStats) renderCompanyKpiChart(window.__companyKpiStats, window.__companyKpiRenderToken);
 };
 
-const COMPANY_KPI_DEPT_COLORS = ["#4f46e5", "#f59e0b", "#10b981", "#ec4899", "#0ea5e9"];
+const COMPANY_KPI_DEPT_COLORS = ["#4f46e5", "#f59e0b", "#10b981", "#ec4899", "#0ea5e9", "#8b5cf6", "#f97316", "#14b8a6", "#e11d48", "#84cc16"];
+
+// null = otomatis (top 5 departemen dengan data KPI paling lengkap, perilaku lama).
+// Array = daftar departemen yang secara eksplisit dipilih user lewat dropdown filter.
+window.__companyKpiSelectedDepts = null;
+window.__companyKpiDeptFilterOpen = false;
+
+// Semua nama departemen yang punya data KPI, diurut dari yang datanya paling lengkap.
+function companyKpiAllDeptsSorted(stats) {
+    return Object.keys(stats.deptMonthly || {})
+        .map(d => ({ d, n: stats.deptMonthly[d].filter(v => typeof v === "number").length }))
+        .sort((a, b) => b.n - a.n)
+        .map(x => x.d);
+}
+
+// Departemen yang lagi aktif ditampilkan di chart: hasil pilihan user kalau ada, kalau belum
+// pernah difilter jatuh balik ke default lama (top 5 data terlengkap).
+function companyKpiActiveDepts(stats) {
+    if (Array.isArray(window.__companyKpiSelectedDepts)) {
+        const valid = new Set(Object.keys(stats.deptMonthly || {}));
+        return window.__companyKpiSelectedDepts.filter(d => valid.has(d));
+    }
+    return stats.topDepts || [];
+}
+
+window.toggleCompanyKpiDeptFilter = function (ev) {
+    if (ev) ev.stopPropagation();
+    window.__companyKpiDeptFilterOpen = !window.__companyKpiDeptFilterOpen;
+    renderCompanyKpiDeptFilterPanel();
+};
+
+window.toggleCompanyKpiDept = function (dept) {
+    const stats = window.__companyKpiStats;
+    if (!stats) return;
+    const current = new Set(companyKpiActiveDepts(stats));
+    if (current.has(dept)) current.delete(dept); else current.add(dept);
+    const order = companyKpiAllDeptsSorted(stats);
+    window.__companyKpiSelectedDepts = order.filter(d => current.has(d));
+    renderCompanyKpiDeptFilterPanel();
+    renderCompanyKpiChart(stats, window.__companyKpiRenderToken);
+};
+
+window.toggleCompanyKpiDeptAll = function () {
+    const stats = window.__companyKpiStats;
+    if (!stats) return;
+    const all = companyKpiAllDeptsSorted(stats);
+    const active = companyKpiActiveDepts(stats);
+    const allSelected = all.length > 0 && all.length === active.length;
+    window.__companyKpiSelectedDepts = allSelected ? [] : [...all];
+    renderCompanyKpiDeptFilterPanel();
+    renderCompanyKpiChart(stats, window.__companyKpiRenderToken);
+};
+
+function renderCompanyKpiDeptFilterPanel() {
+    const panel = document.getElementById("company-kpi-dept-filter-panel");
+    const btn = document.getElementById("company-kpi-dept-filter-btn");
+    if (btn) btn.classList.toggle("bg-indigo-50", window.__companyKpiDeptFilterOpen);
+    if (!panel) return;
+    if (!window.__companyKpiDeptFilterOpen) { panel.classList.add("hide"); panel.innerHTML = ""; return; }
+    const stats = window.__companyKpiStats;
+    if (!stats) { panel.classList.add("hide"); return; }
+    const all = companyKpiAllDeptsSorted(stats);
+    const active = new Set(companyKpiActiveDepts(stats));
+    const allSelected = all.length > 0 && all.every(d => active.has(d));
+    panel.classList.remove("hide");
+    panel.innerHTML = `
+        <div class="p-2 border-b border-slate-100 flex items-center justify-between">
+            <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wide">Pilih Departemen</span>
+            <button onclick="window.toggleCompanyKpiDeptAll()" class="text-[11px] font-bold text-indigo-500 hover:underline">${allSelected ? "Kosongkan" : "Pilih semua"}</button>
+        </div>
+        <div class="max-h-52 overflow-y-auto p-1.5">
+            ${all.map(dept => `
+                <label class="flex items-center gap-2 text-xs px-1.5 py-1.5 rounded-lg hover:bg-slate-50 cursor-pointer">
+                    <input type="checkbox" ${active.has(dept) ? "checked" : ""} onchange="window.toggleCompanyKpiDept('${window.escapeHtml(dept).replace(/'/g, "\\'")}')" class="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500">
+                    <span class="truncate">${window.escapeHtml(dept)}</span>
+                </label>`).join("") || '<p class="text-xs text-slate-400 px-2 py-2">Belum ada departemen.</p>'}
+        </div>`;
+}
+
+document.addEventListener("click", function () {
+    if (!window.__companyKpiDeptFilterOpen) return;
+    window.__companyKpiDeptFilterOpen = false;
+    renderCompanyKpiDeptFilterPanel();
+});
+
+// ================= FILTER MULTI-SELECT DEPARTEMEN — WIDGET "PENGGUNA PER DEPARTEMEN" =================
+// (Dashboard Admin). window.__adminUsersDeptMap diisi ulang tiap kali halaman admin/reports
+// dibuka (lihat window.ROUTES["admin/reports"]). Sama seperti filter chart KPI di atas: null =
+// otomatis (top 6 departemen dengan pengguna terbanyak, perilaku lama), array = pilihan manual.
+window.__adminDeptSelected = null;
+window.__adminDeptFilterOpen = false;
+
+function adminDeptAllSorted() {
+    const deptMap = window.__adminUsersDeptMap || {};
+    return Object.entries(deptMap).sort((a, b) => b[1] - a[1]).map(x => x[0]);
+}
+
+function adminDeptActive() {
+    const deptMap = window.__adminUsersDeptMap || {};
+    if (Array.isArray(window.__adminDeptSelected)) {
+        return window.__adminDeptSelected.filter(d => Object.prototype.hasOwnProperty.call(deptMap, d));
+    }
+    return adminDeptAllSorted().slice(0, 6);
+}
+
+function buildAdminDeptRowsHtml() {
+    const deptMap = window.__adminUsersDeptMap || {};
+    if (!Object.keys(deptMap).length) return '<p class="text-sm text-slate-400 text-center py-4">Belum ada data pengguna</p>';
+    const active = adminDeptActive();
+    if (!active.length) return '<p class="text-sm text-slate-400 text-center py-4">Belum ada departemen yang dipilih. Klik ikon filter di atas.</p>';
+    const maxDept = Math.max(1, ...active.map(d => deptMap[d] || 0));
+    return active.map(dept => `
+        <div>
+            <div class="flex items-center justify-between text-xs mb-1">
+                <span class="font-bold text-slate-600 truncate">${window.escapeHtml(dept)}</span>
+                <span class="text-slate-400 font-semibold">${deptMap[dept] || 0}</span>
+            </div>
+            <div class="h-2 bg-slate-100 rounded-full overflow-hidden"><div class="h-full bg-indigo-500 rounded-full" style="width:${Math.round((deptMap[dept] || 0) / maxDept * 100)}%"></div></div>
+        </div>`).join("");
+}
+
+function renderAdminDeptWidgetBody() {
+    const body = document.getElementById("admin-dept-widget-body");
+    if (body) body.innerHTML = buildAdminDeptRowsHtml();
+}
+
+window.toggleAdminDeptFilter = function (ev) {
+    if (ev) ev.stopPropagation();
+    window.__adminDeptFilterOpen = !window.__adminDeptFilterOpen;
+    renderAdminDeptFilterPanel();
+};
+
+window.toggleAdminDept = function (dept) {
+    const current = new Set(adminDeptActive());
+    if (current.has(dept)) current.delete(dept); else current.add(dept);
+    const order = adminDeptAllSorted();
+    window.__adminDeptSelected = order.filter(d => current.has(d));
+    renderAdminDeptFilterPanel();
+    renderAdminDeptWidgetBody();
+};
+
+window.toggleAdminDeptAll = function () {
+    const all = adminDeptAllSorted();
+    const active = adminDeptActive();
+    const allSelected = all.length > 0 && all.length === active.length;
+    window.__adminDeptSelected = allSelected ? [] : [...all];
+    renderAdminDeptFilterPanel();
+    renderAdminDeptWidgetBody();
+};
+
+function renderAdminDeptFilterPanel() {
+    const panel = document.getElementById("admin-dept-filter-panel");
+    const btn = document.getElementById("admin-dept-filter-btn");
+    if (btn) btn.classList.toggle("bg-indigo-50", window.__adminDeptFilterOpen);
+    if (!panel) return;
+    if (!window.__adminDeptFilterOpen) { panel.classList.add("hide"); panel.innerHTML = ""; return; }
+    const all = adminDeptAllSorted();
+    const active = new Set(adminDeptActive());
+    const allSelected = all.length > 0 && all.every(d => active.has(d));
+    panel.classList.remove("hide");
+    panel.innerHTML = `
+        <div class="p-2 border-b border-slate-100 flex items-center justify-between">
+            <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wide">Pilih Departemen</span>
+            <button onclick="window.toggleAdminDeptAll()" class="text-[11px] font-bold text-indigo-500 hover:underline">${allSelected ? "Kosongkan" : "Pilih semua"}</button>
+        </div>
+        <div class="max-h-52 overflow-y-auto p-1.5">
+            ${all.map(dept => `
+                <label class="flex items-center gap-2 text-xs px-1.5 py-1.5 rounded-lg hover:bg-slate-50 cursor-pointer">
+                    <input type="checkbox" ${active.has(dept) ? "checked" : ""} onchange="window.toggleAdminDept('${window.escapeHtml(dept).replace(/'/g, "\\'")}')" class="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500">
+                    <span class="truncate">${window.escapeHtml(dept)}</span>
+                </label>`).join("") || '<p class="text-xs text-slate-400 px-2 py-2">Belum ada departemen.</p>'}
+        </div>`;
+}
+
+document.addEventListener("click", function () {
+    if (!window.__adminDeptFilterOpen) return;
+    window.__adminDeptFilterOpen = false;
+    renderAdminDeptFilterPanel();
+});
 
 // Helper kecil buat ubah warna hex ("#4f46e5") jadi string "r,g,b" — dipakai buat bikin
 // rgba(...) dengan opacity custom untuk efek gradasi/pudar tiap garis departemen.
@@ -2971,14 +3176,29 @@ function renderCompanyKpiChart(stats, token) {
 
         try {
             if (__companyKpiChartInstance) { __companyKpiChartInstance.destroy(); __companyKpiChartInstance = null; }
-            const ctx = liveCanvas.getContext("2d");
             const legendEl = document.getElementById("company-kpi-dept-legend");
             const view = window.__companyKpiView || "overall";
+            const activeDepts = companyKpiActiveDepts(stats);
 
+            // Kondisi "belum ada departemen dipilih di mode Per Departemen" ditangani duluan,
+            // sebelum bikin context/chart, biar canvas & pesan kosong tinggal di-toggle tanpa
+            // merusak elemen canvas-nya (jadi chart masih bisa dirender lagi setelahnya).
+            if (view === "dept" && !activeDepts.length) {
+                if (legendEl) { legendEl.classList.add("hide"); legendEl.innerHTML = ""; }
+                liveCanvas.classList.add("hide");
+                const emptyMsg = document.getElementById("company-kpi-empty-dept-msg");
+                if (emptyMsg) emptyMsg.classList.remove("hide");
+                return;
+            }
+            liveCanvas.classList.remove("hide");
+            const emptyMsg2 = document.getElementById("company-kpi-empty-dept-msg");
+            if (emptyMsg2) emptyMsg2.classList.add("hide");
+
+            const ctx = liveCanvas.getContext("2d");
             let datasets;
-            if (view === "dept" && stats.topDepts && stats.topDepts.length) {
+            if (view === "dept" && activeDepts.length) {
                 const h = liveCanvas.clientHeight || (document.getElementById("company-kpi-chart-wrap") || {}).clientHeight || 220;
-                datasets = stats.topDepts.map((dept, i) => {
+                datasets = activeDepts.map((dept, i) => {
                     const color = COMPANY_KPI_DEPT_COLORS[i % COMPANY_KPI_DEPT_COLORS.length];
                     // Efek gradasi/pudar di bawah tiap garis departemen, sama seperti mode
                     // "Semua" — bikin tiap garis punya area fill transparan yang memudar ke bawah.
@@ -3006,7 +3226,7 @@ function renderCompanyKpiChart(stats, token) {
                 });
                 if (legendEl) {
                     legendEl.classList.remove("hide");
-                    legendEl.innerHTML = stats.topDepts.map((dept, i) => `
+                    legendEl.innerHTML = activeDepts.map((dept, i) => `
                         <span class="text-[10px] font-bold px-2 py-1 rounded-full bg-slate-50 text-slate-600 inline-flex items-center gap-1.5">
                             <span class="w-2 h-2 rounded-full inline-block" style="background:${COMPANY_KPI_DEPT_COLORS[i % COMPANY_KPI_DEPT_COLORS.length]}"></span>${window.escapeHtml(dept)}
                         </span>`).join("");
@@ -3821,6 +4041,21 @@ function donutDiagramSvg(pct, hex, big) {
         </svg>
         <div class="absolute inset-0 flex items-center justify-center"><span class="${big ? 'text-sm' : 'text-[11px]'} font-black text-white">${pct}%</span></div>
     </div>`;
+}
+// Varian "angka polos" dari diagramStatCardDark (dipakai buat kartu yang nampilin jumlah
+// mentah, bukan persentase/rasio, misal "Jumlah Target Peserta" atau "Jumlah Evaluasi Masuk").
+function valueStatCardDark(icon, color, value, label, subLabel) {
+    return diagramStatCardDark(icon, color, `<span class="text-lg font-black text-white">${value}</span>`, label, subLabel || "");
+}
+// Varian rating bintang (dari 5) dari diagramStatCardDark — dipakai di semua halaman rekap
+// rating & feedback (Laporan Keterlaksanaan Training TNA/Onboarding, Rekap Rating & Feedback
+// Onboarding, Rekap Rating & Feedback Training TNA) biar tampilannya konsisten satu gaya.
+function ratingStatCardDark(icon, color, val, label) {
+    if (val === null || typeof val === "undefined") return diagramStatCardDark(icon, color, `<span class="text-lg font-black text-white/40">-</span>`, label, "Belum ada data");
+    const v = Math.round(val);
+    const stars = [1, 2, 3, 4, 5].map(n => `<i class="fas fa-star text-[9px] ${n <= v ? 'text-amber-300' : 'text-white/20'}"></i>`).join("");
+    const diagramHtml = `<div class="flex flex-col items-center gap-1.5"><span class="text-base font-black text-white leading-none">${val}</span><div class="flex gap-0.5">${stars}</div></div>`;
+    return diagramStatCardDark(icon, color, diagramHtml, label, `${val}/5`);
 }
 // Diagram bar Pre vs Post (dipakai khusus kartu "Progress Pre & Post Training"). Donut kurang
 // cocok di sini karena datanya BUKAN rasio bagian-dari-keseluruhan, tapi PERBANDINGAN dua nilai
@@ -6116,13 +6351,11 @@ function renderOnboardingFeedbackRecap() {
         <p class="text-xs text-slate-400 mb-3">Rekap evaluasi Kirkpatrick Level 1 (Reaction) yang diisi peserta setelah menyelesaikan materi Training Onboarding.</p>
 
         <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
-            ${statCard("fa-comment-dots", "indigo", evals.length, "Jumlah Evaluasi Masuk")}
-            ${statCard("fa-star", "amber", avgRating !== null ? avgRating + "/5" : "-", "Rata-rata Rating Keseluruhan")}
-            ${statCard("fa-book-open", "amber", avgMateri !== null ? avgMateri + "/5" : "-", "Rating Materi")}
-            ${statCard("fa-chalkboard-user", "emerald", avgTrainer !== null ? avgTrainer + "/5" : "-", "Rating Trainer")}
-        </div>
-        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
-            ${statCard("fa-building", "violet", avgFasilitas !== null ? avgFasilitas + "/5" : "-", "Rating Fasilitas")}
+            ${valueStatCardDark("fa-comment-dots", "indigo", evals.length, "Jumlah Evaluasi Masuk")}
+            ${ratingStatCardDark("fa-star", "amber", avgRating, "Rata-rata Rating Keseluruhan")}
+            ${ratingStatCardDark("fa-book-open", "amber", avgMateri, "Rating Materi")}
+            ${ratingStatCardDark("fa-chalkboard-user", "emerald", avgTrainer, "Rating Trainer")}
+            ${ratingStatCardDark("fa-building", "violet", avgFasilitas, "Rating Fasilitas")}
         </div>
 
         ${onboardingFeedbackCourseFilter === "all" ? `
@@ -6244,13 +6477,11 @@ function renderTnaFeedbackRecap() {
         <p class="text-xs text-slate-400 mb-3">Rekap evaluasi Kirkpatrick Level 1 (Reaction) yang diisi peserta setelah menyelesaikan sesi Training TNA.</p>
 
         <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
-            ${statCard("fa-comment-dots", "indigo", evals.length, "Jumlah Evaluasi Masuk")}
-            ${statCard("fa-star", "amber", avgRating !== null ? avgRating + "/5" : "-", "Rata-rata Rating Keseluruhan")}
-            ${statCard("fa-book-open", "amber", avgMateri !== null ? avgMateri + "/5" : "-", "Rating Materi")}
-            ${statCard("fa-chalkboard-user", "emerald", avgTrainer !== null ? avgTrainer + "/5" : "-", "Rating Trainer")}
-        </div>
-        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
-            ${statCard("fa-building", "violet", avgFasilitas !== null ? avgFasilitas + "/5" : "-", "Rating Fasilitas")}
+            ${valueStatCardDark("fa-comment-dots", "indigo", evals.length, "Jumlah Evaluasi Masuk")}
+            ${ratingStatCardDark("fa-star", "amber", avgRating, "Rata-rata Rating Keseluruhan")}
+            ${ratingStatCardDark("fa-book-open", "amber", avgMateri, "Rating Materi")}
+            ${ratingStatCardDark("fa-chalkboard-user", "emerald", avgTrainer, "Rating Trainer")}
+            ${ratingStatCardDark("fa-building", "violet", avgFasilitas, "Rating Fasilitas")}
         </div>
 
         ${tnaFeedbackTrainingFilter === "all" ? `
@@ -6969,7 +7200,11 @@ let tnaEligibilitySettingsOpen = false;
 window.ROUTES["admin/tna-results"] = requireAdmin(function (id) {
     window.adminNavContext = "tna";
     renderTnaResultAdminList();
-    if (id === "new" || (id && window.STATE.tnaResults.some(t => t.id === id))) { renderTnaResultBuilder(id === "new" ? null : id, "#/admin/tna-results"); }
+    if (id === "new" || (id && window.STATE.tnaResults.some(t => t.id === id))) {
+        renderTnaResultBuilder(id === "new" ? null : id, "#/admin/tna-results");
+    } else {
+        window.closeModal("modal-tna-result-builder");
+    }
 });
 
 function tnaFmtDeadline(v) {
@@ -7547,15 +7782,22 @@ window.uploadTnaModuleFile = async function () {
 
 window.saveTnaResultDraft = async function (backRoute) {
     const d = tnaResultDraft;
-    if (!d.dept.trim() || !d.levelJabatan.trim() || !d.problem.trim()) {
+    // Guard tiap field dengan `|| ""` sebelum .trim() — termasuk dept/levelJabatan/problem yang
+    // sempat lolos tanpa guard. Kalau field-nya undefined (mis. entri lama/import yang belum
+    // punya field ini), .trim() langsung di value undefined bakal throw TypeError SEBELUM modal
+    // sempat ditutup, jadi keliatan kayak "form gak nutup pas submit" padahal errornya kesini.
+    const deptVal = (d.dept || "").trim();
+    const levelJabatanVal = (d.levelJabatan || "").trim();
+    const problemVal = (d.problem || "").trim();
+    if (!deptVal || !levelJabatanVal || !problemVal) {
         window.toast("Departemen, Level Jabatan, dan Problem wajib diisi", "warn");
         return;
     }
     const { col, ref, addDoc, setDoc, serverTimestamp } = window.LMS_DB;
     const u = window.STATE.user;
     const payload = {
-        dept: d.dept.trim(), levelJabatan: d.levelJabatan.trim(),
-        problem: d.problem.trim(), identification: (d.identification || "").trim(),
+        dept: deptVal, levelJabatan: levelJabatanVal,
+        problem: problemVal, identification: (d.identification || "").trim(),
         correctiveAction: (d.correctiveAction || "").trim(),
         actionRecommendation: (d.actionRecommendation || "").trim(),
         deadlineModul: d.deadlineModul || "", deadlinePelaksanaan: d.deadlinePelaksanaan || "",
@@ -7590,7 +7832,11 @@ function requireTnaInputAccess(renderFn) {
 }
 window.ROUTES["tna-input"] = requireTnaInputAccess(function (id) {
     renderTnaInputList();
-    if (id === "new" || (id && window.STATE.tnaResults.some(t => t.id === id))) { renderTnaResultBuilder(id === "new" ? null : id, "#/tna-input"); }
+    if (id === "new" || (id && window.STATE.tnaResults.some(t => t.id === id))) {
+        renderTnaResultBuilder(id === "new" ? null : id, "#/tna-input");
+    } else {
+        window.closeModal("modal-tna-result-builder");
+    }
 });
 
 function renderTnaInputList() {
@@ -8455,8 +8701,15 @@ window.saveTrainingDraft = async function () {
 // koleksi Firestore "competencies" (lihat window.STATE.competencies & startLiveListeners).
 window.ROUTES["admin/competencies"] = requireAdmin(function (id) {
     window.adminNavContext = "tna";
-    if (id === "new" || (id && window.STATE.competencies.some(c => c.id === id))) { renderCompetencyBuilder(id === "new" ? null : id); return; }
+    // Daftar Kompetensi selalu dirender di halaman (biar tetap keliatan di belakang), form
+    // build/edit-nya tampil sebagai POPUP di atasnya (lihat #modal-competency-builder), mirror
+    // pola Training Onboarding & Training TNA.
     renderCompetencyAdminList();
+    if (id === "new" || (id && window.STATE.competencies.some(c => c.id === id))) {
+        renderCompetencyBuilder(id === "new" ? null : id);
+    } else {
+        window.closeModal("modal-competency-builder");
+    }
 });
 
 const COMPETENCY_METHOD_LABEL = { test: "Tes Tertulis", atasan: "Penilaian Atasan", both: "Tes + Atasan" };
@@ -8630,9 +8883,10 @@ function renderCompetencyBuilder(id) {
         </div>
     `).join("");
 
-    window.setPage(`
-        <a href="#/admin/competencies" class="text-xs font-bold text-slate-400 hover:text-indigo-600"><i class="fas fa-arrow-left mr-1"></i> Kembali</a>
-        <h1 class="text-xl font-black text-slate-800 mt-2 mb-3">${d._id ? 'Edit Kompetensi' : 'Kompetensi Baru'}</h1>
+    const competencyBuilderTitleEl = document.getElementById("competency-builder-title");
+    if (competencyBuilderTitleEl) competencyBuilderTitleEl.innerHTML = `<i class="fas fa-diagram-project mr-1"></i> ${d._id ? 'Edit Kompetensi' : 'Kompetensi Baru'}`;
+    const competencyBuilderBodyEl = document.getElementById("competency-builder-body");
+    if (competencyBuilderBodyEl) competencyBuilderBodyEl.innerHTML = (`
         <datalist id="competency-posisi-options">${posisiOptions.map(p => `<option value="${window.escapeHtml(p)}">`).join("")}</datalist>
         <div class="space-y-2">
                 <div class="bg-white rounded-2xl border border-slate-100 shadow-sm p-3 space-y-2">
@@ -8683,8 +8937,15 @@ function renderCompetencyBuilder(id) {
                 </div>
         </div>
     `);
+    window.openModal("modal-competency-builder");
 }
 window.rerenderCompetencyBuilder = function () { renderCompetencyBuilder(competencyDraft._id); };
+window.closeCompetencyBuilder = function () {
+    window.closeModal("modal-competency-builder");
+    competencyDraft = null;
+    // Balik hash ke daftar (tanpa :id) biar konsisten & popup gak kebuka lagi kalau back/reload.
+    if (location.hash.replace(/^#/, "") !== "/admin/competencies") window.navigate("/admin/competencies");
+};
 
 window.toggleCompetencyTraining = function (trainingId) {
     const d = competencyDraft;
@@ -11385,18 +11646,12 @@ window.ROUTES["admin/reports"] = requireAdmin(function () {
         </a>`).join("");
 
     // ---- Distribusi pengguna per departemen (dipindah dari eks-Dashboard Admin) ----
+    // deptMap disimpan ke window supaya dropdown filter multi-select (lihat fungsi
+    // adminDept* di bawah) bisa baca & re-render widget ini tanpa reload seluruh halaman.
     const deptMap = {};
     S.users.forEach(us => { const d = us.dept && us.dept.trim() ? us.dept.trim() : "Tanpa Departemen"; deptMap[d] = (deptMap[d]||0)+1; });
-    const deptList = Object.entries(deptMap).sort((a,b) => b[1]-a[1]).slice(0, 6);
-    const maxDept = Math.max(1, ...deptList.map(x => x[1]));
-    const deptHtml = deptList.map(([dept, count]) => `
-        <div>
-            <div class="flex items-center justify-between text-xs mb-1">
-                <span class="font-bold text-slate-600 truncate">${window.escapeHtml(dept)}</span>
-                <span class="text-slate-400 font-semibold">${count}</span>
-            </div>
-            <div class="h-2 bg-slate-100 rounded-full overflow-hidden"><div class="h-full bg-indigo-500 rounded-full" style="width:${Math.round(count/maxDept*100)}%"></div></div>
-        </div>`).join("") || '<p class="text-sm text-slate-400 text-center py-4">Belum ada data pengguna</p>';
+    window.__adminUsersDeptMap = deptMap;
+    const deptHtml = buildAdminDeptRowsHtml();
 
     // ---- Aktivitas terbaru, gabungan beberapa koleksi (dipindah dari eks-Dashboard Admin) ----
     const activities = [];
@@ -11452,8 +11707,16 @@ window.ROUTES["admin/reports"] = requireAdmin(function () {
                 </div>
             </div>
             <div class="bg-white rounded-3xl border border-slate-100 shadow-sm p-4">
-                <h3 class="font-black text-slate-700 text-sm mb-3"><i class="fas fa-sitemap text-indigo-400 mr-1"></i> Pengguna per Departemen</h3>
-                <div class="space-y-3">${deptHtml}</div>
+                <div class="flex items-center justify-between mb-3">
+                    <h3 class="font-black text-slate-700 text-sm"><i class="fas fa-sitemap text-indigo-400 mr-1"></i> Pengguna per Departemen</h3>
+                    <div class="relative">
+                        <button id="admin-dept-filter-btn" onclick="window.toggleAdminDeptFilter(event)" title="Pilih departemen" class="w-7 h-7 rounded-full bg-slate-100 text-slate-500 hover:bg-slate-200 transition flex items-center justify-center">
+                            <i class="fas fa-sliders text-[11px]"></i>
+                        </button>
+                        <div id="admin-dept-filter-panel" class="hide absolute right-0 mt-1 w-56 bg-white rounded-2xl shadow-lg border border-slate-100 z-20 overflow-hidden" onclick="event.stopPropagation()"></div>
+                    </div>
+                </div>
+                <div class="space-y-3" id="admin-dept-widget-body">${deptHtml}</div>
             </div>
         </div>
 
