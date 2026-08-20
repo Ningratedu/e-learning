@@ -761,7 +761,7 @@ html.dark .corevalue-wire { background: rgba(96, 165, 250, .2); }
             </div>
             </div>
         </div>
-        <div class="p-4 border-t shrink-0"><button onclick="window.guardedClick(this, () => window.submitEvaluation())" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-2xl transition">Kirim Evaluasi & Ambil Sertifikat</button></div>
+        <div class="p-4 border-t shrink-0"><button onclick="window.guardedClick(this, () => window.submitEvaluation())" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-2xl transition">Kirim Rating & Feedback Training</button></div>
     </div>
 </div>
 
@@ -5107,7 +5107,7 @@ window.openLesson = function (kind, refId, lessonId) {
                 <a href="${officeViewSrc}" target="_blank" rel="noopener" class="text-[11px] font-bold text-indigo-500 hover:text-indigo-700 bg-indigo-50 px-3 py-1.5 rounded-lg"><i class="fas fa-up-right-from-square mr-1"></i> Buka di Tab Baru</a>
                 <a href="${lesson.pptUrl}" target="_blank" rel="noopener" class="text-[11px] font-bold text-slate-500 hover:text-slate-700 bg-slate-100 px-3 py-1.5 rounded-lg"><i class="fas fa-download mr-1"></i> Unduh File PPT</a>
             </div>
-            <p class="text-[11px] text-slate-400 mt-1">Kalau tampilan slide di atas tidak muncul (kadang tergantung koneksi/jaringan kantor), pakai tombol "Buka di Tab Baru" ya. Catatan: karena viewer PPT ini dari domain lain, posisi slide persisnya tidak bisa disimpan — tapi progres waktu belajarmu tetap dilanjutkan dari terakhir kali dibuka.</p>
+            <p class="text-[11px] text-slate-400 mt-1">Silahkan simak baik-baik penjelasan dari trainer (jika ada) dan selesaikan pembelajaran materi ini hingga slide terakhir. Atau jika anda melakukan pembelajaran secara mandiri pastikan anda memahami semua materi di tiap slide hingga slide terakhir.</p>
             ${requireFullWatch ? `
             <div class="mt-2 bg-slate-50 rounded-xl px-3 py-2">
                 <div class="h-1.5 bg-slate-200 rounded-full overflow-hidden"><div id="ppt-timer-bar" class="h-full bg-amber-400 transition-all" style="width:${Math.round((pptResumeSecs / pptTotalSecs) * 100)}%"></div></div>
@@ -5172,9 +5172,9 @@ function enableCompleteBtn() {
     const btn = document.getElementById("lesson-modal-complete-btn");
     if (btn) btn.disabled = false;
     const vidHint = document.getElementById("lesson-video-hint");
-    if (vidHint) vidHint.innerHTML = '<i class="fas fa-circle-check mr-1 text-emerald-500"></i> Video selesai ditonton, kamu bisa menandai materi ini selesai.';
+    if (vidHint) vidHint.innerHTML = '<i class="fas fa-circle-check mr-1 text-emerald-500"></i> Video selesai ditonton, kamu bisa menandai materi ini selesai, atau pelajari ulang materi video ini.';
     const pptHint = document.getElementById("lesson-ppt-hint");
-    if (pptHint) pptHint.innerHTML = '<i class="fas fa-circle-check mr-1 text-emerald-500"></i> Waktu belajar terpenuhi, kamu bisa menandai materi ini selesai.';
+    if (pptHint) pptHint.innerHTML = '<i class="fas fa-circle-check mr-1 text-emerald-500"></i> Waktu belajar terpenuhi, kamu bisa menandai materi ini selesai, atau lanjut pelajari slide per slide materi ini sesuai waktu yang di berikan oleh tim training.';
 }
 
 // Deteksi video YouTube selesai ditonton via YouTube IFrame API (fallback: timer estimasi durasi)
