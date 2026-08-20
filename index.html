@@ -4018,13 +4018,13 @@ function diagramStatCardDark(icon, color, diagramHtml, label, subLabel, onclick,
     const attrs = onclick ? ` type="button" onclick="${onclick}"` : "";
     return `
     <${tag}${attrs} class="text-left w-full bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden flex items-stretch${onclick ? " hover:shadow-md hover:border-indigo-200 hover:-translate-y-0.5 active:translate-y-0 transition-all cursor-pointer" : ""}">
-        <div class="shrink-0 w-[72px] bg-slate-900 flex items-center justify-center py-3">
+        <div class="shrink-0 w-14 sm:w-[72px] bg-slate-900 flex items-center justify-center py-2 sm:py-3">
             ${diagramHtml}
         </div>
-        <div class="flex-1 min-w-0 px-3.5 py-1.5 flex flex-col justify-center">
-            <div class="w-8 h-8 rounded-lg ${c.bg} flex items-center justify-center mb-0"><i class="fas ${icon} ${c.text} ${big ? 'text-base' : 'text-[13px]'}"></i></div>
-            <p class="${big ? 'text-sm' : 'text-[11px]'} text-slate-400 font-semibold truncate">${label}</p>
-            <p class="${big ? 'text-xs' : 'text-[10px]'} ${c.text} font-bold mt-0.5">${subLabel}</p>
+        <div class="flex-1 min-w-0 px-2 sm:px-3.5 py-1.5 flex flex-col justify-center">
+            <div class="w-6 h-6 sm:w-8 sm:h-8 rounded-lg ${c.bg} flex items-center justify-center mb-0"><i class="fas ${icon} ${c.text} ${big ? 'text-sm sm:text-base' : 'text-[11px] sm:text-[13px]'}"></i></div>
+            <p class="${big ? 'text-xs sm:text-sm' : 'text-[10px] sm:text-[11px]'} text-slate-400 font-semibold leading-tight break-words">${label}</p>
+            <p class="${big ? 'text-[11px] sm:text-xs' : 'text-[9px] sm:text-[10px]'} ${c.text} font-bold mt-0.5 leading-tight break-words">${subLabel}</p>
         </div>
     </${tag}>`;
 }
@@ -10806,7 +10806,7 @@ function renderOnboardingSchedule() {
             </div>
             <div class="flex-1 min-w-0 px-2 py-1 flex flex-col justify-center">
                 <div class="w-4 h-4 rounded ${c.bg} flex items-center justify-center mb-0.5"><i class="fas ${icon} ${c.text} text-[8px]"></i></div>
-                <p class="text-[9px] text-slate-400 font-semibold truncate leading-tight">${label}</p>
+                <p class="text-[9px] text-slate-400 font-semibold leading-tight break-words">${label}</p>
                 <p class="text-[9px] ${c.text} font-bold leading-tight">${subLabel}</p>
             </div>
         </div>`;
@@ -10818,7 +10818,7 @@ function renderOnboardingSchedule() {
             <div class="shrink-0 w-10 bg-slate-900 flex items-center justify-center py-1.5"><span class="text-xs font-black text-white">${value}</span></div>
             <div class="flex-1 min-w-0 px-2 py-1 flex flex-col justify-center">
                 <div class="w-4 h-4 rounded ${c.bg} flex items-center justify-center mb-0.5"><i class="fas ${icon} ${c.text} text-[8px]"></i></div>
-                <p class="text-[9px] text-slate-400 font-semibold truncate leading-tight">${label}</p>
+                <p class="text-[9px] text-slate-400 font-semibold leading-tight break-words">${label}</p>
             </div>
         </div>`;
     }
@@ -10831,7 +10831,7 @@ function renderOnboardingSchedule() {
             <div class="shrink-0 w-10 bg-slate-900 flex items-center justify-center py-1.5"><span class="text-xs font-black text-white/40">-</span></div>
             <div class="flex-1 min-w-0 px-2 py-1 flex flex-col justify-center">
                 <div class="w-4 h-4 rounded ${c.bg} flex items-center justify-center mb-0.5"><i class="fas ${icon} ${c.text} text-[8px]"></i></div>
-                <p class="text-[9px] text-slate-400 font-semibold truncate leading-tight">${label}</p>
+                <p class="text-[9px] text-slate-400 font-semibold leading-tight break-words">${label}</p>
                 <p class="text-[9px] text-slate-300 font-bold leading-tight">Belum ada data</p>
             </div>
         </div>`;
@@ -10845,7 +10845,7 @@ function renderOnboardingSchedule() {
             </div>
             <div class="flex-1 min-w-0 px-2 py-1 flex flex-col justify-center">
                 <div class="w-4 h-4 rounded ${c.bg} flex items-center justify-center mb-0.5"><i class="fas ${icon} ${c.text} text-[8px]"></i></div>
-                <p class="text-[9px] text-slate-400 font-semibold truncate leading-tight">${label}</p>
+                <p class="text-[9px] text-slate-400 font-semibold leading-tight break-words">${label}</p>
                 <p class="text-[9px] ${c.text} font-bold leading-tight">${v}/5</p>
             </div>
         </div>`;
@@ -10871,7 +10871,7 @@ function renderOnboardingSchedule() {
             <div class="shrink-0 w-10 bg-slate-900 flex items-center justify-center py-1.5">${miniPrePostBarSvg(avgPre || 0, avgPost || 0)}</div>
             <div class="flex-1 min-w-0 px-2 py-1 flex flex-col justify-center">
                 <div class="w-4 h-4 rounded ${c.bg} flex items-center justify-center mb-0.5"><i class="fas fa-chart-line ${c.text} text-[8px]"></i></div>
-                <p class="text-[9px] text-slate-400 font-semibold truncate leading-tight">${label}</p>
+                <p class="text-[9px] text-slate-400 font-semibold leading-tight break-words">${label}</p>
                 <p class="text-[9px] ${c.text} font-bold leading-tight">${subLabel}</p>
             </div>
         </div>`;
@@ -11092,8 +11092,8 @@ function renderOnboardingSchedule() {
 
         return `
         <div class="bg-white rounded-3xl border border-slate-100 shadow-sm mb-4 overflow-hidden">
-            <button type="button" onclick="window.toggleOnboardingWeek('${w.key}')" class="w-full text-left p-4 flex items-center justify-between gap-3 hover:bg-slate-50/60 transition">
-                <div class="min-w-0">
+            <button type="button" onclick="window.toggleOnboardingWeek('${w.key}')" class="w-full text-left p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 hover:bg-slate-50/60 transition">
+                <div class="min-w-0 flex-1">
                     <div class="flex items-center gap-2 flex-wrap">
                         <span class="text-sm font-black text-slate-700">${w.label}</span>
                         ${isCurrentWeek ? '<span class="text-[10px] font-black px-2.5 py-1 rounded-full bg-sky-50 text-sky-600"><i class="fas fa-circle-play mr-1"></i>Minggu Berjalan</span>' : ''}
@@ -11101,7 +11101,7 @@ function renderOnboardingSchedule() {
                     </div>
                     <p class="text-[11px] text-slate-400 mt-1">${batchDateRangeLabel} &nbsp;•&nbsp; ${w.batches.length} siklus batch</p>
                 </div>
-                <div class="flex items-center gap-2 shrink-0">
+                <div class="flex items-center gap-2 flex-wrap sm:flex-nowrap sm:shrink-0">
                     <span class="text-[10px] font-black px-2.5 py-1 rounded-full bg-indigo-50 text-indigo-600"><i class="fas fa-users mr-1"></i>${target} target peserta</span>
                     <span class="text-[10px] font-black px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-600"><i class="fas fa-chart-simple mr-1"></i>${pct}% (${completed}/${target})</span>
                     <i class="fas fa-chevron-down text-slate-400 transition-transform ${isOpen ? 'rotate-180' : ''}"></i>
