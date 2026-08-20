@@ -7216,6 +7216,15 @@ function tnaFmtDeadline(v) {
     } catch (e) { return "—"; }
 }
 
+// Format createdAt (Firestore serverTimestamp) entri Hasil TNA jadi tanggal dd MMM yyyy.
+function tnaFmtCreatedAt(ts) {
+    const ms = tsMillis(ts);
+    if (!ms) return "—";
+    try {
+        return new Date(ms).toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" });
+    } catch (e) { return "—"; }
+}
+
 // ---- Progress Keterlaksanaan Training (hasil TNA) ----
 // Tahapan linear dari data diinput sampai training benar-benar terlaksana. Progress ini
 // dikerjakan & diupdate oleh Admin/Tim Training saja (bukan peserta pengisi permintaan) —
@@ -7394,12 +7403,15 @@ function renderTnaResultAdminList() {
     const rows = list.map((t, i) => `
         <tr class="border-b border-slate-50 hover:bg-slate-50/60 align-top">
             <td class="px-3 py-3 text-center text-sm text-slate-600">${i + 1}</td>
+            <td class="px-3 py-3 text-sm text-slate-600 min-w-[130px]">${window.escapeHtml(t.createdByName || t.createdByUsername || '-')}</td>
+            <td class="px-3 py-3 text-sm text-slate-600 min-w-[120px]">${window.escapeHtml((tnaRequesterEmployee(t) && tnaRequesterEmployee(t).posisi) || '-')}</td>
             <td class="px-3 py-3 text-sm text-slate-600 min-w-[130px]">${window.escapeHtml(t.dept || '-')}</td>
             <td class="px-3 py-3 text-sm text-slate-600 min-w-[100px]">${window.escapeHtml(t.levelJabatan || '-')}</td>
             <td class="px-3 py-3 text-sm text-slate-600 min-w-[180px]">${window.escapeHtml(t.problem || '-')}</td>
             <td class="px-3 py-3 text-sm text-slate-600 min-w-[180px]">${window.escapeHtml(t.identification || '-')}</td>
             <td class="px-3 py-3 text-sm text-slate-600 min-w-[180px]">${window.escapeHtml(t.correctiveAction || '-')}</td>
             <td class="px-3 py-3 text-sm text-slate-600 min-w-[160px]">${window.escapeHtml(t.actionRecommendation || '-')}</td>
+            <td class="px-3 py-3 text-sm text-slate-500 text-center whitespace-nowrap">${tnaFmtCreatedAt(t.createdAt)}</td>
             <td class="px-3 py-3 text-sm text-slate-500 text-center whitespace-nowrap">${tnaFmtDeadline(t.deadlineModul)}</td>
             <td class="px-3 py-3 text-sm text-slate-500 text-center whitespace-nowrap">${tnaFmtDeadline(t.deadlinePelaksanaan)}</td>
             <td class="px-3 py-3 text-center min-w-[110px]">${t.attachmentUrl ? `<a href="${window.escapeHtml(t.attachmentUrl)}" target="_blank" class="text-[11px] font-bold text-indigo-500 hover:underline"><i class="fas fa-paperclip mr-1"></i>${window.escapeHtml(t.attachmentName || 'Lihat')}</a>` : '<span class="text-slate-300 text-xs">-</span>'}</td>
@@ -7482,12 +7494,15 @@ function renderTnaResultAdminList() {
                 <thead class="text-[10px] font-black uppercase text-slate-400">
                     <tr>
                         <th class="sticky top-0 z-10 bg-slate-50 px-3 py-3 border-b border-slate-100">No</th>
+                        <th class="sticky top-0 z-10 bg-slate-50 px-3 py-3 border-b border-slate-100">Nama User</th>
+                        <th class="sticky top-0 z-10 bg-slate-50 px-3 py-3 border-b border-slate-100">Designation</th>
                         <th class="sticky top-0 z-10 bg-slate-50 px-3 py-3 border-b border-slate-100">Departemen</th>
                         <th class="sticky top-0 z-10 bg-slate-50 px-3 py-3 border-b border-slate-100">Level Jabatan</th>
                         <th class="sticky top-0 z-10 bg-slate-50 px-3 py-3 border-b border-slate-100">Problem</th>
                         <th class="sticky top-0 z-10 bg-slate-50 px-3 py-3 border-b border-slate-100">Identification</th>
                         <th class="sticky top-0 z-10 bg-slate-50 px-3 py-3 border-b border-slate-100">Corrective Action</th>
                         <th class="sticky top-0 z-10 bg-slate-50 px-3 py-3 border-b border-slate-100">Action / Training Recommendation</th>
+                        <th class="sticky top-0 z-10 bg-slate-50 px-3 py-3 border-b border-slate-100 text-center">Tanggal Dibuat</th>
                         <th class="sticky top-0 z-10 bg-slate-50 px-3 py-3 border-b border-slate-100 text-center">Deadline Modul</th>
                         <th class="sticky top-0 z-10 bg-slate-50 px-3 py-3 border-b border-slate-100 text-center">Deadline Pelaksanaan Training</th>
                         <th class="sticky top-0 z-10 bg-slate-50 px-3 py-3 border-b border-slate-100">Lampiran</th>
@@ -7497,7 +7512,7 @@ function renderTnaResultAdminList() {
                         <th class="sticky top-0 z-10 bg-slate-50 px-3 py-3 border-b border-slate-100 text-right">Aksi</th>
                     </tr>
                 </thead>
-                <tbody>${rows || `<tr><td colspan="14" class="text-center py-10 text-slate-400">Belum ada data Hasil TNA${tnaResultDeptFilter ? ' untuk departemen ini' : ''}.</td></tr>`}</tbody>
+                <tbody>${rows || `<tr><td colspan="17" class="text-center py-10 text-slate-400">Belum ada data Hasil TNA${tnaResultDeptFilter ? ' untuk departemen ini' : ''}.</td></tr>`}</tbody>
             </table>
         </div>
     `);
