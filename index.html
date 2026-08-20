@@ -1138,8 +1138,29 @@ window.STATE = {
     ready: false
 };
 
+// CATATAN PERFORMA FIRESTORE (lihat juga startUserScopedListeners() di bawah):
+// Dulu fungsi ini memasang onSnapshot() TANPA filter ke 14 collection sekaligus untuk
+// SEMUA user yang login (termasuk user biasa), termasuk collection yang isinya
+// menumpuk terus seiring pemakaian (quizAttempts, attendance, evaluations,
+// assignmentSubmissions). Ini bikin quota "reads" harian Firestore jebol, karena
+// tiap kali app dibuka/reload, seluruh isi 14 collection itu ke-fetch ulang dari
+// awal untuk tiap orang yang login — padahal user biasa cuma butuh datanya sendiri.
+//
+// Perbaikan yang diterapkan di sini:
+// 1) Collection yang dipakai bareng semua role (referensi/master data yang relatif
+//    kecil & memang perlu real-time untuk semua orang) tetap pakai onSnapshot() di
+//    sini: users, employees, courses, trainings, enrollments, certificates,
+//    trainingRegistrations, tnaResults.
+// 2) Collection "settings" & "competencies" jarang berubah, jadi tidak perlu
+//    real-time listener — cukup di-fetch sekali (getDocs) saat app dibuka.
+// 3) Collection yang isinya per-aktivitas-user dan paling boros reads
+//    (quizAttempts, attendance, evaluations, assignmentSubmissions) TIDAK lagi
+//    di-subscribe di sini. Listener untuk 4 collection itu baru dipasang setelah
+//    user diketahui login-nya, lewat startUserScopedListeners() — admin/superadmin
+//    tetap dapat semua data (dibutuhkan buat laporan & penilaian), sedangkan user
+//    biasa hanya subscribe ke data miliknya sendiri (where("userId","==", uid)).
 function startLiveListeners() {
-    const { col, onSnapshot } = window.LMS_DB;
+    const { col, onSnapshot, getDocs } = window.LMS_DB;
     const bind = (name, key) => {
         onSnapshot(col(name), (snap) => {
             window.STATE[key] = snap.docs.map(d => ({ id: d.id, ...d.data() }));
@@ -1151,17 +1172,60 @@ function startLiveListeners() {
     bind("courses", "courses");
     bind("trainings", "trainings");
     bind("enrollments", "enrollments");
-    bind("quizAttempts", "quizAttempts");
     bind("certificates", "certificates");
     bind("trainingRegistrations", "trainingRegs");
-    bind("attendance", "attendance");
-    bind("evaluations", "evaluations");
-    bind("assignmentSubmissions", "assignmentSubmissions");
-    bind("settings", "settings");
-    bind("competencies", "competencies");
     bind("tnaResults", "tnaResults");
+
+    // settings & competencies: fetch sekali saja (bukan real-time), datanya jarang berubah.
+    const fetchOnce = async (name, key) => {
+        try {
+            const snap = await getDocs(col(name));
+            window.STATE[key] = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+            window.dispatchEvent(new CustomEvent("lms-state-changed", { detail: key }));
+        } catch (err) {
+            console.error("Fetch-once error " + name, err);
+        }
+    };
+    fetchOnce("settings", "settings");
+    fetchOnce("competencies", "competencies");
 }
 window.startLiveListeners = startLiveListeners;
+
+// Listener untuk 4 collection "berat" (quizAttempts, attendance, evaluations,
+// assignmentSubmissions) — di-scope berdasarkan role user yang sedang login.
+// Dipanggil ulang tiap kali ada user baru login/register/restore session (lihat
+// enterApp()), dan di-unsubscribe saat logout supaya tidak numpuk listener lama
+// punya user sebelumnya (yang scope-nya sudah tidak relevan / salah orang).
+window._userScopedUnsubs = window._userScopedUnsubs || [];
+function stopUserScopedListeners() {
+    (window._userScopedUnsubs || []).forEach(unsub => { try { unsub(); } catch (e) { } });
+    window._userScopedUnsubs = [];
+}
+window.stopUserScopedListeners = stopUserScopedListeners;
+
+function startUserScopedListeners() {
+    stopUserScopedListeners();
+    const u = window.STATE.user;
+    if (!u) return;
+    const { col, onSnapshot, query, where } = window.LMS_DB;
+    const isAdmin = window.sel && window.sel.isAdmin && window.sel.isAdmin();
+    const bindScoped = (name, key) => {
+        // Admin/superadmin butuh lihat data SEMUA orang (buat laporan, penilaian,
+        // rekap kehadiran, dsb) jadi tetap full collection. User biasa cukup
+        // datanya sendiri saja — inilah yang paling banyak motong jumlah reads.
+        const ref = isAdmin ? col(name) : query(col(name), where("userId", "==", u.id));
+        const unsub = onSnapshot(ref, (snap) => {
+            window.STATE[key] = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+            window.dispatchEvent(new CustomEvent("lms-state-changed", { detail: key }));
+        }, (err) => console.error("Scoped listener error " + name, err));
+        window._userScopedUnsubs.push(unsub);
+    };
+    bindScoped("quizAttempts", "quizAttempts");
+    bindScoped("attendance", "attendance");
+    bindScoped("evaluations", "evaluations");
+    bindScoped("assignmentSubmissions", "assignmentSubmissions");
+}
+window.startUserScopedListeners = startUserScopedListeners;
 
 // ================= HELPER SELECTOR =================
 window.sel = {
@@ -2102,6 +2166,7 @@ window.doRegister = async function () {
 window.doLogout = function () {
     localStorage.removeItem(SESSION_KEY);
     window.STATE.user = null;
+    if (window.stopUserScopedListeners) window.stopUserScopedListeners();
     window._pendingReminderCheck = false;
     clearTimeout(window._reminderDebounceTimer);
     clearTimeout(window._reminderFallbackTimer);
@@ -2126,6 +2191,10 @@ window.tryRestoreSession = async function () {
 };
 
 window.enterApp = function () {
+    // Pasang listener yang di-scope per role (quizAttempts/attendance/evaluations/
+    // assignmentSubmissions) sekarang, karena window.STATE.user sudah pasti terisi
+    // di titik ini (dipanggil dari doLogin/doRegister/restore session yang berhasil).
+    if (window.startUserScopedListeners) window.startUserScopedListeners();
     document.getElementById("auth-screen").classList.add("hide");
     document.getElementById("app-shell").classList.remove("hide");
     window.renderSidebar();
@@ -5826,8 +5895,8 @@ function renderAdminSectionTabs(active) {
         { key: "admin/quiz-attempts", icon: "fa-rotate-left", label: "Percobaan Kuis" },
         { key: "admin/tna-feedback", icon: "fa-star", label: "Rekap Rating & Feedback" },
     ] : [
-        { key: "admin/courses", icon: "fa-layer-group", label: "Daftar Training" },
         { key: "admin/onboarding-schedule", icon: "fa-calendar-week", label: "Penjadwalan Onboarding" },
+        { key: "admin/courses", icon: "fa-layer-group", label: "Daftar Training" },
         { key: "admin/assignments", icon: "fa-file-signature", label: "Penilaian Tugas" },
         { key: "admin/quiz-attempts", icon: "fa-rotate-left", label: "Percobaan Kuis" },
         { key: "admin/onboarding-feedback", icon: "fa-star", label: "Rekap Rating & Feedback" },
