@@ -37,17 +37,17 @@
   "screenshots": [
     {
       "src": "screenshots/desktop-dashboard.png",
-      "sizes": "1280x800",
+      "sizes": "1919x876",
       "type": "image/png",
       "form_factor": "wide",
-      "label": "Dashboard NingratEdu di desktop"
+      "label": "Dashboard Admin NingratEdu di desktop"
     },
     {
       "src": "screenshots/mobile-dashboard.png",
-      "sizes": "540x1200",
+      "sizes": "351x718",
       "type": "image/png",
       "form_factor": "narrow",
-      "label": "Dashboard NingratEdu di HP"
+      "label": "Dashboard Admin NingratEdu di HP"
     }
   ]
 }
