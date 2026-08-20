@@ -2045,10 +2045,28 @@ function resolveRoute() {
     } else {
         id = segs[1] || null;
     }
-    setActiveNav(segs[0] === "admin" ? "admin/" + (segs[1] || "courses") : (segs[0] || "dashboard"));
+    setActiveNav(segs[0] === "admin" ? adminSidebarKeyFor(segs[1] || "courses") : (segs[0] || "dashboard"));
     const fn = window.ROUTES[key];
     if (fn) fn(id);
     else window.ROUTES["dashboard"] && window.ROUTES["dashboard"]();
+}
+// "Penilaian Tugas" & "Percobaan Kuis" adalah TAB yang dipakai bareng oleh menu
+// "Kelola Onboarding" maupun "Kelola Training TNA" (lihat renderAdminSectionTabs()),
+// jadi supaya item sidebar yang nyala tetap sesuai konteks (bukan cuma cocok kalau
+// hash-nya persis sama dengan key sidebar), sub-tab di bawah ini dipetakan balik ke
+// key sidebar induknya berdasarkan window.adminNavContext yang sedang aktif.
+function adminSidebarKeyFor(seg) {
+    const key = "admin/" + seg;
+    const onboardingSubTabs = ["admin/courses", "admin/onboarding-schedule", "admin/onboarding-feedback"];
+    const tnaSubTabs = ["admin/trainings", "admin/tna-results", "admin/competencies", "admin/tna-feedback"];
+    const sharedSubTabs = ["admin/assignments", "admin/quiz-attempts"];
+    if (onboardingSubTabs.includes(key) || (sharedSubTabs.includes(key) && window.adminNavContext !== "tna")) {
+        return "admin/onboarding-schedule";
+    }
+    if (tnaSubTabs.includes(key) || (sharedSubTabs.includes(key) && window.adminNavContext === "tna")) {
+        return "admin/trainings";
+    }
+    return key;
 }
 window.addEventListener("hashchange", resolveRoute);
 window.resolveRoute = resolveRoute;
@@ -2251,7 +2269,7 @@ window.renderSidebar = function () {
     // adminNav TANPA "Laporan" lagi di bawah, karena sudah dipindah & di-rename jadi
     // "Dashboard" di paling atas (lihat array nav di atas).
     const adminNav = [
-        { key: "admin/courses", icon: "fa-layer-group", label: "Kelola Onboarding" },
+        { key: "admin/onboarding-schedule", icon: "fa-layer-group", label: "Kelola Onboarding" },
         { key: "admin/trainings", icon: "fa-calendar-days", label: "Kelola Training TNA" },
         { key: "admin/employees", icon: "fa-id-card-clip", label: "Data Karyawan" },
         { key: "admin/users", icon: "fa-users-gear", label: "Kelola Akun" },
