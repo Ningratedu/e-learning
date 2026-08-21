@@ -4919,18 +4919,6 @@ window.buildUserReminders = function () {
         }
     }
 
-    // 5) Approval modul/materi Hasil TNA yang requester sendiri ajukan: modul sudah disiapkan
-    //    Admin/Tim Training dan menunggu keputusan setuju/revisi dari pembuat request (user ini).
-    (window.STATE.tnaResults || []).filter(t => normalizeUsername(t.createdByUsername) === normalizeUsername(u.username) && t.moduleApprovalStatus === "menunggu").forEach(t => {
-        items.push({
-            icon: "fa-file-circle-check",
-            color: "amber",
-            title: "Modul Training Menunggu Persetujuanmu",
-            subtitle: `Modul/materi untuk request "${t.actionRecommendation || t.problem || 'Hasil TNA'}" sudah siap, mohon dicek & disetujui/direvisi.`,
-            link: `#/tna-input/${t.id}`
-        });
-    });
-
     return items;
 };
 
@@ -4989,93 +4977,6 @@ window.buildAdminReminders = function () {
             subtitle: `${pendingAll.length} tugas peserta belum dinilai.`,
             link: "#/admin/assignments",
             onClickExtra: `window.adminNavContext='${targetCtx}'; adminAssignmentFilter='pending';`
-        });
-    }
-
-    // 4) Request Training (Hasil TNA) baru yang belum diputuskan Admin/Tim Training
-    //    (requestStatus masih kosong/"pending").
-    const pendingTnaDecisions = (window.STATE.tnaResults || []).filter(t => !t.requestStatus || t.requestStatus === "pending");
-    if (pendingTnaDecisions.length) {
-        const first = pendingTnaDecisions[0];
-        items.push({
-            icon: "fa-inbox",
-            color: "amber",
-            title: "Request Training Baru",
-            subtitle: pendingTnaDecisions.length === 1
-                ? `"${first.actionRecommendation || first.problem || 'Request Hasil TNA'}" dari ${first.createdByName || first.createdByUsername || '-'} menunggu keputusan diterima/ditolak.`
-                : `${pendingTnaDecisions.length} request Hasil TNA menunggu keputusan diterima/ditolak.`,
-            link: pendingTnaDecisions.length === 1 ? `#/admin/tna-results/${first.id}` : "#/admin/tna-results",
-            onClickExtra: `window.adminNavContext='tna';`
-        });
-    }
-
-    // 5) Update dari pembuat request: modul yang diminta revisi (perlu ditindaklanjuti Admin/Tim
-    //    Training) atau modul yang sudah disetujui pembuat request (siap dijadwalkan trainingnya).
-    const tnaNeedsRevision = (window.STATE.tnaResults || []).filter(t => t.requestStatus === "diterima" && t.moduleApprovalStatus === "ditolak");
-    if (tnaNeedsRevision.length) {
-        items.push({
-            icon: "fa-rotate-left",
-            color: "rose",
-            title: "Modul Training Diminta Revisi",
-            subtitle: `${tnaNeedsRevision.length} modul/materi training diminta revisi oleh pembuat request.`,
-            link: "#/admin/tna-results",
-            onClickExtra: `window.adminNavContext='tna';`
-        });
-    }
-    const tnaReadyToSchedule = (window.STATE.tnaResults || []).filter(t => t.requestStatus === "diterima" && t.moduleApprovalStatus === "disetujui" && !tnaLinkedTrainings(t.id).length);
-    if (tnaReadyToSchedule.length) {
-        items.push({
-            icon: "fa-calendar-check",
-            color: "indigo",
-            title: "Modul Disetujui, Siap Dijadwalkan",
-            subtitle: `${tnaReadyToSchedule.length} request Hasil TNA sudah disetujui pembuat request, tinggal dijadwalkan trainingnya.`,
-            link: "#/admin/tna-results",
-            onClickExtra: `window.adminNavContext='tna';`
-        });
-    }
-
-    // 6) Deadline modul/materi (Hasil TNA) sudah tinggal H-1 atau lewat, tapi modulnya belum jadi.
-    const tnaModuleDue = (window.STATE.tnaResults || []).filter(t => {
-        if (t.requestStatus !== "diterima" || t.moduleFileUrl) return false;
-        const dl = dateOnlySafe(t.deadlineModul);
-        if (!dl) return false;
-        return dl.getTime() - Date.now() <= REMINDER_H1_MS;
-    });
-    if (tnaModuleDue.length) {
-        const overdue = tnaModuleDue.some(t => dateOnlySafe(t.deadlineModul).getTime() < Date.now());
-        items.push({
-            icon: "fa-file-circle-exclamation",
-            color: overdue ? "rose" : "amber",
-            title: "Deadline Modul Training",
-            subtitle: overdue
-                ? `${tnaModuleDue.length} modul/materi training sudah lewat deadline & belum jadi.`
-                : `${tnaModuleDue.length} modul/materi training deadline-nya hari ini/besok & belum jadi.`,
-            link: "#/admin/tna-results",
-            onClickExtra: `window.adminNavContext='tna';`
-        });
-    }
-
-    // 7) Deadline pelaksanaan training (Hasil TNA) sudah tinggal H-1 atau lewat, tapi trainingnya
-    //    belum terlaksana (belum ada sesi terlaksana yang tertaut ke entri ini).
-    const tnaExecutionDue = (window.STATE.tnaResults || []).filter(t => {
-        if (t.requestStatus !== "diterima") return false;
-        const dl = dateOnlySafe(t.deadlinePelaksanaan);
-        if (!dl) return false;
-        if (dl.getTime() - Date.now() > REMINDER_H1_MS) return false;
-        const linked = tnaLinkedTrainings(t.id);
-        return !linked.some(tr => window.trainingSessionStatus(tr) === "finished" || window.STATE.certificates.some(c => c.trainingId === tr.id));
-    });
-    if (tnaExecutionDue.length) {
-        const overdue = tnaExecutionDue.some(t => dateOnlySafe(t.deadlinePelaksanaan).getTime() < Date.now());
-        items.push({
-            icon: "fa-chalkboard-user",
-            color: overdue ? "rose" : "amber",
-            title: "Deadline Pelaksanaan Training",
-            subtitle: overdue
-                ? `${tnaExecutionDue.length} training dari Hasil TNA sudah lewat deadline pelaksanaan & belum terlaksana.`
-                : `${tnaExecutionDue.length} training dari Hasil TNA deadline pelaksanaannya hari ini/besok & belum terlaksana.`,
-            link: "#/admin/tna-results",
-            onClickExtra: `window.adminNavContext='tna';`
         });
     }
 
