@@ -836,6 +836,21 @@ html.dark .corevalue-wire { background: rgba(96, 165, 250, .2); }
     </div>
 </div>
 
+<!-- ================= MODAL: KONFIRMASI HAPUS (generik) ================= -->
+<div id="modal-confirm-delete" class="fixed inset-0 z-[10001] hide modal-overlay flex items-center justify-center p-4">
+    <div class="bg-white w-full max-w-sm rounded-3xl shadow-2xl overflow-hidden flex flex-col">
+        <div class="p-5 flex flex-col items-center text-center gap-2">
+            <div class="w-12 h-12 rounded-full bg-rose-50 flex items-center justify-center text-rose-500 text-xl"><i class="fas fa-trash"></i></div>
+            <h3 class="text-base font-black text-slate-800">Hapus Data Ini?</h3>
+            <p id="confirm-delete-message" class="text-sm text-slate-500">Tindakan ini tidak bisa dibatalkan.</p>
+        </div>
+        <div class="p-4 pt-0 flex gap-2">
+            <button onclick="window.closeModal('modal-confirm-delete')" class="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold py-2.5 rounded-2xl transition">Batal</button>
+            <button onclick="window.guardedClick(this, () => window.runConfirmedDelete())" class="flex-1 bg-rose-600 hover:bg-rose-700 text-white font-bold py-2.5 rounded-2xl transition"><i class="fas fa-trash mr-1"></i> Hapus</button>
+        </div>
+    </div>
+</div>
+
 <!-- ================= MODAL: RESET DATA KARYAWAN & TRAINING (superadmin only) ================= -->
 <div id="modal-reset-employee-data" class="fixed inset-0 z-[10000] hide modal-overlay flex items-center justify-center p-4">
     <div class="bg-white w-full max-w-lg rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
@@ -1897,6 +1912,23 @@ window.closeModal = function (id) {
         window._currentYtPlayer = null;
     }
     if (id === "modal-qr-scan" && window.stopQrScan) window.stopQrScan();
+};
+
+// ================= MODAL KONFIRMASI HAPUS (generik, pengganti confirm() bawaan browser) =================
+// Dipakai oleh semua tombol hapus (Training Onboarding, Jadwal Training TNA, Hasil TNA, dst).
+// Cara pakai: window.confirmDelete("Pesan konfirmasi di sini", async () => { ...logic hapus... });
+window._pendingDeleteAction = null;
+window.confirmDelete = function (message, action) {
+    window._pendingDeleteAction = action;
+    const msgEl = document.getElementById("confirm-delete-message");
+    if (msgEl) msgEl.textContent = message || "Tindakan ini tidak bisa dibatalkan.";
+    window.openModal("modal-confirm-delete");
+};
+window.runConfirmedDelete = async function () {
+    const action = window._pendingDeleteAction;
+    window._pendingDeleteAction = null;
+    window.closeModal("modal-confirm-delete");
+    if (typeof action === "function") await action();
 };
 
 // ================= TOGGLE SIDEBAR (garis tiga) =================
@@ -6549,11 +6581,12 @@ window.moveCourseOrder = async function (id, dir) {
     ]);
 };
 
-window.deleteCourse = async function (id) {
-    if (!confirm("Hapus training ini? Data progress peserta terkait tidak ikut terhapus otomatis.")) return;
-    await window.LMS_DB.deleteDoc(window.LMS_DB.ref("courses", id));
-    window.toast("Training dihapus", "success");
-    window.navigate("/admin/courses");
+window.deleteCourse = function (id) {
+    window.confirmDelete("Hapus training ini? Data progress peserta terkait tidak ikut terhapus otomatis.", async () => {
+        await window.LMS_DB.deleteDoc(window.LMS_DB.ref("courses", id));
+        window.toast("Training dihapus", "success");
+        window.navigate("/admin/courses");
+    });
 };
 
 let courseDraft = null;
@@ -7165,11 +7198,12 @@ function renderTrainingAdminList() {
 }
 function genCode() { return Math.random().toString(36).slice(2, 7).toUpperCase(); }
 
-window.deleteTraining = async function (id) {
-    if (!confirm("Hapus jadwal training ini?")) return;
-    await window.LMS_DB.deleteDoc(window.LMS_DB.ref("trainings", id));
-    window.toast("Training dihapus", "success");
-    window.navigate("/admin/trainings");
+window.deleteTraining = function (id) {
+    window.confirmDelete("Hapus jadwal training ini?", async () => {
+        await window.LMS_DB.deleteDoc(window.LMS_DB.ref("trainings", id));
+        window.toast("Training dihapus", "success");
+        window.navigate("/admin/trainings");
+    });
 };
 
 // ================= ADMIN: HASIL TNA (REKAP) =================
@@ -7637,11 +7671,12 @@ function renderTnaResultAdminList() {
     `);
 }
 
-window.deleteTnaResult = async function (id) {
-    if (!confirm("Hapus entri Hasil TNA ini?")) return;
-    await window.LMS_DB.deleteDoc(window.LMS_DB.ref("tnaResults", id));
-    window.toast("Entri Hasil TNA dihapus", "success");
-    window.navigate("/admin/tna-results");
+window.deleteTnaResult = function (id) {
+    window.confirmDelete("Hapus entri Hasil TNA ini?", async () => {
+        await window.LMS_DB.deleteDoc(window.LMS_DB.ref("tnaResults", id));
+        window.toast("Entri Hasil TNA dihapus", "success");
+        window.navigate("/admin/tna-results");
+    });
 };
 
 // Simpan modul/materi sebagai LINK langsung dari baris tabel admin "Hasil TNA" — pasangan
@@ -8149,17 +8184,18 @@ function renderTnaInputList() {
     `);
 }
 
-window.deleteMyTnaResult = async function (id) {
+window.deleteMyTnaResult = function (id) {
     const u = window.STATE.user;
     const existing = window.STATE.tnaResults.find(t => t.id === id);
     if (!existing || normalizeUsername(existing.createdByUsername) !== normalizeUsername(u.username)) {
         window.toast("Kamu cuma bisa menghapus data yang kamu input sendiri", "warn");
         return;
     }
-    if (!confirm("Hapus data Hasil TNA ini?")) return;
-    await window.LMS_DB.deleteDoc(window.LMS_DB.ref("tnaResults", id));
-    window.toast("Data Hasil TNA dihapus", "success");
-    window.navigate("/tna-input");
+    window.confirmDelete("Hapus data Hasil TNA ini?", async () => {
+        await window.LMS_DB.deleteDoc(window.LMS_DB.ref("tnaResults", id));
+        window.toast("Data Hasil TNA dihapus", "success");
+        window.navigate("/tna-input");
+    });
 };
 
 // ================= KIRIM UNDANGAN TRAINING TNA (VIA WHATSAPP) =================
