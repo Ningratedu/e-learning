@@ -6121,6 +6121,36 @@ function requireAdmin(renderFn) {
     };
 }
 
+// ================= LAPORAN: DATA LENGKAP UNTUK VIEWER NON-ADMIN =================
+// startUserScopedListeners() nge-scope 4 koleksi "berat" (attendance, quizAttempts, evaluations,
+// assignmentSubmissions) ke data user sendiri aja buat non-admin, biar hemat reads di dashboard
+// personal. Halaman Laporan Keterlaksanaan (Training TNA & Onboarding) sengaja read-only untuk
+// SEMUA peserta, bukan admin-only, jadi butuh 4 koleksi itu FULL per training/course yang lagi
+// dibuka — bukan cuma punya user yang login — supaya statistik di kartu & tabel rincian SAMA
+// PERSIS dengan yang dilihat admin. window.__reportOverride diisi sementara (lihat pemanggil di
+// renderTrainingReport/renderCourseReport) sepanjang satu pass render laporan, lalu semua helper
+// accessor (reportData, attendanceOfUserForTraining, dst) pakai data ini dulu sebelum fallback ke
+// window.STATE — di luar pass render laporan, override-nya null jadi perilaku halaman lain gak
+// berubah sama sekali.
+window.__reportOverride = null; // null | { attendance, quizAttempts, evaluations, assignmentSubmissions }
+function reportData(key) {
+    return (window.__reportOverride && window.__reportOverride[key]) || window.STATE[key];
+}
+async function fetchReportFullData(field, id, names) {
+    const { col, getDocs, query, where } = window.LMS_DB;
+    const out = {};
+    await Promise.all(names.map(async (name) => {
+        try {
+            const snap = await getDocs(query(col(name), where(field, "==", id)));
+            out[name] = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        } catch (err) {
+            console.error("fetchReportFullData error " + name, err);
+            out[name] = window.STATE[name].filter(x => x[field] === id); // fallback: data sendiri aja
+        }
+    }));
+    return out;
+}
+
 // ================= ADMIN: KELOLA ONBOARDING =================
 // ================= TAB NAVIGASI ANTAR SUB-MENU ADMIN =================
 // "Penjadwalan Onboarding" (dulu menu sendiri), "Penilaian Tugas" & "Percobaan Kuis" (dulu 2
@@ -7187,6 +7217,9 @@ window.toggleTnaEligiblePosition = async function (posisiName) {
 };
 
 let tnaResultDraft = null;
+// Mode input modul/materi di form builder Hasil TNA: "file" (upload) atau "link" (tempel URL,
+// mis. link Google Drive/YouTube). Direset ke "file" tiap kali form builder dibuka biar konsisten.
+let tnaModuleInputMode = "file";
 let tnaResultDeptFilter = "";
 let tnaEligibilitySettingsOpen = false;
 
@@ -7490,11 +7523,17 @@ function renderTnaResultAdminList() {
                 ${reqStatus !== 'diterima' ? `
                 <p class="text-[10px] text-slate-400 leading-tight"><i class="fas fa-lock mr-1"></i>Menunggu request diterima Admin</p>
                 ` : `
-                <div class="flex flex-col gap-1.5 items-start">
+                <div class="flex flex-col gap-1.5 items-start w-full">
                     ${t.moduleFileUrl ? `<a href="${window.escapeHtml(t.moduleFileUrl)}" target="_blank" class="text-[11px] font-bold text-indigo-500 hover:underline"><i class="fas fa-file-circle-check mr-1"></i>${window.escapeHtml(t.moduleFileName || 'Lihat modul')}</a>` : `<span class="text-[10px] text-slate-400">Belum diupload</span>`}
                     <div class="flex items-center gap-1 w-full">
+                        ${(window.tnaModInlineMode[t.id] || 'file') === 'link' ? `
+                        <input id="tna-mod-link-${t.id}" type="url" placeholder="https://..." class="flex-1 min-w-0 border border-slate-200 rounded-lg px-1.5 py-1 text-[10px]">
+                        <button type="button" onclick="window.guardedClick(this, () => window.saveTnaModuleLinkInline('${t.id}'))" class="shrink-0 bg-white border border-slate-200 hover:border-indigo-300 text-slate-500 hover:text-indigo-600 text-[10px] font-bold px-2 py-1 rounded-lg whitespace-nowrap"><i class="fas fa-link"></i></button>
+                        ` : `
                         <input id="tna-mod-file-${t.id}" type="file" class="flex-1 min-w-0 border border-slate-200 rounded-lg px-1.5 py-1 text-[10px]">
                         <button type="button" id="tna-mod-btn-${t.id}" onclick="window.guardedClick(this, () => window.uploadTnaModuleFileInline('${t.id}'))" class="shrink-0 bg-white border border-slate-200 hover:border-indigo-300 text-slate-500 hover:text-indigo-600 text-[10px] font-bold px-2 py-1 rounded-lg whitespace-nowrap"><i class="fas fa-upload"></i></button>
+                        `}
+                        <button type="button" title="${(window.tnaModInlineMode[t.id] || 'file') === 'link' ? 'Ganti ke upload file' : 'Ganti ke link'}" onclick="window.toggleTnaModInlineMode('${t.id}')" class="shrink-0 text-slate-400 hover:text-indigo-600 text-[10px] px-1.5 py-1 rounded-lg border border-slate-200"><i class="fas fa-rotate"></i></button>
                     </div>
                     ${(t.moduleFileUrl && (t.moduleApprovalStatus === 'none' || t.moduleApprovalStatus === 'ditolak' || !t.moduleApprovalStatus)) ? `
                     <button type="button" onclick="window.guardedClick(this, () => window.openTnaApprovalRequest('${t.id}'))" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white text-[10px] font-black px-2 py-1.5 rounded-lg transition"><i class="fas fa-paper-plane mr-1"></i>Kirim Notif</button>
@@ -7605,6 +7644,25 @@ window.deleteTnaResult = async function (id) {
     window.navigate("/admin/tna-results");
 };
 
+// Simpan modul/materi sebagai LINK langsung dari baris tabel admin "Hasil TNA" — pasangan
+// inline dari uploadTnaModuleFileInline (versi upload file) di bawah ini.
+window.saveTnaModuleLinkInline = function (id) {
+    const linkInput = document.getElementById(`tna-mod-link-${id}`);
+    const url = (linkInput && linkInput.value || "").trim();
+    if (!url) { window.toast("Isi link modul/materi dulu", "warn"); return; }
+    if (!/^https?:\/\//i.test(url)) { window.toast("Link harus diawali http:// atau https://", "warn"); return; }
+    const { ref, setDoc, serverTimestamp } = window.LMS_DB;
+    setDoc(ref("tnaResults", id), { moduleFileUrl: url, moduleFileName: "Link Modul/Materi", updatedAt: serverTimestamp() }, { merge: true })
+        .then(() => { window.toast("Link modul/materi disimpan", "success"); renderTnaResultAdminList(); })
+        .catch(e => { console.error(e); window.toast("Gagal menyimpan link: " + (e.message || e), "error"); });
+};
+// Toggle tampilan input file <-> link di baris tabel admin "Hasil TNA" untuk satu entri.
+window.tnaModInlineMode = {};
+window.toggleTnaModInlineMode = function (id) {
+    window.tnaModInlineMode[id] = window.tnaModInlineMode[id] === "link" ? "file" : "link";
+    renderTnaResultAdminList();
+};
+
 // Upload modul/materi langsung dari baris tabel admin "Hasil TNA" — tanpa perlu buka form
 // edit. Dipakai bareng-bareng sama uploadTnaModuleFile (versi form) yang tetap ada juga.
 window.uploadTnaModuleFileInline = async function (id) {
@@ -7660,6 +7718,7 @@ function renderTnaResultBuilder(id, backRoute) {
         tnaResultDraft._loadedId = id || "new";
         tnaResultDraft._id = id;
         tnaResultDraft._backRoute = backRoute;
+        tnaModuleInputMode = "file";
     }
     const d = tnaResultDraft;
     const deptOptions = window.sel.allDeptNames();
@@ -7809,11 +7868,23 @@ function renderTnaResultBuilder(id, backRoute) {
                         <a href="${window.escapeHtml(d.moduleFileUrl)}" target="_blank" class="text-xs font-bold text-indigo-500 hover:underline flex-1 min-w-0 truncate"><i class="fas fa-file-circle-check mr-1"></i>${window.escapeHtml(d.moduleFileName || 'Lihat modul/materi')}</a>
                         <button type="button" onclick="tnaResultDraft.moduleFileUrl=''; tnaResultDraft.moduleFileName=''; rerenderTnaResultBuilder()" class="text-rose-400 hover:text-rose-600 text-xs px-1"><i class="fas fa-xmark"></i></button>
                     </div>` : ''}
+                    <div class="flex gap-1 text-[11px] font-bold">
+                        <button type="button" onclick="tnaModuleInputMode='file'; rerenderTnaResultBuilder()" class="px-2.5 py-1 rounded-lg transition ${tnaModuleInputMode === 'file' ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}"><i class="fas fa-upload mr-1"></i>File</button>
+                        <button type="button" onclick="tnaModuleInputMode='link'; rerenderTnaResultBuilder()" class="px-2.5 py-1 rounded-lg transition ${tnaModuleInputMode === 'link' ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}"><i class="fas fa-link mr-1"></i>Link</button>
+                    </div>
+                    ${tnaModuleInputMode === 'link' ? `
+                    <div class="flex items-center gap-2">
+                        <input id="tna-module-link-input" type="url" placeholder="https://drive.google.com/..." class="flex-1 min-w-0 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs">
+                        <button type="button" onclick="window.guardedClick(this, () => window.saveTnaModuleLink())" class="shrink-0 bg-white border border-slate-200 hover:border-indigo-300 text-slate-500 hover:text-indigo-600 text-[11px] font-bold px-3 py-2 rounded-lg whitespace-nowrap"><i class="fas fa-check mr-1"></i> Simpan Link</button>
+                    </div>
+                    <p class="text-[11px] text-slate-400">Tempel link modul/materi (mis. Google Drive, YouTube) sebelum kirim permohonan approval, biar pembuat request bisa cek isinya.</p>
+                    ` : `
                     <div class="flex items-center gap-2">
                         <input id="tna-module-file-input" type="file" class="flex-1 min-w-0 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs">
                         <button type="button" id="tna-module-upload-btn" onclick="window.guardedClick(this, () => window.uploadTnaModuleFile())" class="shrink-0 bg-white border border-slate-200 hover:border-indigo-300 text-slate-500 hover:text-indigo-600 text-[11px] font-bold px-3 py-2 rounded-lg whitespace-nowrap"><i class="fas fa-upload mr-1"></i> Upload</button>
                     </div>
                     <p class="text-[11px] text-slate-400">Upload modul/materi training di sini dulu sebelum kirim permohonan approval, biar pembuat request bisa cek isinya.</p>
+                    `}
                 </div>
                 ` : (isAdminCtx ? `
                 <p class="text-[11px] text-slate-400 bg-slate-50 rounded-lg px-2.5 py-1.5"><i class="fas fa-lock mr-1"></i>Terima dulu request ini di bagian "Keputusan Request" sebelum mengerjakan modul.</p>
@@ -7900,6 +7971,19 @@ window.uploadTnaModuleFile = async function () {
     }
 };
 
+// Simpan modul/materi training sebagai LINK (mis. Google Drive/YouTube) — alternatif dari upload
+// file, dipakai kalau materinya lebih pas ditaruh sebagai tautan drive/video daripada file.
+window.saveTnaModuleLink = function () {
+    const linkInput = document.getElementById("tna-module-link-input");
+    const url = (linkInput && linkInput.value || "").trim();
+    if (!url) { window.toast("Isi link modul/materi dulu", "warn"); return; }
+    if (!/^https?:\/\//i.test(url)) { window.toast("Link harus diawali http:// atau https://", "warn"); return; }
+    tnaResultDraft.moduleFileUrl = url;
+    tnaResultDraft.moduleFileName = "Link Modul/Materi";
+    window.toast("Link modul/materi disimpan", "success");
+    rerenderTnaResultBuilder();
+};
+
 window.saveTnaResultDraft = async function (backRoute) {
     const d = tnaResultDraft;
     // Guard tiap field dengan `|| ""` sebelum .trim() — termasuk dept/levelJabatan/problem yang
@@ -7965,42 +8049,64 @@ function renderTnaInputList() {
         .filter(t => normalizeUsername(t.createdByUsername) === normalizeUsername(u.username))
         .sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
 
-    const rows = mine.map((t, i) => `
+    const rows = mine.map((t, i) => {
+        const reqStatus = t.requestStatus || 'pending';
+        const progKey = tnaComputeProgressKey(t);
+        const reportTr = tnaReportableTraining(t.id);
+        return `
         <tr class="border-b border-slate-50 hover:bg-slate-50/60 align-top">
-            <td class="px-3 py-3 text-center text-sm text-slate-600">${i + 1}</td>
-            <td class="px-3 py-3 text-sm text-slate-600 min-w-[130px]">${window.escapeHtml(t.dept || '-')}</td>
-            <td class="px-3 py-3 text-sm text-slate-600 min-w-[100px]">${window.escapeHtml(t.levelJabatan || '-')}</td>
-            <td class="px-3 py-3 text-sm text-slate-600 min-w-[180px]">${window.escapeHtml(t.problem || '-')}</td>
-            <td class="px-3 py-3 text-sm text-slate-600 min-w-[180px]">${window.escapeHtml(t.identification || '-')}</td>
-            <td class="px-3 py-3 text-sm text-slate-600 min-w-[180px]">${window.escapeHtml(t.correctiveAction || '-')}</td>
-            <td class="px-3 py-3 text-sm text-slate-600 min-w-[160px]">${window.escapeHtml(t.actionRecommendation || '-')}</td>
-            <td class="px-3 py-3 text-sm text-slate-500 text-center whitespace-nowrap">${tnaFmtDeadline(t.deadlineModul)}</td>
-            <td class="px-3 py-3 text-sm text-slate-500 text-center whitespace-nowrap">${tnaFmtDeadline(t.deadlinePelaksanaan)}</td>
+            <td class="px-3 py-3 text-center text-[11px] text-slate-600">${i + 1}</td>
+            <td class="px-3 py-3 text-[11px] text-slate-600 min-w-[130px]">${window.escapeHtml(t.dept || '-')}</td>
+            <td class="px-3 py-3 text-[11px] text-slate-600 min-w-[100px]">${window.escapeHtml(t.levelJabatan || '-')}</td>
+            <td class="px-3 py-3 text-[11px] text-slate-600 min-w-[180px]">${window.escapeHtml(t.problem || '-')}</td>
+            <td class="px-3 py-3 text-[11px] text-slate-600 min-w-[180px]">${window.escapeHtml(t.identification || '-')}</td>
+            <td class="px-3 py-3 text-[11px] text-slate-600 min-w-[180px]">${window.escapeHtml(t.correctiveAction || '-')}</td>
+            <td class="px-3 py-3 text-[11px] text-slate-600 min-w-[160px]">${window.escapeHtml(t.actionRecommendation || '-')}</td>
+            <td class="px-3 py-3 text-[11px] text-slate-500 text-center whitespace-nowrap">${tnaFmtCreatedAt(t.createdAt)}</td>
+            <td class="px-3 py-3 text-[11px] text-slate-500 text-center whitespace-nowrap">${tnaFmtDeadline(t.deadlineModul)}</td>
+            <td class="px-3 py-3 text-[11px] text-slate-500 text-center whitespace-nowrap">${tnaFmtDeadline(t.deadlinePelaksanaan)}</td>
             <td class="px-3 py-3 text-center min-w-[110px]">${t.attachmentUrl ? `<a href="${window.escapeHtml(t.attachmentUrl)}" target="_blank" class="text-[11px] font-bold text-indigo-500 hover:underline"><i class="fas fa-paperclip mr-1"></i>${window.escapeHtml(t.attachmentName || 'Lihat')}</a>` : '<span class="text-slate-300 text-xs">-</span>'}</td>
-            <td class="px-3 py-3 min-w-[150px]">
+            <td class="px-3 py-3 min-w-[170px]">
                 <div class="flex flex-col gap-1.5 items-start">
-                    ${tnaRequestBadgeHtml(t.requestStatus || 'pending')}
-                    ${tnaProgressBadgeHtml(tnaComputeProgressKey(t))}
-                    <div class="w-28">${tnaProgressBarHtml(tnaComputeProgressKey(t))}</div>
+                    ${tnaRequestBadgeHtml(reqStatus)}
+                    ${reqStatus === 'pending' ? `
+                    <p class="text-[10px] text-slate-400 leading-tight">Menunggu keputusan Admin/Tim Training</p>
+                    ` : `<p class="text-[10px] text-slate-400 leading-tight">${window.escapeHtml(t.requestDecisionNote || '-')}</p>`}
                 </div>
+            </td>
+            <td class="px-3 py-3 min-w-[190px]">
+                ${reqStatus !== 'diterima' ? `
+                <p class="text-[10px] text-slate-400 leading-tight"><i class="fas fa-lock mr-1"></i>Menunggu request diterima Admin</p>
+                ` : `
+                <div class="flex flex-col gap-1.5 items-start w-full">
+                    ${t.moduleFileUrl ? `<a href="${window.escapeHtml(t.moduleFileUrl)}" target="_blank" class="text-[11px] font-bold text-indigo-500 hover:underline"><i class="fas fa-file-circle-check mr-1"></i>${window.escapeHtml(t.moduleFileName || 'Lihat modul')}</a>` : `<span class="text-[10px] text-slate-400">Disiapkan oleh Admin/Tim Training</span>`}
+                </div>
+                `}
             </td>
             <td class="px-3 py-3 min-w-[170px]">
                 <div class="flex flex-col gap-1.5 items-start">
+                    ${tnaProgressBadgeHtml(progKey)}
+                    ${tnaProgressBarHtml(progKey)}
+                </div>
+            </td>
+            <td class="px-3 py-3 min-w-[150px]">
+                <div class="flex flex-col gap-1.5 items-start">
                     ${tnaApprovalBadgeHtml(t.moduleApprovalStatus || 'none')}
-                    ${t.moduleFileUrl ? `<a href="${window.escapeHtml(t.moduleFileUrl)}" target="_blank" class="text-[11px] font-bold text-indigo-500 hover:underline"><i class="fas fa-file-circle-check mr-1"></i>${window.escapeHtml(t.moduleFileName || 'Lihat modul')}</a>` : `<span class="text-[10px] text-slate-400">Modul belum diupload</span>`}
+                    ${t.moduleApprovalDecisionNote ? `<p class="text-[10px] text-slate-400 leading-tight">${window.escapeHtml(t.moduleApprovalDecisionNote)}</p>` : ''}
                     ${t.moduleApprovalStatus === 'menunggu' ? `
                     <div class="flex gap-1">
                         <button onclick="window.guardedClick(this, () => window.decideTnaApproval('${t.id}','disetujui'))" class="text-[10px] font-black px-2 py-1 rounded-lg bg-emerald-500 hover:bg-emerald-600 text-white transition"><i class="fas fa-check mr-0.5"></i>Setujui</button>
                         <button onclick="window.guardedClick(this, () => window.decideTnaApproval('${t.id}','ditolak'))" class="text-[10px] font-black px-2 py-1 rounded-lg bg-orange-100 hover:bg-orange-200 text-orange-600 transition"><i class="fas fa-rotate-left mr-0.5"></i>Revisi</button>
-                    </div>` : `<span class="text-[10px] text-slate-400 font-semibold leading-tight">Disiapkan oleh<br>Admin/Tim Training</span>`}
+                    </div>` : ''}
                 </div>
             </td>
             <td class="px-3 py-3 text-right space-x-2 whitespace-nowrap">
-                ${tnaReportableTraining(t.id) ? `<a href="#/admin/training-report/${tnaReportableTraining(t.id).id}" title="Laporan Keterlaksanaan" class="text-emerald-500 hover:text-emerald-700"><i class="fas fa-chart-simple"></i></a>` : ''}
-                <a href="#/tna-input/${t.id}" class="text-indigo-500 hover:text-indigo-700"><i class="fas fa-pen"></i></a>
+                ${reportTr ? `<a href="#/admin/training-report/${reportTr.id}" title="Laporan Keterlaksanaan" class="text-emerald-500 hover:text-emerald-700"><i class="fas fa-chart-simple"></i></a>` : ''}
+                ${!tnaLinkedTrainings(t.id).length ? `<a href="#/tna-input/${t.id}" class="text-indigo-500 hover:text-indigo-700"><i class="fas fa-pen"></i></a>` : ''}
                 <button onclick="window.guardedClick(this, () => window.deleteMyTnaResult('${t.id}'))" class="text-rose-400 hover:text-rose-600"><i class="fas fa-trash"></i></button>
             </td>
-        </tr>`).join("");
+        </tr>`;
+    }).join("");
 
     window.setPage(`
         <div class="flex items-center justify-between flex-wrap gap-3 mb-1">
@@ -8023,9 +8129,12 @@ function renderTnaInputList() {
                         <th class="sticky top-0 z-10 bg-slate-50 px-3 py-3 border-b border-slate-100">Identification</th>
                         <th class="sticky top-0 z-10 bg-slate-50 px-3 py-3 border-b border-slate-100">Corrective Action</th>
                         <th class="sticky top-0 z-10 bg-slate-50 px-3 py-3 border-b border-slate-100">Action / Training Recommendation</th>
+                        <th class="sticky top-0 z-10 bg-slate-50 px-3 py-3 border-b border-slate-100 text-center">Tanggal Dibuat</th>
                         <th class="sticky top-0 z-10 bg-slate-50 px-3 py-3 border-b border-slate-100 text-center">Deadline Modul</th>
                         <th class="sticky top-0 z-10 bg-slate-50 px-3 py-3 border-b border-slate-100 text-center">Deadline Pelaksanaan Training</th>
                         <th class="sticky top-0 z-10 bg-slate-50 px-3 py-3 border-b border-slate-100">Lampiran</th>
+                        <th class="sticky top-0 z-10 bg-slate-50 px-3 py-3 border-b border-slate-100">Keputusan Request</th>
+                        <th class="sticky top-0 z-10 bg-slate-50 px-3 py-3 border-b border-slate-100">Modul/Materi</th>
                         <th class="sticky top-0 z-10 bg-slate-50 px-3 py-3 border-b border-slate-100">Progress</th>
                         <th class="sticky top-0 z-10 bg-slate-50 px-3 py-3 border-b border-slate-100">Approval Modul</th>
                         <th class="sticky top-0 z-10 bg-slate-50 px-3 py-3 border-b border-slate-100 text-right">Aksi</th>
@@ -9283,17 +9392,54 @@ window.downloadCompetencyTemplate = function () {
 // TNA (renderTnaResultBuilder) juga dipakai peserta (pembuat request) buat lihat progress
 // training yang lahir dari entri mereka sendiri. Semua kontrol yang bisa MENGUBAH data (mulai/
 // selesaikan sesi, tampilkan QR presensi, kirim reminder, hapus percobaan kuis) tetap di-gate
-// isAdmin() di dalam renderTrainingReport, jadi buat non-admin halaman ini murni read-only.
+// isAdmin() di dalam renderTrainingReportContent, jadi buat non-admin halaman ini murni read-only.
 window.ROUTES["admin/training-report"] = function (id) {
     renderTrainingReport(id);
 };
 
 let trainingReportAttendanceFilter = "all"; // all | hadir | belum
+// Cache data lengkap (semua peserta) buat viewer non-admin, biar gak fetch ulang tiap ganti
+// filter "Semua/Sudah Hadir/Belum Hadir" (yang cuma re-render, bukan ganti training).
+let __trainingReportCache = null; // { id, data }
 
+// Wrapper: training-nya harus ada dulu, lalu tentuin sumber datanya. Admin selalu pakai
+// window.STATE yang sudah full (live listener admin gak di-scope per user — lihat
+// startUserScopedListeners). Non-admin (baik peserta training ini maupun pembuat request TNA-nya)
+// butuh data 4 koleksi "berat" yang di-scope per-user itu (attendance, quizAttempts, evaluations,
+// assignmentSubmissions) di-fetch FULL per training ini dulu (lihat fetchReportFullData), biar
+// statistik di kartu & tabel rincian SAMA PERSIS dengan yang dilihat admin — cuma kontrol yang
+// bisa mengubah data yang tetap di-gate isAdmin() di dalam renderTrainingReportContent.
 function renderTrainingReport(id) {
     const t = window.STATE.trainings.find(x => x.id === id);
     if (!t) { window.setPage(`<p class="text-center text-slate-400 py-20">Training tidak ditemukan.</p><a href="#/admin/trainings" class="block text-center text-xs font-bold text-amber-600 hover:underline">Kembali ke Kelola Training TNA</a>`); return; }
 
+    if (window.sel.isAdmin()) {
+        window.__reportOverride = null;
+        renderTrainingReportContent(id, t);
+        return;
+    }
+
+    if (__trainingReportCache && __trainingReportCache.id === id) {
+        window.__reportOverride = __trainingReportCache.data;
+        renderTrainingReportContent(id, t);
+        window.__reportOverride = null;
+        return;
+    }
+
+    window.setPage(`<div class="py-24 text-center text-slate-400"><i class="fas fa-spinner fa-spin text-2xl mb-2"></i><p class="text-sm font-bold">Memuat laporan...</p></div>`);
+    fetchReportFullData("trainingId", id, ["attendance", "quizAttempts", "evaluations", "assignmentSubmissions"]).then(data => {
+        __trainingReportCache = { id, data };
+        window.__reportOverride = data;
+        renderTrainingReportContent(id, t);
+        window.__reportOverride = null;
+    }).catch(err => {
+        console.error("fetchReportFullData error", err);
+        window.toast && window.toast("Gagal memuat sebagian data laporan.", "error");
+        renderTrainingReportContent(id, t);
+    });
+}
+
+function renderTrainingReportContent(id, t) {
     const regs = window.STATE.trainingRegs.filter(r => r.trainingId === id && r.status !== "cancelled");
 
     const hasScope = trainingHasAnyParticipantFilter(t);
@@ -9306,7 +9452,7 @@ function renderTrainingReport(id) {
     const targetCount = targetEmployees.length;
 
     // ---- Kehadiran ----
-    const attendanceRecords = window.STATE.attendance.filter(a => a.trainingId === id);
+    const attendanceRecords = reportData("attendance").filter(a => a.trainingId === id);
     const attendedCount = attendanceRecords.length;
     const attendancePct = targetCount ? Math.round((attendedCount / targetCount) * 100) : 0;
 
@@ -9316,7 +9462,7 @@ function renderTrainingReport(id) {
     // ditampilkan kalau training ini emang punya fitur Tugas yang diaktifkan admin. ----
     const hasAssignmentFeature = !!(t.assignment && t.assignment.enabled);
     const assignmentSubmittedCount = hasAssignmentFeature
-        ? window.STATE.assignmentSubmissions.filter(s => s.trainingId === id).length
+        ? reportData("assignmentSubmissions").filter(s => s.trainingId === id).length
         : 0;
     const assignmentPct = (hasAssignmentFeature && targetCount) ? Math.round((assignmentSubmittedCount / targetCount) * 100) : 0;
 
@@ -9329,8 +9475,8 @@ function renderTrainingReport(id) {
     const passPct = attendedCount ? Math.round((passCount / attendedCount) * 100) : 0;
 
     // ---- Rata-rata nilai Pre-test & Post-test ----
-    const preAttempts = window.STATE.quizAttempts.filter(a => a.trainingId === id && a.attemptType === "pretest");
-    const postAttemptsAll = window.STATE.quizAttempts.filter(a => a.trainingId === id && a.attemptType !== "pretest");
+    const preAttempts = reportData("quizAttempts").filter(a => a.trainingId === id && a.attemptType === "pretest");
+    const postAttemptsAll = reportData("quizAttempts").filter(a => a.trainingId === id && a.attemptType !== "pretest");
     const latestPostByUser = {};
     postAttemptsAll.forEach(a => {
         const cur = latestPostByUser[a.userId];
@@ -9342,7 +9488,7 @@ function renderTrainingReport(id) {
 
     // ---- Rata-rata rating feedback evaluasi (materi, trainer, fasilitas dirata-rata jadi 1 angka,
     // plus rata-rata per poin masing-masing buat ditampilkan terpisah) ----
-    const evals = window.STATE.evaluations.filter(e => e.trainingId === id);
+    const evals = reportData("evaluations").filter(e => e.trainingId === id);
     let avgRating = null;
     if (evals.length) {
         const sumAll = evals.reduce((s, e) => {
@@ -9433,7 +9579,7 @@ function renderTrainingReport(id) {
         const pre = pretestAttemptOfUserTraining(id, r.userId);
         const postList = postTestAttemptsOfUserTraining(id, r.userId);
         const post = postList[0] || null;
-        const asub = window.STATE.assignmentSubmissions.find(s => s.trainingId === id && s.userId === r.userId) || null;
+        const asub = reportData("assignmentSubmissions").find(s => s.trainingId === id && s.userId === r.userId) || null;
         const ev = evalOfUserForTraining(id, r.userId);
         const cert = certOfUserForTraining(id, r.userId);
         const progress = participantProgress(r.userId, att, pre, post, asub, ev, cert);
@@ -9537,22 +9683,58 @@ function renderTrainingReport(id) {
     `);
 }
 
-// ================= ADMIN: LAPORAN KETERLAKSANAAN ONBOARDING (per training) =================
+// ================= LAPORAN KETERLAKSANAAN ONBOARDING (per training) =================
 // Sama konsepnya dengan renderTrainingReport (Training TNA), tapi buat 1 training Onboarding
 // tertentu: target peserta dari window.courseTargetEmployees (bukan trainingTargetEmployees),
 // dan progress per peserta reuse helper yang sama persis dipakai di modal Detail Karyawan
 // (certOfUser/pretestAttemptOfUser/postTestAttemptsOfUser/enrollmentOfUser/courseLockInfoOfUser
 // — lihat buildOnboardingTableRow) supaya angkanya selalu konsisten di semua tempat.
-window.ROUTES["admin/course-report"] = requireAdmin(function (id) {
+// Catatan: sengaja TIDAK di-wrap requireAdmin (samain dengan Laporan Keterlaksanaan Training TNA)
+// — peserta juga boleh lihat laporan ini, murni read-only. Semua kontrol yang bisa MENGUBAH data
+// (kirim reminder) tetap di-gate isAdmin() di dalam renderCourseReportContent.
+window.ROUTES["admin/course-report"] = function (id) {
     renderCourseReport(id);
-});
+};
 
 let courseReportStatusFilter = "all"; // all | selesai | proses | belum
+// Cache data lengkap (semua peserta) buat viewer non-admin, biar gak fetch ulang tiap ganti filter.
+let __courseReportCache = null; // { id, data }
 
+// Wrapper: sama pola dengan renderTrainingReport — admin pakai window.STATE yang sudah full,
+// non-admin fetch dulu 3 koleksi yang di-scope per-user (quizAttempts, evaluations,
+// assignmentSubmissions — onboarding gak punya konsep "attendance") FULL per course ini, biar
+// statistiknya sama persis dengan yang dilihat admin.
 function renderCourseReport(id) {
     const c = window.STATE.courses.find(x => x.id === id);
     if (!c) { window.setPage(`<p class="text-center text-slate-400 py-20">Training tidak ditemukan.</p><a href="#/admin/courses" class="block text-center text-xs font-bold text-indigo-600 hover:underline">Kembali ke Kelola Onboarding</a>`); return; }
 
+    if (window.sel.isAdmin()) {
+        window.__reportOverride = null;
+        renderCourseReportContent(id, c);
+        return;
+    }
+
+    if (__courseReportCache && __courseReportCache.id === id) {
+        window.__reportOverride = __courseReportCache.data;
+        renderCourseReportContent(id, c);
+        window.__reportOverride = null;
+        return;
+    }
+
+    window.setPage(`<div class="py-24 text-center text-slate-400"><i class="fas fa-spinner fa-spin text-2xl mb-2"></i><p class="text-sm font-bold">Memuat laporan...</p></div>`);
+    fetchReportFullData("courseId", id, ["quizAttempts", "evaluations", "assignmentSubmissions"]).then(data => {
+        __courseReportCache = { id, data };
+        window.__reportOverride = data;
+        renderCourseReportContent(id, c);
+        window.__reportOverride = null;
+    }).catch(err => {
+        console.error("fetchReportFullData error", err);
+        window.toast && window.toast("Gagal memuat sebagian data laporan.", "error");
+        renderCourseReportContent(id, c);
+    });
+}
+
+function renderCourseReportContent(id, c) {
     // ---- Peserta target (sesuai scope departemen/level/manual training ini) & urutan
     // sequential onboarding buat masing-masing (dipakai buat cek status "Terkunci"). ----
     const targetEmployees = window.courseTargetEmployees(c);
@@ -9594,14 +9776,14 @@ function renderCourseReport(id) {
     // fitur Tugas yang diaktifkan admin.
     const hasAssignmentFeature = !!(c.assignment && c.assignment.enabled);
     const assignmentSubmittedCount = hasAssignmentFeature
-        ? window.STATE.assignmentSubmissions.filter(s => s.courseId === id).length
+        ? reportData("assignmentSubmissions").filter(s => s.courseId === id).length
         : 0;
     const assignmentPct = (hasAssignmentFeature && targetCount) ? Math.round((assignmentSubmittedCount / targetCount) * 100) : 0;
 
     // ---- Rata-rata nilai Pre-test & Post-test (post-test = percobaan TERBARU tiap peserta) ----
     const hasQuiz = !!(c.quiz && (c.quiz.questions || []).length);
-    const preAttempts = window.STATE.quizAttempts.filter(a => a.courseId === id && a.attemptType === "pretest");
-    const postAttemptsAll = window.STATE.quizAttempts.filter(a => a.courseId === id && a.attemptType !== "pretest");
+    const preAttempts = reportData("quizAttempts").filter(a => a.courseId === id && a.attemptType === "pretest");
+    const postAttemptsAll = reportData("quizAttempts").filter(a => a.courseId === id && a.attemptType !== "pretest");
     const latestPostByUser = {};
     postAttemptsAll.forEach(a => {
         const cur = latestPostByUser[a.userId];
@@ -9612,7 +9794,7 @@ function renderCourseReport(id) {
     const avgPost = latestPostList.length ? Math.round(latestPostList.reduce((s, a) => s + (a.score || 0), 0) / latestPostList.length) : null;
 
     // ---- Rata-rata rating feedback evaluasi (materi, trainer, fasilitas) ----
-    const evals = window.STATE.evaluations.filter(e => e.courseId === id);
+    const evals = reportData("evaluations").filter(e => e.courseId === id);
     let avgRating = null;
     if (evals.length) {
         const sumAll = evals.reduce((s, e) => {
@@ -9679,8 +9861,8 @@ function renderCourseReport(id) {
         const pretest = p.user ? pretestAttemptOfUser(id, p.user.id) : null;
         const postList = p.user ? postTestAttemptsOfUser(id, p.user.id) : [];
         const latestPost = postList[0] || null;
-        const asub = p.user ? window.STATE.assignmentSubmissions.find(s => s.courseId === id && s.userId === p.user.id) : null;
-        const ev = p.user ? window.STATE.evaluations.find(e => e.courseId === id && e.userId === p.user.id) : null;
+        const asub = p.user ? reportData("assignmentSubmissions").find(s => s.courseId === id && s.userId === p.user.id) : null;
+        const ev = p.user ? reportData("evaluations").find(e => e.courseId === id && e.userId === p.user.id) : null;
         return `<tr class="border-b border-slate-50 hover:bg-slate-50/60">
             <td class="px-3 py-2.5 text-sm font-bold text-slate-700">${window.escapeHtml(p.emp.nama || p.emp.username)}<p class="text-[10px] text-slate-400 font-normal">${window.escapeHtml(p.emp.dept || '-')} • ${window.escapeHtml(p.emp.posisi || '-')}</p></td>
             <td class="px-3 py-2.5 text-center text-xs text-slate-600">${totalLessons ? `${doneLessons}/${totalLessons}` : '-'}</td>
@@ -9693,7 +9875,7 @@ function renderCourseReport(id) {
                 ${st.blockingTitle ? `<p class="text-[9px] text-slate-400 mt-0.5">Menunggu "${window.escapeHtml(st.blockingTitle)}"</p>` : ""}
             </td>
             <td class="px-3 py-2.5 text-center whitespace-nowrap">
-                ${(p.user && st.key !== "selesai") ? `<button onclick="window.guardedClick(this, () => window.sendTrainingReminder('${p.emp.id}'))" title="Kirim Reminder via WhatsApp" class="text-indigo-500 hover:text-indigo-700 mx-1"><i class="fab fa-whatsapp"></i></button>` : '<span class="text-slate-200 text-xs">-</span>'}
+                ${(window.sel.isAdmin() && p.user && st.key !== "selesai") ? `<button onclick="window.guardedClick(this, () => window.sendTrainingReminder('${p.emp.id}'))" title="Kirim Reminder via WhatsApp" class="text-indigo-500 hover:text-indigo-700 mx-1"><i class="fab fa-whatsapp"></i></button>` : '<span class="text-slate-200 text-xs">-</span>'}
             </td>
         </tr>`;
     }).join("") || `<tr><td colspan="8" class="text-center py-6 text-slate-400 text-sm">${courseReportStatusFilter === "all" ? "Belum ada target peserta" : "Tidak ada peserta yang cocok dengan filter ini"}</td></tr>`;
@@ -9721,8 +9903,9 @@ function renderCourseReport(id) {
         </div>`;
     }).join("") : `<p class="text-sm text-slate-400 text-center py-5">Belum ada evaluasi yang diisi peserta.</p>`;
 
+    const isAdminViewer = window.sel.isAdmin();
     window.setPage(`
-        <a href="#/admin/courses" class="text-xs font-bold text-slate-400 hover:text-indigo-600"><i class="fas fa-arrow-left mr-1"></i> Kembali</a>
+        <a href="${isAdminViewer ? '#/admin/courses' : '#/courses/' + c.id}" class="text-xs font-bold text-slate-400 hover:text-indigo-600"><i class="fas fa-arrow-left mr-1"></i> Kembali</a>
         <div class="flex items-start justify-between flex-wrap gap-2 mt-2 mb-3">
             <div>
                 <h1 class="text-xl font-black text-slate-800">Laporan Keterlaksanaan Onboarding</h1>
@@ -9731,6 +9914,7 @@ function renderCourseReport(id) {
             <div class="flex items-center gap-2 flex-wrap">
                 <span class="text-[10px] font-black px-3 py-1.5 rounded-full ${c.published ? 'bg-emerald-50 text-emerald-600' : 'bg-slate-100 text-slate-500'}">${c.published ? 'Terbit' : 'Draft'}</span>
                 <span class="text-[11px] font-bold px-3 py-1.5 rounded-full ${window.courseHasScopeRestriction(c) ? 'bg-indigo-50 text-indigo-600' : 'bg-slate-100 text-slate-500'}"><i class="fas fa-users mr-1"></i>${window.courseScopeSummaryHtml(c, 'course-report-' + c.id)}</span>
+                ${!isAdminViewer ? `<span class="text-[10px] font-black px-2.5 py-1.5 rounded-full bg-slate-100 text-slate-400"><i class="fas fa-eye mr-1"></i>Mode Lihat Saja</span>` : ''}
             </div>
         </div>
 
@@ -11346,12 +11530,12 @@ function certOfUser(courseId, userId) {
     return window.STATE.certificates.find(c => c.courseId === courseId && c.userId === userId) || null;
 }
 function pretestAttemptOfUser(courseId, userId) {
-    const attempts = window.STATE.quizAttempts.filter(a => a.courseId === courseId && a.userId === userId && a.attemptType === "pretest");
+    const attempts = reportData("quizAttempts").filter(a => a.courseId === courseId && a.userId === userId && a.attemptType === "pretest");
     if (!attempts.length) return null;
     return attempts.sort((a, b) => (b.attemptAt?.seconds || 0) - (a.attemptAt?.seconds || 0))[0];
 }
 function postTestAttemptsOfUser(courseId, userId) {
-    return window.STATE.quizAttempts
+    return reportData("quizAttempts")
         .filter(a => a.courseId === courseId && a.userId === userId && a.attemptType !== "pretest")
         .sort((a, b) => (b.attemptAt?.seconds || 0) - (a.attemptAt?.seconds || 0));
 }
@@ -11375,18 +11559,18 @@ function regOfUserForTraining(trainingId, userId) {
     return window.STATE.trainingRegs.find(r => r.trainingId === trainingId && r.userId === userId) || null;
 }
 function attendanceOfUserForTraining(trainingId, userId) {
-    return window.STATE.attendance.find(a => a.trainingId === trainingId && a.userId === userId) || null;
+    return reportData("attendance").find(a => a.trainingId === trainingId && a.userId === userId) || null;
 }
 function evalOfUserForTraining(trainingId, userId) {
-    return window.STATE.evaluations.find(ev => ev.trainingId === trainingId && ev.userId === userId) || null;
+    return reportData("evaluations").find(ev => ev.trainingId === trainingId && ev.userId === userId) || null;
 }
 function pretestAttemptOfUserTraining(trainingId, userId) {
-    const attempts = window.STATE.quizAttempts.filter(a => a.trainingId === trainingId && a.userId === userId && a.attemptType === "pretest");
+    const attempts = reportData("quizAttempts").filter(a => a.trainingId === trainingId && a.userId === userId && a.attemptType === "pretest");
     if (!attempts.length) return null;
     return attempts.sort((a, b) => (b.attemptAt?.seconds || 0) - (a.attemptAt?.seconds || 0))[0];
 }
 function postTestAttemptsOfUserTraining(trainingId, userId) {
-    return window.STATE.quizAttempts
+    return reportData("quizAttempts")
         .filter(a => a.trainingId === trainingId && a.userId === userId && a.attemptType !== "pretest")
         .sort((a, b) => (b.attemptAt?.seconds || 0) - (a.attemptAt?.seconds || 0));
 }
