@@ -1423,6 +1423,13 @@ window.sel = {
         (window.STATE.employees || []).forEach(e => { const p = (e.posisi || "").trim(); if (p) set.add(p); });
         return [...set].sort((a, b) => a.localeCompare(b));
     },
+    // Daftar semua nama designation (jabatan) unik dari data karyawan (buat filter target
+    // peserta Training Onboarding maupun Training TNA — terpisah dari "posisi/level").
+    allDesignationNames() {
+        const set = new Set();
+        (window.STATE.employees || []).forEach(e => { const p = (e.designation || "").trim(); if (p) set.add(p); });
+        return [...set].sort((a, b) => a.localeCompare(b));
+    },
     // Daftar nama posisi/level yang ADA di antara karyawan pada departemen-departemen yang
     // diberikan (cascading filter: posisi dipersempit sesuai departemen terpilih). Kalau
     // "depts" kosong (belum ada departemen dipilih), balikin SEMUA posisi seperti biasa.
@@ -1474,15 +1481,18 @@ window.sel = {
 window.courseParticipantMatch = function (c, employee, user) {
     const p = c && c.participants;
     if (!p) return true;
-    const isNewModel = ("excludedDepartments" in p) || ("excludedPositions" in p) || ("excludedEmployeeUsernames" in p);
+    const isNewModel = ("excludedDepartments" in p) || ("excludedPositions" in p) || ("excludedDesignations" in p) || ("excludedEmployeeUsernames" in p);
     if (isNewModel) {
         const excludedDepartments = (Array.isArray(p.excludedDepartments) ? p.excludedDepartments : []).map(x => String(x).trim().toLowerCase());
         const excludedPositions = (Array.isArray(p.excludedPositions) ? p.excludedPositions : []).map(x => String(x).trim().toLowerCase());
+        const excludedDesignations = (Array.isArray(p.excludedDesignations) ? p.excludedDesignations : []).map(x => String(x).trim().toLowerCase());
         const excludedEmployeeUsernames = (Array.isArray(p.excludedEmployeeUsernames) ? p.excludedEmployeeUsernames : []).map(x => normalizeUsername(x));
         const dept = String((employee && employee.dept) || (user && user.dept) || "").trim().toLowerCase();
         if (dept && excludedDepartments.includes(dept)) return false;
         const posisi = String((employee && employee.posisi) || "").trim().toLowerCase();
         if (posisi && excludedPositions.includes(posisi)) return false;
+        const designation = String((employee && employee.designation) || "").trim().toLowerCase();
+        if (designation && excludedDesignations.includes(designation)) return false;
         const uname = normalizeUsername((employee && employee.username) || (user && user.username) || "");
         if (uname && excludedEmployeeUsernames.includes(uname)) return false;
         return true;
@@ -1526,15 +1536,17 @@ window.courseTargetEmployees = function (c) {
 window.courseScopeLabel = function (c) {
     const p = c && c.participants;
     if (!p) return "Semua Karyawan";
-    const isNewModel = ("excludedDepartments" in p) || ("excludedPositions" in p) || ("excludedEmployeeUsernames" in p);
+    const isNewModel = ("excludedDepartments" in p) || ("excludedPositions" in p) || ("excludedDesignations" in p) || ("excludedEmployeeUsernames" in p);
     if (isNewModel) {
         const excludedDepartments = p.excludedDepartments || [];
         const excludedPositions = p.excludedPositions || [];
+        const excludedDesignations = p.excludedDesignations || [];
         const excludedEmployeeUsernames = p.excludedEmployeeUsernames || [];
-        if (!excludedDepartments.length && !excludedPositions.length && !excludedEmployeeUsernames.length) return "Semua Karyawan";
+        if (!excludedDepartments.length && !excludedPositions.length && !excludedDesignations.length && !excludedEmployeeUsernames.length) return "Semua Karyawan";
         const parts = [];
         if (excludedDepartments.length) parts.push("Kecuali Dept: " + excludedDepartments.join(", "));
         if (excludedPositions.length) parts.push("Kecuali Level: " + excludedPositions.join(", "));
+        if (excludedDesignations.length) parts.push("Kecuali Designation: " + excludedDesignations.join(", "));
         if (excludedEmployeeUsernames.length) parts.push(excludedEmployeeUsernames.length + " karyawan dikecualikan");
         return parts.join(" • ");
     }
@@ -1554,9 +1566,9 @@ window.courseScopeLabel = function (c) {
 // daftar admin (ikon fa-sitemap vs fa-globe).
 window.courseHasScopeRestriction = function (c) {
     const p = (c && c.participants) || {};
-    const isNewModel = ("excludedDepartments" in p) || ("excludedPositions" in p) || ("excludedEmployeeUsernames" in p);
+    const isNewModel = ("excludedDepartments" in p) || ("excludedPositions" in p) || ("excludedDesignations" in p) || ("excludedEmployeeUsernames" in p);
     if (isNewModel) {
-        return !!((p.excludedDepartments || []).length || (p.excludedPositions || []).length || (p.excludedEmployeeUsernames || []).length);
+        return !!((p.excludedDepartments || []).length || (p.excludedPositions || []).length || (p.excludedDesignations || []).length || (p.excludedEmployeeUsernames || []).length);
     }
     return !!((p.departments || []).length || (p.positions || []).length || (p.employeeUsernames || []).length);
 };
@@ -1570,13 +1582,14 @@ window.courseHasScopeRestriction = function (c) {
 window.courseScopeSummaryHtml = function (c, uid) {
     const p = c && c.participants;
     if (!p) return `<span class="text-emerald-600">Semua Karyawan</span>`;
-    const isNewModel = ("excludedDepartments" in p) || ("excludedPositions" in p) || ("excludedEmployeeUsernames" in p);
+    const isNewModel = ("excludedDepartments" in p) || ("excludedPositions" in p) || ("excludedDesignations" in p) || ("excludedEmployeeUsernames" in p);
     const parts = [];
     if (isNewModel) {
         const excludedDepartments = p.excludedDepartments || [];
         const excludedPositions = p.excludedPositions || [];
+        const excludedDesignations = p.excludedDesignations || [];
         const excludedEmployeeUsernames = p.excludedEmployeeUsernames || [];
-        if (!excludedDepartments.length && !excludedPositions.length && !excludedEmployeeUsernames.length) return `<span class="text-emerald-600">Semua Karyawan</span>`;
+        if (!excludedDepartments.length && !excludedPositions.length && !excludedDesignations.length && !excludedEmployeeUsernames.length) return `<span class="text-emerald-600">Semua Karyawan</span>`;
         if (excludedDepartments.length) {
             const allDepts = window.sel.allDeptNames();
             const includedDepts = allDepts.filter(dep => !excludedDepartments.some(x => x.toLowerCase() === dep.toLowerCase()));
@@ -1588,6 +1601,12 @@ window.courseScopeSummaryHtml = function (c, uid) {
             const includedPos = allPos.filter(pos => !excludedPositions.some(x => x.toLowerCase() === pos.toLowerCase()));
             const useIncluded = includedPos.length <= excludedPositions.length;
             parts.push(truncatedNamesChipHtml(useIncluded ? includedPos : excludedPositions, useIncluded ? "Level: " : "Kecuali Level: ", uid + "-level"));
+        }
+        if (excludedDesignations.length) {
+            const allDesig = window.sel.allDesignationNames();
+            const includedDesig = allDesig.filter(x => !excludedDesignations.some(y => y.toLowerCase() === x.toLowerCase()));
+            const useIncluded = includedDesig.length <= excludedDesignations.length;
+            parts.push(truncatedNamesChipHtml(useIncluded ? includedDesig : excludedDesignations, useIncluded ? "Designation: " : "Kecuali Designation: ", uid + "-desig"));
         }
         if (excludedEmployeeUsernames.length) parts.push(window.escapeHtml(excludedEmployeeUsernames.length + " karyawan dikecualikan"));
         return parts.join(' <span class="text-slate-300">•</span> ');
@@ -1618,15 +1637,18 @@ window.courseScopeSummaryHtml = function (c, uid) {
 window.trainingParticipantMatch = function (t, employee, user) {
     const p = t && t.participants;
     if (!p) return true;
-    const isNewModel = ("excludedDepartments" in p) || ("excludedPositions" in p) || ("excludedEmployeeUsernames" in p);
+    const isNewModel = ("excludedDepartments" in p) || ("excludedPositions" in p) || ("excludedDesignations" in p) || ("excludedEmployeeUsernames" in p);
     if (isNewModel) {
         const excludedDepartments = (Array.isArray(p.excludedDepartments) ? p.excludedDepartments : []).map(x => String(x).trim().toLowerCase());
         const excludedPositions = (Array.isArray(p.excludedPositions) ? p.excludedPositions : []).map(x => String(x).trim().toLowerCase());
+        const excludedDesignations = (Array.isArray(p.excludedDesignations) ? p.excludedDesignations : []).map(x => String(x).trim().toLowerCase());
         const excludedEmployeeUsernames = (Array.isArray(p.excludedEmployeeUsernames) ? p.excludedEmployeeUsernames : []).map(x => normalizeUsername(x));
         const dept = String((employee && employee.dept) || (user && user.dept) || "").trim().toLowerCase();
         if (dept && excludedDepartments.includes(dept)) return false;
         const posisi = String((employee && employee.posisi) || "").trim().toLowerCase();
         if (posisi && excludedPositions.includes(posisi)) return false;
+        const designation = String((employee && employee.designation) || "").trim().toLowerCase();
+        if (designation && excludedDesignations.includes(designation)) return false;
         const uname = normalizeUsername((employee && employee.username) || (user && user.username) || "");
         if (uname && excludedEmployeeUsernames.includes(uname)) return false;
         return true;
@@ -1663,15 +1685,17 @@ window.trainingTargetEmployees = function (t) {
 window.trainingScopeLabel = function (t) {
     const p = t && t.participants;
     if (!p) return "Semua Karyawan";
-    const isNewModel = ("excludedDepartments" in p) || ("excludedPositions" in p) || ("excludedEmployeeUsernames" in p);
+    const isNewModel = ("excludedDepartments" in p) || ("excludedPositions" in p) || ("excludedDesignations" in p) || ("excludedEmployeeUsernames" in p);
     if (isNewModel) {
         const excludedDepartments = p.excludedDepartments || [];
         const excludedPositions = p.excludedPositions || [];
+        const excludedDesignations = p.excludedDesignations || [];
         const excludedEmployeeUsernames = p.excludedEmployeeUsernames || [];
-        if (!excludedDepartments.length && !excludedPositions.length && !excludedEmployeeUsernames.length) return "Semua Karyawan";
+        if (!excludedDepartments.length && !excludedPositions.length && !excludedDesignations.length && !excludedEmployeeUsernames.length) return "Semua Karyawan";
         const parts = [];
         if (excludedDepartments.length) parts.push("Kecuali Dept: " + excludedDepartments.join(", "));
         if (excludedPositions.length) parts.push("Kecuali Level: " + excludedPositions.join(", "));
+        if (excludedDesignations.length) parts.push("Kecuali Designation: " + excludedDesignations.join(", "));
         if (excludedEmployeeUsernames.length) parts.push(excludedEmployeeUsernames.length + " karyawan dikecualikan");
         return parts.join(" • ");
     }
@@ -1711,13 +1735,14 @@ function truncatedNamesChipHtml(names, prefixLabel, uid) {
 window.trainingScopeSummaryHtml = function (t, uid) {
     const p = t && t.participants;
     if (!p) return `<span class="text-emerald-600">Semua Karyawan</span>`;
-    const isNewModel = ("excludedDepartments" in p) || ("excludedPositions" in p) || ("excludedEmployeeUsernames" in p);
+    const isNewModel = ("excludedDepartments" in p) || ("excludedPositions" in p) || ("excludedDesignations" in p) || ("excludedEmployeeUsernames" in p);
     const parts = [];
     if (isNewModel) {
         const excludedDepartments = p.excludedDepartments || [];
         const excludedPositions = p.excludedPositions || [];
+        const excludedDesignations = p.excludedDesignations || [];
         const excludedEmployeeUsernames = p.excludedEmployeeUsernames || [];
-        if (!excludedDepartments.length && !excludedPositions.length && !excludedEmployeeUsernames.length) return `<span class="text-emerald-600">Semua Karyawan</span>`;
+        if (!excludedDepartments.length && !excludedPositions.length && !excludedDesignations.length && !excludedEmployeeUsernames.length) return `<span class="text-emerald-600">Semua Karyawan</span>`;
         if (excludedDepartments.length) {
             const allDepts = window.sel.allDeptNames();
             const includedDepts = allDepts.filter(dep => !excludedDepartments.some(x => x.toLowerCase() === dep.toLowerCase()));
@@ -1729,6 +1754,12 @@ window.trainingScopeSummaryHtml = function (t, uid) {
             const includedPos = allPos.filter(pos => !excludedPositions.some(x => x.toLowerCase() === pos.toLowerCase()));
             const useIncluded = includedPos.length <= excludedPositions.length;
             parts.push(truncatedNamesChipHtml(useIncluded ? includedPos : excludedPositions, useIncluded ? "Level: " : "Kecuali Level: ", uid + "-level"));
+        }
+        if (excludedDesignations.length) {
+            const allDesig = window.sel.allDesignationNames();
+            const includedDesig = allDesig.filter(x => !excludedDesignations.some(y => y.toLowerCase() === x.toLowerCase()));
+            const useIncluded = includedDesig.length <= excludedDesignations.length;
+            parts.push(truncatedNamesChipHtml(useIncluded ? includedDesig : excludedDesignations, useIncluded ? "Designation: " : "Kecuali Designation: ", uid + "-desig"));
         }
         if (excludedEmployeeUsernames.length) parts.push(window.escapeHtml(excludedEmployeeUsernames.length + " karyawan dikecualikan"));
         return parts.join(' <span class="text-slate-300">•</span> ');
@@ -6677,7 +6708,8 @@ let courseDraft = null;
 let courseParticipantSearch = "";
 let courseDeptFilterSearch = "";
 let coursePosFilterSearch = "";
-let courseFilterOpen = null; // null | 'dept' | 'level' | 'emp' — dropdown Target Peserta mana yang lagi kebuka
+let courseDesigFilterSearch = "";
+let courseFilterOpen = null; // null | 'dept' | 'level' | 'desig' | 'emp' — dropdown Target Peserta mana yang lagi kebuka
 // Migrasi participants training onboarding ke model BARU (excluded-list, "semua by default") —
 // persis konsepnya dengan migrateTrainingParticipants buat Training TNA. Kalau training
 // onboarding-nya baru dibuat (belum ada field participants sama sekali) atau sudah pakai model
@@ -6688,11 +6720,12 @@ let courseFilterOpen = null; // null | 'dept' | 'level' | 'emp' — dropdown Tar
 // manual karyawan di luar dept/level (mode lama) gak selalu bisa dipetakan 1:1 ke model baru, jadi
 // bagian itu sengaja gak diikutkan (kosong) — admin tinggal cek ulang di dropdown "Nama Karyawan".
 function migrateCourseParticipants(p) {
-    if (!p) return { excludedDepartments: [], excludedPositions: [], excludedEmployeeUsernames: [] };
-    if (("excludedDepartments" in p) || ("excludedPositions" in p) || ("excludedEmployeeUsernames" in p)) {
+    if (!p) return { excludedDepartments: [], excludedPositions: [], excludedDesignations: [], excludedEmployeeUsernames: [] };
+    if (("excludedDepartments" in p) || ("excludedPositions" in p) || ("excludedDesignations" in p) || ("excludedEmployeeUsernames" in p)) {
         return {
             excludedDepartments: Array.isArray(p.excludedDepartments) ? p.excludedDepartments : [],
             excludedPositions: Array.isArray(p.excludedPositions) ? p.excludedPositions : [],
+            excludedDesignations: Array.isArray(p.excludedDesignations) ? p.excludedDesignations : [],
             excludedEmployeeUsernames: Array.isArray(p.excludedEmployeeUsernames) ? p.excludedEmployeeUsernames : []
         };
     }
@@ -6708,7 +6741,7 @@ function migrateCourseParticipants(p) {
         const keep = new Set(legacyPos.map(x => String(x).trim().toLowerCase()));
         excludedPositions = window.sel.allPosisiNames().filter(pos => !keep.has(pos.toLowerCase()));
     }
-    return { excludedDepartments, excludedPositions, excludedEmployeeUsernames: [] };
+    return { excludedDepartments, excludedPositions, excludedDesignations: [], excludedEmployeeUsernames: [] };
 }
 function renderCourseBuilder(id) {
     if (!courseDraft || courseDraft._loadedId !== (id || "new")) {
@@ -6720,7 +6753,7 @@ function renderCourseBuilder(id) {
             title: "", description: "", category: "", instructor: "", level: "Umum",
             coverImage: "", published: false, modules: [], quiz: { passingScore: 70, questions: [] },
             assignment: { enabled: false, title: "", description: "", deadline: "" },
-            order: nextOrder, participants: { excludedDepartments: [], excludedPositions: [], excludedEmployeeUsernames: [] }
+            order: nextOrder, participants: { excludedDepartments: [], excludedPositions: [], excludedDesignations: [], excludedEmployeeUsernames: [] }
         };
         if (!courseDraft.assignment) courseDraft.assignment = { enabled: false, title: "", description: "", deadline: "" };
         if (!Array.isArray(courseDraft.modules)) courseDraft.modules = [];
@@ -6737,6 +6770,7 @@ function renderCourseBuilder(id) {
         courseParticipantSearch = "";
         courseDeptFilterSearch = "";
         coursePosFilterSearch = "";
+        courseDesigFilterSearch = "";
     }
     const d = courseDraft;
 
@@ -6910,6 +6944,7 @@ window.closeCourseBuilder = function () {
     courseParticipantSearch = "";
     courseDeptFilterSearch = "";
     coursePosFilterSearch = "";
+    courseDesigFilterSearch = "";
     courseFilterOpen = null;
     // Balik hash ke daftar (tanpa :id) biar konsisten & popup gak kebuka lagi kalau back/reload.
     if (location.hash.replace(/^#/, "") !== "/admin/courses") window.navigate("/admin/courses");
@@ -6931,16 +6966,26 @@ function courseIncludedLevelNames() {
     const excluded = new Set((courseDraft.participants.excludedPositions || []).map(x => x.toLowerCase()));
     return scoped.filter(pos => !excluded.has(pos.toLowerCase()));
 }
-// Daftar karyawan yang cocok departemen+level yang masih termasuk target — ini yang muncul di
-// dropdown "Filter Nama Karyawan" (ikut nyempit otomatis kalau dept/level dikecualikan).
+// Nama-nama designation (jabatan) yang masih termasuk target — dikurangi designation yang
+// dikecualikan admin. Beda konsep dari "Level" (posisi), jadi tidak di-cascade ke dept/level.
+function courseIncludedDesignationNames() {
+    const excluded = new Set((courseDraft.participants.excludedDesignations || []).map(x => x.toLowerCase()));
+    return window.sel.allDesignationNames().filter(x => !excluded.has(x.toLowerCase()));
+}
+// Daftar karyawan yang cocok departemen+level+designation yang masih termasuk target — ini yang
+// muncul di dropdown "Filter Nama Karyawan" (ikut nyempit otomatis kalau dept/level/designation
+// dikecualikan).
 function courseScopedEmployeesForNameFilter() {
     const depts = new Set(courseIncludedDeptNames().map(x => x.toLowerCase()));
     const levels = new Set(courseIncludedLevelNames().map(x => x.toLowerCase()));
+    const designations = new Set(courseIncludedDesignationNames().map(x => x.toLowerCase()));
     return (window.STATE.employees || []).filter(e => {
         const dept = (e.dept || "").trim().toLowerCase();
         const posisi = (e.posisi || "").trim().toLowerCase();
+        const designation = (e.designation || "").trim().toLowerCase();
         if (dept && !depts.has(dept)) return false;
         if (posisi && !levels.has(posisi)) return false;
+        if (designation && !designations.has(designation)) return false;
         return true;
     });
 }
@@ -6982,6 +7027,19 @@ window.toggleCourseExcludeAllLevels = function () {
         const set = new Set(arr.map(x => x.toLowerCase()));
         scoped.forEach(pos => { if (!set.has(pos.toLowerCase())) arr.push(pos); });
     }
+    window.reRenderCourseParticipantFilters();
+};
+window.toggleCourseExcludeDesignation = function (desig) {
+    const arr = courseDraft.participants.excludedDesignations;
+    const idx = arr.findIndex(x => x.toLowerCase() === desig.toLowerCase());
+    if (idx >= 0) arr.splice(idx, 1); else arr.push(desig);
+    window.reRenderCourseParticipantFilters();
+};
+window.toggleCourseExcludeAllDesignations = function () {
+    const all = window.sel.allDesignationNames();
+    const arr = courseDraft.participants.excludedDesignations;
+    const allExcluded = all.length > 0 && all.every(x => arr.some(y => y.toLowerCase() === x.toLowerCase()));
+    courseDraft.participants.excludedDesignations = allExcluded ? [] : [...all];
     window.reRenderCourseParticipantFilters();
 };
 window.toggleCourseExcludeEmployee = function (username) {
@@ -7046,6 +7104,26 @@ window.reRenderCoursePosFilterList = function () {
     const el = document.getElementById("course-pos-filter-list");
     if (el) el.innerHTML = renderCoursePosFilterRows();
 };
+// Render list checkbox designation/jabatan (dropdown "Designation"), difilter oleh pencarian.
+function renderCourseDesignationFilterRows() {
+    const q = courseDesigFilterSearch.trim().toLowerCase();
+    const all = window.sel.allDesignationNames();
+    const names = all.filter(x => !q || x.toLowerCase().includes(q));
+    if (!all.length) return `<p class="text-xs text-slate-400 px-1 py-1">Belum ada data designation dari karyawan.</p>`;
+    if (!names.length) return `<p class="text-xs text-slate-400 px-1 py-1">Tidak ada designation yang cocok dengan pencarian.</p>`;
+    const excluded = courseDraft.participants.excludedDesignations;
+    return names.map(x => {
+        const checked = !excluded.some(y => y.toLowerCase() === x.toLowerCase());
+        return `<label class="flex items-center gap-2 text-xs px-1.5 py-1.5 rounded-lg hover:bg-slate-50 cursor-pointer">
+            <input type="checkbox" ${checked ? 'checked' : ''} onchange="window.toggleCourseExcludeDesignation('${window.escapeHtml(x).replace(/'/g, "\\'")}')" class="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500">
+            <span class="truncate">${window.escapeHtml(x)}</span>
+        </label>`;
+    }).join("");
+}
+window.reRenderCourseDesignationFilterList = function () {
+    const el = document.getElementById("course-desig-filter-list");
+    if (el) el.innerHTML = renderCourseDesignationFilterRows();
+};
 // Render list checkbox karyawan (dropdown "Nama Karyawan"), dipersempit (cascading) sesuai
 // departemen+level yang masih termasuk target, dikelompokkan urut departemen, dan difilter
 // oleh pencarian.
@@ -7053,7 +7131,7 @@ function renderCourseParticipantPickerRows() {
     const q = courseParticipantSearch.trim().toLowerCase();
     const employees = courseScopedEmployeesForNameFilter().filter(e => {
         if (!q) return true;
-        return (e.nama || "").toLowerCase().includes(q) || (e.username || "").toLowerCase().includes(q) || (e.dept || "").toLowerCase().includes(q) || (e.posisi || "").toLowerCase().includes(q);
+        return (e.nama || "").toLowerCase().includes(q) || (e.username || "").toLowerCase().includes(q) || (e.dept || "").toLowerCase().includes(q) || (e.posisi || "").toLowerCase().includes(q) || (e.designation || "").toLowerCase().includes(q);
     }).sort((a, b) => (a.dept || "").localeCompare(b.dept || "") || (a.nama || "").localeCompare(b.nama || ""));
     if (!employees.length) return `<p class="text-xs text-slate-400 text-center py-5">Tidak ada karyawan yang cocok.</p>`;
     const excluded = courseDraft.participants.excludedEmployeeUsernames;
@@ -7061,7 +7139,7 @@ function renderCourseParticipantPickerRows() {
         const checked = !excluded.some(u => normalizeUsername(u) === normalizeUsername(e.username));
         return `<label class="flex items-center gap-2 px-3 py-2 text-xs hover:bg-slate-50 cursor-pointer">
             <input type="checkbox" ${checked ? 'checked' : ''} onchange="window.toggleCourseExcludeEmployee('${window.escapeHtml(e.username).replace(/'/g, "\\'")}')" class="accent-indigo-600 shrink-0">
-            <span class="flex-1 min-w-0"><span class="font-bold text-slate-700">${window.escapeHtml(e.nama || e.username)}</span> <span class="text-slate-400">• ${window.escapeHtml(e.dept || '-')} • ${window.escapeHtml(e.posisi || '-')}</span></span>
+            <span class="flex-1 min-w-0"><span class="font-bold text-slate-700">${window.escapeHtml(e.nama || e.username)}</span> <span class="text-slate-400">• ${window.escapeHtml(e.dept || '-')} • ${window.escapeHtml(e.posisi || '-')}${e.designation ? ' • ' + window.escapeHtml(e.designation) : ''}</span></span>
         </label>`;
     }).join("");
 }
@@ -7082,20 +7160,23 @@ window.reRenderCourseParticipantFilters = function () {
 // terbuka untuk SEMUA karyawan.
 function courseHasAnyParticipantFilter(d) {
     const p = (d && d.participants) || {};
-    const isNewModel = ("excludedDepartments" in p) || ("excludedPositions" in p) || ("excludedEmployeeUsernames" in p);
+    const isNewModel = ("excludedDepartments" in p) || ("excludedPositions" in p) || ("excludedDesignations" in p) || ("excludedEmployeeUsernames" in p);
     if (isNewModel) {
-        return !!((p.excludedDepartments || []).length || (p.excludedPositions || []).length || (p.excludedEmployeeUsernames || []).length);
+        return !!((p.excludedDepartments || []).length || (p.excludedPositions || []).length || (p.excludedDesignations || []).length || (p.excludedEmployeeUsernames || []).length);
     }
     return !!((p.departments || []).length || (p.positions || []).length || (p.employeeUsernames || []).length);
 }
 // Render body kartu "Target Peserta": penjelasan singkat, ringkasan jumlah target, dan baris
-// 3 dropdown (Departemen / Level / Nama Karyawan) yang masing-masing defaultnya "All" tercentang.
+// 4 dropdown (Departemen / Level / Designation / Nama Karyawan) yang masing-masing defaultnya
+// "All" tercentang.
 function renderCourseParticipantFiltersBlock() {
     const d = courseDraft;
     const totalDepts = window.sel.allDeptNames().length;
     const excludedDeptsCount = (d.participants.excludedDepartments || []).length;
     const scopedLevels = window.sel.posisiNamesForDepts(courseIncludedDeptNames());
     const excludedLevelsCount = (d.participants.excludedPositions || []).length;
+    const totalDesignations = window.sel.allDesignationNames().length;
+    const excludedDesigCount = (d.participants.excludedDesignations || []).length;
     const scopedEmployees = courseScopedEmployeesForNameFilter();
     const excludedEmpCount = (d.participants.excludedEmployeeUsernames || []).length;
     const targetCount = window.courseTargetEmployees(d).length;
@@ -7145,6 +7226,23 @@ function renderCourseParticipantFiltersBlock() {
                 </div>` : ""}
             </div>
             <div class="relative flex-1">
+                <button type="button" onclick="event.stopPropagation(); window.toggleCourseFilterOpen('desig')" class="w-full flex items-center justify-between gap-2 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-600 hover:border-indigo-300 bg-white">
+                    <span class="flex items-center gap-1.5 truncate"><i class="fas fa-address-card text-slate-400"></i> Designation: ${summaryLabel(excludedDesigCount, totalDesignations)}</span>
+                    <i class="fas fa-chevron-down text-[10px] text-slate-400 transition ${courseFilterOpen === 'desig' ? 'rotate-180' : ''}"></i>
+                </button>
+                ${courseFilterOpen === 'desig' ? `
+                <div class="absolute z-20 mt-1 w-full bg-white border border-slate-200 rounded-xl shadow-lg p-2" onclick="event.stopPropagation()">
+                    <input id="course-desig-filter-search" value="${window.escapeHtml(courseDesigFilterSearch)}" oninput="courseDesigFilterSearch=this.value; window.reRenderCourseDesignationFilterList()" placeholder="Cari designation..." class="w-full border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs mb-1.5">
+                    <label class="flex items-center gap-2 text-xs font-bold px-1.5 py-1.5 rounded-lg hover:bg-slate-50 cursor-pointer border-b border-slate-100 mb-1">
+                        <input type="checkbox" ${excludedDesigCount === 0 ? 'checked' : ''} onchange="window.toggleCourseExcludeAllDesignations()" class="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500">
+                        <span>All Designation</span>
+                    </label>
+                    <div id="course-desig-filter-list" class="max-h-[180px] overflow-y-auto space-y-0.5">
+                        ${renderCourseDesignationFilterRows()}
+                    </div>
+                </div>` : ""}
+            </div>
+            <div class="relative flex-1">
                 <button type="button" onclick="event.stopPropagation(); window.toggleCourseFilterOpen('emp')" class="w-full flex items-center justify-between gap-2 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-600 hover:border-indigo-300 bg-white">
                     <span class="flex items-center gap-1.5 truncate"><i class="fas fa-user text-slate-400"></i> Nama Karyawan: ${summaryLabel(excludedEmpCount, scopedEmployees.length)}</span>
                     <i class="fas fa-chevron-down text-[10px] text-slate-400 transition ${courseFilterOpen === 'emp' ? 'rotate-180' : ''}"></i>
@@ -7177,6 +7275,7 @@ window.saveCourseDraft = async function () {
         participants: {
             excludedDepartments: Array.isArray(d.participants.excludedDepartments) ? d.participants.excludedDepartments : [],
             excludedPositions: Array.isArray(d.participants.excludedPositions) ? d.participants.excludedPositions : [],
+            excludedDesignations: Array.isArray(d.participants.excludedDesignations) ? d.participants.excludedDesignations : [],
             excludedEmployeeUsernames: Array.isArray(d.participants.excludedEmployeeUsernames) ? d.participants.excludedEmployeeUsernames : []
         },
         updatedAt: serverTimestamp()
@@ -7192,6 +7291,7 @@ window.saveCourseDraft = async function () {
     courseParticipantSearch = "";
     courseDeptFilterSearch = "";
     coursePosFilterSearch = "";
+    courseDesigFilterSearch = "";
     courseFilterOpen = null;
     window.toast("Training tersimpan", "success");
     window.navigate("/admin/courses");
@@ -8497,7 +8597,8 @@ let trainingDraft = null;
 let trainingParticipantSearch = "";
 let trainingDeptFilterSearch = "";
 let trainingPosFilterSearch = "";
-let trainingFilterOpen = null; // null | 'dept' | 'level' | 'emp' — dropdown Target Peserta mana yang lagi kebuka
+let trainingDesigFilterSearch = "";
+let trainingFilterOpen = null; // null | 'dept' | 'level' | 'desig' | 'emp' — dropdown Target Peserta mana yang lagi kebuka
 // Migrasi participants training ke model BARU (excluded-list, "semua by default"). Kalau
 // training-nya baru dibuat (belum ada field participants sama sekali) atau sudah pakai model
 // baru, gampang — tinggal pastikan ketiga array excluded-nya ada. Kalau training LAMA (masih
@@ -8529,6 +8630,7 @@ window.createTrainingFromTnaResult = function (id) {
             // di form training-nya (checkbox biasa), ini cuma starting point bukan constraint.
             excludedDepartments: t.dept ? deptNames.filter(dep => dep.toLowerCase() !== t.dept.toLowerCase()) : [],
             excludedPositions: t.levelJabatan ? posNames.filter(pos => pos.toLowerCase() !== t.levelJabatan.toLowerCase()) : [],
+            excludedDesignations: [],
             excludedEmployeeUsernames: []
         },
         linkedTnaResultId: t.id,
@@ -8540,11 +8642,12 @@ window.createTrainingFromTnaResult = function (id) {
 };
 
 function migrateTrainingParticipants(p) {
-    if (!p) return { excludedDepartments: [], excludedPositions: [], excludedEmployeeUsernames: [] };
-    if (("excludedDepartments" in p) || ("excludedPositions" in p) || ("excludedEmployeeUsernames" in p)) {
+    if (!p) return { excludedDepartments: [], excludedPositions: [], excludedDesignations: [], excludedEmployeeUsernames: [] };
+    if (("excludedDepartments" in p) || ("excludedPositions" in p) || ("excludedDesignations" in p) || ("excludedEmployeeUsernames" in p)) {
         return {
             excludedDepartments: Array.isArray(p.excludedDepartments) ? p.excludedDepartments : [],
             excludedPositions: Array.isArray(p.excludedPositions) ? p.excludedPositions : [],
+            excludedDesignations: Array.isArray(p.excludedDesignations) ? p.excludedDesignations : [],
             excludedEmployeeUsernames: Array.isArray(p.excludedEmployeeUsernames) ? p.excludedEmployeeUsernames : []
         };
     }
@@ -8560,7 +8663,7 @@ function migrateTrainingParticipants(p) {
         const keep = new Set(legacyPos.map(x => String(x).trim().toLowerCase()));
         excludedPositions = window.sel.allPosisiNames().filter(pos => !keep.has(pos.toLowerCase()));
     }
-    return { excludedDepartments, excludedPositions, excludedEmployeeUsernames: [] };
+    return { excludedDepartments, excludedPositions, excludedDesignations: [], excludedEmployeeUsernames: [] };
 }
 function renderTrainingBuilder(id) {
     if (!trainingDraft || trainingDraft._loadedId !== (id || "new")) {
@@ -8570,7 +8673,7 @@ function renderTrainingBuilder(id) {
             date: "", startTime: "", endTime: "", quota: "", attendanceCode: genCode(), coverImage: "",
             modules: [], quiz: { passingScore: 70, questions: [] },
             assignment: { enabled: false, title: "", description: "", deadline: "" },
-            participants: { excludedDepartments: [], excludedPositions: [], excludedEmployeeUsernames: [] },
+            participants: { excludedDepartments: [], excludedPositions: [], excludedDesignations: [], excludedEmployeeUsernames: [] },
             linkedTnaResultId: ""
         };
         if (trainingDraft.linkedTnaResultId === undefined) trainingDraft.linkedTnaResultId = "";
@@ -8578,6 +8681,7 @@ function renderTrainingBuilder(id) {
         if (!trainingDraft.assignment) trainingDraft.assignment = { enabled: false, title: "", description: "", deadline: "" };
         trainingDraft.participants = migrateTrainingParticipants(trainingDraft.participants);
         trainingFilterOpen = null;
+        trainingDesigFilterSearch = "";
         if (!Array.isArray(trainingDraft.modules)) trainingDraft.modules = [];
         trainingDraft.modules.forEach(m => { if (!Array.isArray(m.lessons)) m.lessons = []; });
         if (!trainingDraft.quiz) trainingDraft.quiz = { passingScore: 70, questions: [] };
@@ -8772,6 +8876,7 @@ window.closeTrainingBuilder = function () {
     trainingParticipantSearch = "";
     trainingDeptFilterSearch = "";
     trainingPosFilterSearch = "";
+    trainingDesigFilterSearch = "";
     trainingFilterOpen = null;
     // Balik hash ke daftar (tanpa :id) biar konsisten & popup gak kebuka lagi kalau back/reload.
     if (location.hash.replace(/^#/, "") !== "/admin/trainings") window.navigate("/admin/trainings");
@@ -8792,16 +8897,26 @@ function trainingIncludedLevelNames() {
     const excluded = new Set((trainingDraft.participants.excludedPositions || []).map(x => x.toLowerCase()));
     return scoped.filter(pos => !excluded.has(pos.toLowerCase()));
 }
-// Daftar karyawan yang cocok departemen+level yang masih termasuk target — ini yang muncul di
-// dropdown "Filter Nama Karyawan" (ikut nyempit otomatis kalau dept/level dikecualikan).
+// Nama-nama designation (jabatan) yang masih termasuk target — dikurangi designation yang
+// dikecualikan admin. Beda konsep dari "Level" (posisi), jadi tidak di-cascade ke dept/level.
+function trainingIncludedDesignationNames() {
+    const excluded = new Set((trainingDraft.participants.excludedDesignations || []).map(x => x.toLowerCase()));
+    return window.sel.allDesignationNames().filter(x => !excluded.has(x.toLowerCase()));
+}
+// Daftar karyawan yang cocok departemen+level+designation yang masih termasuk target — ini yang
+// muncul di dropdown "Filter Nama Karyawan" (ikut nyempit otomatis kalau dept/level/designation
+// dikecualikan).
 function trainingScopedEmployeesForNameFilter() {
     const depts = new Set(trainingIncludedDeptNames().map(x => x.toLowerCase()));
     const levels = new Set(trainingIncludedLevelNames().map(x => x.toLowerCase()));
+    const designations = new Set(trainingIncludedDesignationNames().map(x => x.toLowerCase()));
     return (window.STATE.employees || []).filter(e => {
         const dept = (e.dept || "").trim().toLowerCase();
         const posisi = (e.posisi || "").trim().toLowerCase();
+        const designation = (e.designation || "").trim().toLowerCase();
         if (dept && !depts.has(dept)) return false;
         if (posisi && !levels.has(posisi)) return false;
+        if (designation && !designations.has(designation)) return false;
         return true;
     });
 }
@@ -8843,6 +8958,19 @@ window.toggleTrainingExcludeAllLevels = function () {
         const set = new Set(arr.map(x => x.toLowerCase()));
         scoped.forEach(pos => { if (!set.has(pos.toLowerCase())) arr.push(pos); });
     }
+    window.reRenderTrainingParticipantFilters();
+};
+window.toggleTrainingExcludeDesignation = function (desig) {
+    const arr = trainingDraft.participants.excludedDesignations;
+    const idx = arr.findIndex(x => x.toLowerCase() === desig.toLowerCase());
+    if (idx >= 0) arr.splice(idx, 1); else arr.push(desig);
+    window.reRenderTrainingParticipantFilters();
+};
+window.toggleTrainingExcludeAllDesignations = function () {
+    const all = window.sel.allDesignationNames();
+    const arr = trainingDraft.participants.excludedDesignations;
+    const allExcluded = all.length > 0 && all.every(x => arr.some(y => y.toLowerCase() === x.toLowerCase()));
+    trainingDraft.participants.excludedDesignations = allExcluded ? [] : [...all];
     window.reRenderTrainingParticipantFilters();
 };
 window.toggleTrainingExcludeEmployee = function (username) {
@@ -8907,6 +9035,26 @@ window.reRenderTrainingPosFilterList = function () {
     const el = document.getElementById("training-pos-filter-list");
     if (el) el.innerHTML = renderTrainingPosFilterRows();
 };
+// Render list checkbox designation/jabatan (dropdown "Designation"), difilter oleh pencarian.
+function renderTrainingDesignationFilterRows() {
+    const q = trainingDesigFilterSearch.trim().toLowerCase();
+    const all = window.sel.allDesignationNames();
+    const names = all.filter(x => !q || x.toLowerCase().includes(q));
+    if (!all.length) return `<p class="text-xs text-slate-400 px-1 py-1">Belum ada data designation dari karyawan.</p>`;
+    if (!names.length) return `<p class="text-xs text-slate-400 px-1 py-1">Tidak ada designation yang cocok dengan pencarian.</p>`;
+    const excluded = trainingDraft.participants.excludedDesignations;
+    return names.map(x => {
+        const checked = !excluded.some(y => y.toLowerCase() === x.toLowerCase());
+        return `<label class="flex items-center gap-2 text-xs px-1.5 py-1.5 rounded-lg hover:bg-slate-50 cursor-pointer">
+            <input type="checkbox" ${checked ? 'checked' : ''} onchange="window.toggleTrainingExcludeDesignation('${window.escapeHtml(x).replace(/'/g, "\\'")}')" class="rounded border-slate-300 text-amber-500 focus:ring-amber-500">
+            <span class="truncate">${window.escapeHtml(x)}</span>
+        </label>`;
+    }).join("");
+}
+window.reRenderTrainingDesignationFilterList = function () {
+    const el = document.getElementById("training-desig-filter-list");
+    if (el) el.innerHTML = renderTrainingDesignationFilterRows();
+};
 // Render list checkbox karyawan (dropdown "Nama Karyawan"), dipersempit (cascading) sesuai
 // departemen+level yang masih termasuk target, dikelompokkan urut departemen, dan difilter
 // oleh pencarian.
@@ -8914,7 +9062,7 @@ function renderTrainingParticipantPickerRows() {
     const q = trainingParticipantSearch.trim().toLowerCase();
     const employees = trainingScopedEmployeesForNameFilter().filter(e => {
         if (!q) return true;
-        return (e.nama || "").toLowerCase().includes(q) || (e.username || "").toLowerCase().includes(q) || (e.dept || "").toLowerCase().includes(q) || (e.posisi || "").toLowerCase().includes(q);
+        return (e.nama || "").toLowerCase().includes(q) || (e.username || "").toLowerCase().includes(q) || (e.dept || "").toLowerCase().includes(q) || (e.posisi || "").toLowerCase().includes(q) || (e.designation || "").toLowerCase().includes(q);
     }).sort((a, b) => (a.dept || "").localeCompare(b.dept || "") || (a.nama || "").localeCompare(b.nama || ""));
     if (!employees.length) return `<p class="text-xs text-slate-400 text-center py-5">Tidak ada karyawan yang cocok.</p>`;
     const excluded = trainingDraft.participants.excludedEmployeeUsernames;
@@ -8922,7 +9070,7 @@ function renderTrainingParticipantPickerRows() {
         const checked = !excluded.some(u => normalizeUsername(u) === normalizeUsername(e.username));
         return `<label class="flex items-center gap-2 px-3 py-2 text-xs hover:bg-slate-50 cursor-pointer">
             <input type="checkbox" ${checked ? 'checked' : ''} onchange="window.toggleTrainingExcludeEmployee('${window.escapeHtml(e.username).replace(/'/g, "\\'")}')" class="accent-amber-500 shrink-0">
-            <span class="flex-1 min-w-0"><span class="font-bold text-slate-700">${window.escapeHtml(e.nama || e.username)}</span> <span class="text-slate-400">• ${window.escapeHtml(e.dept || '-')} • ${window.escapeHtml(e.posisi || '-')}</span></span>
+            <span class="flex-1 min-w-0"><span class="font-bold text-slate-700">${window.escapeHtml(e.nama || e.username)}</span> <span class="text-slate-400">• ${window.escapeHtml(e.dept || '-')} • ${window.escapeHtml(e.posisi || '-')}${e.designation ? ' • ' + window.escapeHtml(e.designation) : ''}</span></span>
         </label>`;
     }).join("");
 }
@@ -8943,20 +9091,23 @@ window.reRenderTrainingParticipantFilters = function () {
 // karyawan.
 function trainingHasAnyParticipantFilter(d) {
     const p = (d && d.participants) || {};
-    const isNewModel = ("excludedDepartments" in p) || ("excludedPositions" in p) || ("excludedEmployeeUsernames" in p);
+    const isNewModel = ("excludedDepartments" in p) || ("excludedPositions" in p) || ("excludedDesignations" in p) || ("excludedEmployeeUsernames" in p);
     if (isNewModel) {
-        return !!((p.excludedDepartments || []).length || (p.excludedPositions || []).length || (p.excludedEmployeeUsernames || []).length);
+        return !!((p.excludedDepartments || []).length || (p.excludedPositions || []).length || (p.excludedDesignations || []).length || (p.excludedEmployeeUsernames || []).length);
     }
     return !!((p.departments || []).length || (p.positions || []).length || (p.employeeUsernames || []).length);
 }
 // Render body kartu "Target Peserta": penjelasan singkat, ringkasan jumlah target, dan baris
-// 3 dropdown (Departemen / Level / Nama Karyawan) yang masing-masing defaultnya "All" tercentang.
+// 4 dropdown (Departemen / Level / Designation / Nama Karyawan) yang masing-masing defaultnya
+// "All" tercentang.
 function renderTrainingParticipantFiltersBlock() {
     const d = trainingDraft;
     const totalDepts = window.sel.allDeptNames().length;
     const excludedDeptsCount = (d.participants.excludedDepartments || []).length;
     const scopedLevels = window.sel.posisiNamesForDepts(trainingIncludedDeptNames());
     const excludedLevelsCount = (d.participants.excludedPositions || []).length;
+    const totalDesignations = window.sel.allDesignationNames().length;
+    const excludedDesigCount = (d.participants.excludedDesignations || []).length;
     const scopedEmployees = trainingScopedEmployeesForNameFilter();
     const excludedEmpCount = (d.participants.excludedEmployeeUsernames || []).length;
     const targetCount = window.trainingTargetEmployees(d).length;
@@ -9006,6 +9157,23 @@ function renderTrainingParticipantFiltersBlock() {
                 </div>` : ""}
             </div>
             <div class="relative flex-1">
+                <button type="button" onclick="event.stopPropagation(); window.toggleTrainingFilterOpen('desig')" class="w-full flex items-center justify-between gap-2 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-600 hover:border-amber-300 bg-white">
+                    <span class="flex items-center gap-1.5 truncate"><i class="fas fa-address-card text-slate-400"></i> Designation: ${summaryLabel(excludedDesigCount, totalDesignations)}</span>
+                    <i class="fas fa-chevron-down text-[10px] text-slate-400 transition ${trainingFilterOpen === 'desig' ? 'rotate-180' : ''}"></i>
+                </button>
+                ${trainingFilterOpen === 'desig' ? `
+                <div class="absolute z-20 mt-1 w-full bg-white border border-slate-200 rounded-xl shadow-lg p-2" onclick="event.stopPropagation()">
+                    <input id="training-desig-filter-search" value="${window.escapeHtml(trainingDesigFilterSearch)}" oninput="trainingDesigFilterSearch=this.value; window.reRenderTrainingDesignationFilterList()" placeholder="Cari designation..." class="w-full border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs mb-1.5">
+                    <label class="flex items-center gap-2 text-xs font-bold px-1.5 py-1.5 rounded-lg hover:bg-slate-50 cursor-pointer border-b border-slate-100 mb-1">
+                        <input type="checkbox" ${excludedDesigCount === 0 ? 'checked' : ''} onchange="window.toggleTrainingExcludeAllDesignations()" class="rounded border-slate-300 text-amber-500 focus:ring-amber-500">
+                        <span>All Designation</span>
+                    </label>
+                    <div id="training-desig-filter-list" class="max-h-[180px] overflow-y-auto space-y-0.5">
+                        ${renderTrainingDesignationFilterRows()}
+                    </div>
+                </div>` : ""}
+            </div>
+            <div class="relative flex-1">
                 <button type="button" onclick="event.stopPropagation(); window.toggleTrainingFilterOpen('emp')" class="w-full flex items-center justify-between gap-2 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-600 hover:border-amber-300 bg-white">
                     <span class="flex items-center gap-1.5 truncate"><i class="fas fa-user text-slate-400"></i> Nama Karyawan: ${summaryLabel(excludedEmpCount, scopedEmployees.length)}</span>
                     <i class="fas fa-chevron-down text-[10px] text-slate-400 transition ${trainingFilterOpen === 'emp' ? 'rotate-180' : ''}"></i>
@@ -9039,6 +9207,7 @@ window.saveTrainingDraft = async function () {
         participants: {
             excludedDepartments: Array.isArray(d.participants.excludedDepartments) ? d.participants.excludedDepartments : [],
             excludedPositions: Array.isArray(d.participants.excludedPositions) ? d.participants.excludedPositions : [],
+            excludedDesignations: Array.isArray(d.participants.excludedDesignations) ? d.participants.excludedDesignations : [],
             excludedEmployeeUsernames: Array.isArray(d.participants.excludedEmployeeUsernames) ? d.participants.excludedEmployeeUsernames : []
         },
         linkedTnaResultId: d.linkedTnaResultId || "",
@@ -9056,6 +9225,7 @@ window.saveTrainingDraft = async function () {
     trainingParticipantSearch = "";
     trainingDeptFilterSearch = "";
     trainingPosFilterSearch = "";
+    trainingDesigFilterSearch = "";
     trainingFilterOpen = null;
     window.toast("Training tersimpan", "success");
     window.navigate("/admin/trainings");
