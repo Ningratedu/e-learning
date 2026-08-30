@@ -266,6 +266,13 @@ button:disabled, input[type="submit"]:disabled {
        supaya gak ikut ke-clip oleh overflow container manapun. */
     #main-wrapper { margin-left: var(--sidebar-w, 260px); transition: margin-left .2s ease; }
     #sidebar.sidebar-mini ~ #main-wrapper { margin-left: var(--sidebar-mini-w, 64px); }
+    /* Panah kecil di tombol toggle sidebar (topbar) — cuma kelihatan di layar desktop
+       (lg+), nunjukin arah buka/tutup: nunjuk kiri = sidebar lagi kebuka (klik buat
+       melipat), nunjuk kanan = sidebar lagi terlipat/mini (klik buat membuka lagi). */
+    #sidebar-toggle-arrow { display: inline-block; transition: transform .2s ease; }
+}
+@media (max-width: 1023.98px) {
+    #sidebar-toggle-arrow { display: none; }
 }
 
 /* Mobile: sidebar is fully hidden off-canvas by default so it never covers the
@@ -559,7 +566,10 @@ html.dark .corevalue-wire { background: rgba(96, 165, 250, .2); }
     <!-- Main -->
     <div id="main-wrapper" class="flex-1 min-w-0 flex flex-col">
         <header class="bg-white border-b border-slate-100 px-4 lg:px-5 py-3 flex items-center justify-between sticky top-0 z-20">
-            <button id="sidebar-toggle-btn" class="text-slate-500 hover:text-indigo-600 transition" onclick="window.toggleSidebar()"><i class="fas fa-bars text-lg"></i></button>
+            <button id="sidebar-toggle-btn" class="text-slate-500 hover:text-indigo-600 transition flex items-center gap-1.5" onclick="window.toggleSidebar()" title="Buka/tutup menu">
+                <i class="fas fa-bars text-lg"></i>
+                <i id="sidebar-toggle-arrow" class="fas fa-chevron-left text-[10px] text-slate-300"></i>
+            </button>
             <div class="flex flex-1 items-center justify-center px-1.5 sm:px-4 min-w-0">
                 <div class="corevalue-shell flex flex-col gap-1 pl-2 pr-2.5 py-1 sm:pl-3.5 sm:pr-4 sm:py-1.5">
                     <div class="flex flex-col gap-0.5 sm:flex-row sm:items-center sm:gap-3">
@@ -1768,7 +1778,7 @@ window.trainingSessionStatusIcon = function (status) {
 // Badge status siap-pakai (dipakai di kartu jadwal, halaman detail, & list admin).
 function trainingSessionBadgeHtml(t) {
     const status = window.trainingSessionStatus(t);
-    return `<span class="text-[10px] font-black px-2 py-1 rounded-full ${window.trainingSessionStatusBadgeClass(status)} inline-flex items-center gap-1 shrink-0"><i class="fas ${window.trainingSessionStatusIcon(status)}"></i>${window.trainingSessionStatusLabel(status)}</span>`;
+    return `<span class="text-[10px] font-black px-2 py-1 rounded-full ${window.trainingSessionStatusBadgeClass(status)} inline-flex items-center gap-1 shrink-0 whitespace-nowrap"><i class="fas ${window.trainingSessionStatusIcon(status)}"></i>${window.trainingSessionStatusLabel(status)}</span>`;
 }
 
 // Status training dari sudut pandang SATU peserta (dipakai buat ganti badge "Terdaftar" polos
@@ -1944,6 +1954,11 @@ window.toggleSidebar = function () {
         const sidebar = document.getElementById("sidebar");
         sidebar?.classList.toggle("sidebar-mini");
         window.hideSidebarTooltip && window.hideSidebarTooltip(); // biar tooltip lama gak nyangkut pas sidebar buka/lipat
+        // Panah indikator di tombol toggle (topbar): nunjuk kiri = sidebar kebuka penuh
+        // (klik buat melipat ke kiri), nunjuk kanan = sidebar lagi terlipat/mini (klik
+        // buat membuka lagi). window.syncSidebarToggleArrow() dipanggil di beberapa
+        // tempat lain juga (lihat closeSidebarOnMobileClick, dsb) biar selalu sinkron.
+        window.syncSidebarToggleArrow && window.syncSidebarToggleArrow();
         // Label brand baru kelihatan lagi (display:none -> block) begitu sidebar-mini
         // dilepas, jadi lebarnya baru bisa diukur ulang setelah itu. TAPI #sidebar masih
         // ber-transisi lebar (.2s) saat ini — kalau diukur SEKARANG juga, elemen brand
@@ -1958,6 +1973,17 @@ window.toggleSidebar = function () {
         if (sidebar?.classList.contains("sidebar-mobile-open")) window.closeMobileSidebar();
         else window.openMobileSidebar();
     }
+};
+// Sinkronkan arah ikon panah kecil di tombol toggle sidebar (topbar) sesuai status
+// sidebar saat ini (dipanggil setelah toggle, dan sekali di awal load halaman).
+window.syncSidebarToggleArrow = function () {
+    const arrow = document.getElementById("sidebar-toggle-arrow");
+    const sidebar = document.getElementById("sidebar");
+    if (!arrow || !sidebar) return;
+    const collapsed = sidebar.classList.contains("sidebar-mini");
+    arrow.classList.toggle("fa-chevron-left", !collapsed);
+    arrow.classList.toggle("fa-chevron-right", collapsed);
+    arrow.title = collapsed ? "Buka menu" : "Lipat menu";
 };
 window.openMobileSidebar = function () {
     document.getElementById("sidebar")?.classList.add("sidebar-mobile-open");
@@ -2038,6 +2064,7 @@ document.addEventListener("click", function (e) {
     if (sidebar.contains(e.target)) return; // klik di dalam sidebar, biarkan
     if (e.target.closest("#sidebar-toggle-btn")) return; // biar gak bentrok dgn tombol toggle di topbar
     sidebar.classList.add("sidebar-mini");
+    window.syncSidebarToggleArrow && window.syncSidebarToggleArrow();
 });
 
 
@@ -2278,6 +2305,7 @@ window.enterApp = function () {
     // sudah logout lalu login lagi.
     const sidebar = document.getElementById("sidebar");
     sidebar?.classList.remove("sidebar-mini");
+    window.syncSidebarToggleArrow && window.syncSidebarToggleArrow();
     if (window.matchMedia("(min-width: 1024px)").matches) {
         window.closeMobileSidebar();
     } else {
@@ -3597,9 +3625,10 @@ function renderTnaMonthlyChart(stats, token) {
 // tahun lalu) gak ada datanya — employee.kpi cuma nyimpan KPI tahun berjalan, gak ada histori
 // multi-tahun. Efektivitas bulanan = rata-rata SEDERHANA dari persentase efektivitas tiap training
 // di bulan itu (bukan weighted by jumlah peserta) — sama utk rata-rata efektivitas se-tahun.
-// Minimal 2 peserta hadir per training baru dianggap punya angka efektivitas yang layak
-// ditampilkan (di bawah itu = "data belum cukup").
-const TNA_GROWTH_MIN_SAMPLE = 2;
+// Minimal 1 peserta hadir per training baru dianggap punya angka efektivitas yang layak
+// ditampilkan (di bawah itu = "data belum cukup") — dibatasi minimal 1 (bukan 0) semata-mata
+// buat menghindari pembagian dengan nol (0 peserta hadir = effectivenessPct jadi NaN).
+const TNA_GROWTH_MIN_SAMPLE = 1;
 
 // KPI karyawan disimpan dalam skala pecahan 0-1 (mis. 94% disimpan sebagai 0.94, lihat
 // excelCellToKpiValue). Fungsi ini mengonversinya ke skala persen (0-100) yang dibulatkan 1
@@ -3610,9 +3639,12 @@ function kpiToPct(raw) {
 }
 
 function computeTrainingGrowth(t) {
-    const S = window.STATE;
     const trainingMonth = new Date(t.date).getMonth() + 1; // 1-12, konsisten dgn key employee.kpi
-    const attendees = S.attendance.filter(a => a.trainingId === t.id);
+    // Pakai reportData("attendance"), BUKAN window.STATE.attendance langsung — biar konsisten
+    // dengan accessor lain di Laporan Keterlaksanaan (lihat komentar window.__reportOverride di
+    // atas). Buat non-admin, window.STATE.attendance sudah di-scope cuma punya sendiri, jadi kalau
+    // dibaca langsung dari sini angka KPI training-nya bakal kosong/salah.
+    const attendees = reportData("attendance").filter(a => a.trainingId === t.id);
 
     if (trainingMonth <= 1) {
         return { training: t, month: trainingMonth, beforeMonth: null, attendedCount: attendees.length, naikCount: 0, effectivenessPct: null, eligible: false, reason: "no-prev-month", rows: [] };
@@ -4675,7 +4707,7 @@ function renderCourseDetail(id) {
                 <div class="bg-white border border-slate-100 rounded-3xl p-4 shadow-sm space-y-3">
                     <div class="flex justify-between text-xs text-slate-500"><span>Instruktur</span><span class="font-bold text-slate-700">${window.escapeHtml(c.instructor || "-")}</span></div>
                     <div class="flex justify-between text-xs text-slate-500"><span>Level</span><span class="font-bold text-slate-700">${window.escapeHtml(c.level || "Umum")}</span></div>
-                    <div class="flex justify-between text-xs text-slate-500"><span>Total Materi</span><span class="font-bold text-slate-700">${totalLessons} lesson</span></div>
+                    <div class="flex justify-between text-xs text-slate-500"><span>Total Materi</span><span class="font-bold text-slate-700">${totalLessons} materi</span></div>
                     ${enr ? `<div><div class="h-2 bg-slate-100 rounded-full overflow-hidden"><div class="h-full bg-indigo-500" style="width:${progress}%"></div></div><p class="text-[11px] text-slate-400 mt-1 font-semibold">${progress}% selesai</p></div>` : ""}
                     ${ctaBlock}
                     ${scoreSummary}
@@ -6258,29 +6290,35 @@ function renderCourseAdminList() {
         const completedPct = targetCount ? Math.floor((completedCount / targetCount) * 100) : 0;
         return `
         <tr class="border-b border-slate-50 hover:bg-slate-50/60">
-            <td class="px-3 py-3">
+            <td class="px-2 py-2">
                 <div class="flex flex-col items-center gap-0.5">
-                    <button ${i===0?'disabled':''} onclick="window.guardedClick(this, () => window.moveCourseOrder('${c.id}', -1))" class="text-slate-300 hover:text-indigo-600 leading-none"><i class="fas fa-chevron-up"></i></button>
-                    <span class="text-xs font-black text-slate-500">${Number.isFinite(c.order) ? c.order : '-'}</span>
-                    <button ${i===sorted.length-1?'disabled':''} onclick="window.guardedClick(this, () => window.moveCourseOrder('${c.id}', 1))" class="text-slate-300 hover:text-indigo-600 leading-none"><i class="fas fa-chevron-down"></i></button>
+                    <button ${i===0?'disabled':''} onclick="window.guardedClick(this, () => window.moveCourseOrder('${c.id}', -1))" class="text-slate-300 hover:text-indigo-600 leading-none text-[10px]"><i class="fas fa-chevron-up"></i></button>
+                    <span class="text-[11px] font-black text-slate-500">${Number.isFinite(c.order) ? c.order : '-'}</span>
+                    <button ${i===sorted.length-1?'disabled':''} onclick="window.guardedClick(this, () => window.moveCourseOrder('${c.id}', 1))" class="text-slate-300 hover:text-indigo-600 leading-none text-[10px]"><i class="fas fa-chevron-down"></i></button>
                 </div>
             </td>
-            <td class="px-3 py-3 min-w-[220px]">
-                <p class="font-bold text-slate-700 text-sm">${window.escapeHtml(c.title)}</p>
-                <p class="text-[11px] text-slate-400">${(c.modules||[]).length} modul • ${window.escapeHtml(c.category||'-')}</p>
-                <p class="text-[11px] text-indigo-500 font-semibold mt-0.5"><i class="fas ${window.courseHasScopeRestriction(c) ? 'fa-sitemap' : 'fa-globe'} mr-1"></i>${window.courseScopeSummaryHtml(c, 'course-row-' + c.id)}</p>
+            <td class="px-2 py-2 min-w-[160px]">
+                <p class="font-bold text-slate-700 text-[11px] truncate max-w-[200px]">${window.escapeHtml(c.title)}</p>
+                <p class="text-[9px] font-bold text-slate-400 mt-1 whitespace-nowrap"><i class="fas fa-layer-group mr-1"></i>${(c.modules||[]).length} modul</p>
             </td>
-            <td class="px-3 py-3 text-center">
-                <span class="text-[10px] font-black px-2 py-1 rounded-full ${c.published ? 'bg-emerald-50 text-emerald-600' : 'bg-slate-100 text-slate-500'}">${c.published ? 'Terbit' : 'Draft'}</span>
+            <td class="px-2 py-2 min-w-[100px]">
+                <p class="text-[11px] font-semibold text-slate-600 truncate max-w-[120px]"><i class="fas fa-tag text-slate-300 mr-1"></i>${window.escapeHtml(c.category||'-')}</p>
             </td>
-            <td class="px-3 py-3 text-center text-sm font-bold text-slate-600">${targetCount}</td>
-            <td class="px-3 py-3 text-center text-sm font-bold text-slate-600">${completedCount}</td>
-            <td class="px-3 py-3 text-center"><span class="text-[10px] font-black px-2 py-1 rounded-full bg-emerald-50 text-emerald-600">${completedPct}%</span></td>
-            <td class="px-3 py-3 text-right space-x-2">
-                <a href="#/admin/course-report/${c.id}" title="Laporan Keterlaksanaan" class="text-emerald-500 hover:text-emerald-700"><i class="fas fa-chart-simple"></i></a>
-                <button onclick="window.openCourseReminder('${c.id}')" title="Kirim Reminder" class="text-amber-500 hover:text-amber-700"><i class="fas fa-paper-plane"></i></button>
-                <a href="#/admin/courses/${c.id}" class="text-indigo-500 hover:text-indigo-700"><i class="fas fa-pen"></i></a>
-                <button onclick="window.guardedClick(this, () => window.deleteCourse('${c.id}'))" class="text-rose-400 hover:text-rose-600"><i class="fas fa-trash"></i></button>
+            <td class="px-2 py-2 min-w-[160px]">
+                <p class="text-[9px] font-bold text-indigo-500"><i class="fas ${window.courseHasScopeRestriction(c) ? 'fa-sitemap' : 'fa-globe'} mr-1"></i>${window.courseScopeSummaryHtml(c, 'course-row-' + c.id)}</p>
+            </td>
+            <td class="px-2 py-2 text-center">
+                <span class="text-[9px] font-black px-2 py-0.5 rounded-full whitespace-nowrap ${c.published ? 'bg-emerald-50 text-emerald-600' : 'bg-slate-100 text-slate-500'}">${c.published ? 'Terbit' : 'Draft'}</span>
+            </td>
+            <td class="px-2 py-2 text-center">
+                <p class="text-[11px] font-bold text-slate-700 whitespace-nowrap">${completedCount}<span class="text-slate-300 font-semibold">/${targetCount}</span></p>
+                <span class="text-[9px] font-black px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-600 inline-block mt-1 whitespace-nowrap">${completedPct}% selesai</span>
+            </td>
+            <td class="px-2 py-2 text-right space-x-2 whitespace-nowrap">
+                <a href="#/admin/course-report/${c.id}" title="Laporan Keterlaksanaan" class="text-emerald-500 hover:text-emerald-700 text-[11px]"><i class="fas fa-chart-simple"></i></a>
+                <button onclick="window.openCourseReminder('${c.id}')" title="Kirim Reminder" class="text-amber-500 hover:text-amber-700 text-[11px]"><i class="fas fa-paper-plane"></i></button>
+                <a href="#/admin/courses/${c.id}" class="text-indigo-500 hover:text-indigo-700 text-[11px]"><i class="fas fa-pen"></i></a>
+                <button onclick="window.guardedClick(this, () => window.deleteCourse('${c.id}'))" class="text-rose-400 hover:text-rose-600 text-[11px]"><i class="fas fa-trash"></i></button>
             </td>
         </tr>`;
     }).join("");
@@ -6291,18 +6329,18 @@ function renderCourseAdminList() {
             <h1 class="text-xl font-black text-slate-800">Kelola Onboarding</h1>
             <a href="#/admin/courses/new" class="bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold px-4 py-2.5 rounded-2xl"><i class="fas fa-plus mr-1"></i> Training Baru</a>
         </div>
-        <p class="text-xs text-slate-400 mb-3">Pakai panah naik/turun buat atur urutan pengerjaan. Training dikunci berurutan sesuai urutan ini, dihitung terpisah untuk tiap departemen (lihat kolom target departemen).</p>
+        <p class="text-xs text-slate-400 mb-3">Pakai panah naik/turun buat atur urutan pengerjaan. Training dikunci berurutan sesuai urutan ini, dihitung terpisah untuk tiap departemen (lihat kolom target peserta).</p>
         <div class="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-auto max-h-[75vh]">
             <table class="w-full text-left border-separate border-spacing-0">
-                <thead class="text-[10px] font-black uppercase text-slate-400">
+                <thead class="text-[9px] font-black uppercase text-slate-400">
                     <tr>
-                        <th class="sticky top-0 z-10 bg-slate-50 px-3 py-3 border-b border-slate-100">Urutan</th>
-                        <th class="sticky top-0 z-10 bg-slate-50 px-3 py-3 border-b border-slate-100">Training</th>
-                        <th class="sticky top-0 z-10 bg-slate-50 px-3 py-3 border-b border-slate-100 text-center">Status</th>
-                        <th class="sticky top-0 z-10 bg-slate-50 px-3 py-3 border-b border-slate-100 text-center">Peserta</th>
-                        <th class="sticky top-0 z-10 bg-slate-50 px-3 py-3 border-b border-slate-100 text-center">Selesai</th>
-                        <th class="sticky top-0 z-10 bg-slate-50 px-3 py-3 border-b border-slate-100 text-center">% Selesai</th>
-                        <th class="sticky top-0 z-10 bg-slate-50 px-3 py-3 border-b border-slate-100 text-right">Aksi</th>
+                        <th class="sticky top-0 z-10 bg-slate-50 px-2 py-2 border-b border-slate-100 text-center">Urutan</th>
+                        <th class="sticky top-0 z-10 bg-slate-50 px-2 py-2 border-b border-slate-100">Training</th>
+                        <th class="sticky top-0 z-10 bg-slate-50 px-2 py-2 border-b border-slate-100">Kategori</th>
+                        <th class="sticky top-0 z-10 bg-slate-50 px-2 py-2 border-b border-slate-100">Target Peserta</th>
+                        <th class="sticky top-0 z-10 bg-slate-50 px-2 py-2 border-b border-slate-100 text-center">Status</th>
+                        <th class="sticky top-0 z-10 bg-slate-50 px-2 py-2 border-b border-slate-100 text-center">Penyelesaian</th>
+                        <th class="sticky top-0 z-10 bg-slate-50 px-2 py-2 border-b border-slate-100 text-right">Aksi</th>
                     </tr>
                 </thead>
                 <tbody>${rows || `<tr><td colspan="7" class="text-center py-10 text-slate-400">Belum ada training</td></tr>`}</tbody>
@@ -6366,31 +6404,39 @@ function renderOnboardingFeedbackRecap() {
             <td class="px-3 py-3 text-center">${row.avg !== null ? `<span class="text-amber-500 mr-1">${starRow(row.avg)}</span><span class="text-xs font-black text-slate-500">${row.avg}/5</span>` : '-'}</td>
         </tr>`).join("") || `<tr><td colspan="3" class="text-center py-6 text-slate-400 text-sm">Belum ada evaluasi masuk</td></tr>`;
 
-    // ---- Rincian feedback teks per peserta (sesuai filter training yang lagi aktif) ----
-    const feedbackCards = evals.length ? [...evals].sort((a, b) => tsMillis(b.submittedAt) - tsMillis(a.submittedAt)).map(e => {
+    // ---- Rincian feedback teks per peserta (sesuai filter training yang lagi aktif) — dibikin
+    // tabel dengan kolom Materi/Trainer/Fasilitas/Komentar, konsepnya sama kayak tabel "Rincian
+    // Feedback Evaluasi Peserta" di halaman Laporan Keterlaksanaan (per training/course). ----
+    function feedbackRatingCell(rating, feedback) {
+        return `<td class="px-3 py-2.5 align-top">
+            <div class="mb-1">${typeof rating === "number" ? starRow(rating) : '<span class="text-slate-300">-</span>'}</div>
+            <p class="text-xs text-slate-500 leading-snug">${feedback ? window.escapeHtml(feedback) : '<span class="text-slate-300">-</span>'}</p>
+        </td>`;
+    }
+    const feedbackRowsData = [...evals].sort((a, b) => tsMillis(b.submittedAt) - tsMillis(a.submittedAt)).map(e => {
         const r = e.ratings || {};
         const fb = e.feedbacks || {};
         const legacyComment = (!fb.materi && !fb.trainer && !fb.fasilitas) ? e.comment : null; // data lama sebelum feedback per-poin
-        const rows = [["Materi", r.materi, fb.materi], ["Trainer", r.trainer, fb.trainer], ["Fasilitas", r.fasilitas, fb.fasilitas]];
-        return `
-        <div class="border border-slate-100 rounded-2xl p-4">
-            <div class="flex items-center justify-between gap-2 mb-2">
-                <p class="text-sm font-bold text-slate-700">${window.escapeHtml(e.userName || userName(e.userId))}</p>
-                <span class="text-[10px] font-bold text-slate-400">${itemTitleOf("course", e.courseId)}</span>
-            </div>
-            <div class="space-y-2">
-                ${rows.map(([label, rating, feedback]) => `
-                    <div class="bg-slate-50 rounded-xl px-3 py-2">
-                        <div class="flex items-center justify-between">
-                            <span class="text-[11px] font-black text-slate-500">${label}</span>
-                            <span>${typeof rating === "number" ? starRow(rating) : '-'}</span>
-                        </div>
-                        ${feedback ? `<p class="text-xs text-slate-500 mt-1">${window.escapeHtml(feedback)}</p>` : ""}
-                    </div>`).join("")}
-                ${legacyComment ? `<div class="bg-slate-50 rounded-xl px-3 py-2"><span class="text-[11px] font-black text-slate-500">Catatan</span><p class="text-xs text-slate-500 mt-1">${window.escapeHtml(legacyComment)}</p></div>` : ""}
-            </div>
-        </div>`;
-    }).join("") : `<p class="text-center text-slate-400 text-sm py-6 sm:col-span-2">Belum ada feedback masuk${onboardingFeedbackCourseFilter !== "all" ? " untuk training ini" : ""}</p>`;
+        return {
+            name: e.userName || userName(e.userId),
+            itemTitle: itemTitleOf("course", e.courseId),
+            materiRating: r.materi, materiFb: fb.materi || "",
+            trainerRating: r.trainer, trainerFb: fb.trainer || "",
+            fasilitasRating: r.fasilitas, fasilitasFb: fb.fasilitas || "",
+            komentar: legacyComment || "",
+        };
+    });
+    const showItemCol = onboardingFeedbackCourseFilter === "all";
+    const feedbackRows = feedbackRowsData.length ? feedbackRowsData.map((row, idx) => `
+        <tr class="border-b border-slate-50 hover:bg-slate-50/60">
+            <td class="px-3 py-2.5 text-center align-top text-[11px] font-bold text-slate-400">${idx + 1}</td>
+            <td class="px-3 py-2.5 text-xs font-bold text-slate-700 align-top whitespace-nowrap">${window.escapeHtml(row.name)}</td>
+            ${showItemCol ? `<td class="px-3 py-2.5 text-[11px] text-slate-400 align-top whitespace-nowrap">${window.escapeHtml(row.itemTitle)}</td>` : ""}
+            ${feedbackRatingCell(row.materiRating, row.materiFb)}
+            ${feedbackRatingCell(row.trainerRating, row.trainerFb)}
+            ${feedbackRatingCell(row.fasilitasRating, row.fasilitasFb)}
+            <td class="px-3 py-2.5 text-xs text-slate-500 align-top">${row.komentar ? window.escapeHtml(row.komentar) : '<span class="text-slate-300">-</span>'}</td>
+        </tr>`).join("") : `<tr><td colspan="${showItemCol ? 7 : 6}" class="text-center py-6 text-slate-400 text-sm">Belum ada feedback masuk${onboardingFeedbackCourseFilter !== "all" ? " untuk training ini" : ""}</td></tr>`;
 
     const courseOptions = [...window.STATE.courses].sort((a, b) => String(a.title || "").localeCompare(String(b.title || "")));
 
@@ -6430,7 +6476,22 @@ function renderOnboardingFeedbackRecap() {
 
         <div class="bg-white rounded-3xl border border-slate-100 shadow-sm p-4">
             <h3 class="font-black text-sm text-slate-700 mb-3"><i class="fas fa-comment-dots text-amber-400 mr-1"></i> Rincian Feedback per Peserta</h3>
-            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">${feedbackCards}</div>
+            <div class="overflow-x-auto">
+                <table class="w-full text-left">
+                    <thead class="bg-slate-50 text-[10px] font-black uppercase text-slate-400">
+                        <tr>
+                            <th class="px-3 py-2.5 text-center bg-slate-50">No</th>
+                            <th class="px-3 py-2.5 bg-slate-50">Nama</th>
+                            ${showItemCol ? '<th class="px-3 py-2.5 bg-slate-50">Training</th>' : ''}
+                            <th class="px-3 py-2.5 bg-slate-50">Materi</th>
+                            <th class="px-3 py-2.5 bg-slate-50">Trainer</th>
+                            <th class="px-3 py-2.5 bg-slate-50">Fasilitas</th>
+                            <th class="px-3 py-2.5 bg-slate-50">Komentar</th>
+                        </tr>
+                    </thead>
+                    <tbody>${feedbackRows}</tbody>
+                </table>
+            </div>
         </div>
     `);
 }
@@ -6492,31 +6553,39 @@ function renderTnaFeedbackRecap() {
             <td class="px-3 py-3 text-center">${row.avg !== null ? `<span class="text-amber-500 mr-1">${starRow(row.avg)}</span><span class="text-xs font-black text-slate-500">${row.avg}/5</span>` : '-'}</td>
         </tr>`).join("") || `<tr><td colspan="3" class="text-center py-6 text-slate-400 text-sm">Belum ada evaluasi masuk</td></tr>`;
 
-    // ---- Rincian feedback teks per peserta (sesuai filter training yang lagi aktif) ----
-    const feedbackCards = evals.length ? [...evals].sort((a, b) => tsMillis(b.submittedAt) - tsMillis(a.submittedAt)).map(e => {
+    // ---- Rincian feedback teks per peserta (sesuai filter training yang lagi aktif) — dibikin
+    // tabel dengan kolom Materi/Trainer/Fasilitas/Komentar, konsepnya sama kayak tabel "Rincian
+    // Feedback Evaluasi Peserta" di halaman Laporan Keterlaksanaan (per training/course). ----
+    function feedbackRatingCell(rating, feedback) {
+        return `<td class="px-3 py-2.5 align-top">
+            <div class="mb-1">${typeof rating === "number" ? starRow(rating) : '<span class="text-slate-300">-</span>'}</div>
+            <p class="text-xs text-slate-500 leading-snug">${feedback ? window.escapeHtml(feedback) : '<span class="text-slate-300">-</span>'}</p>
+        </td>`;
+    }
+    const feedbackRowsData = [...evals].sort((a, b) => tsMillis(b.submittedAt) - tsMillis(a.submittedAt)).map(e => {
         const r = e.ratings || {};
         const fb = e.feedbacks || {};
         const legacyComment = (!fb.materi && !fb.trainer && !fb.fasilitas) ? e.comment : null; // data lama sebelum feedback per-poin
-        const rows = [["Materi", r.materi, fb.materi], ["Trainer", r.trainer, fb.trainer], ["Fasilitas", r.fasilitas, fb.fasilitas]];
-        return `
-        <div class="border border-slate-100 rounded-2xl p-4">
-            <div class="flex items-center justify-between gap-2 mb-2">
-                <p class="text-sm font-bold text-slate-700">${window.escapeHtml(e.userName || userName(e.userId))}</p>
-                <span class="text-[10px] font-bold text-slate-400">${itemTitleOf("training", e.trainingId)}</span>
-            </div>
-            <div class="space-y-2">
-                ${rows.map(([label, rating, feedback]) => `
-                    <div class="bg-slate-50 rounded-xl px-3 py-2">
-                        <div class="flex items-center justify-between">
-                            <span class="text-[11px] font-black text-slate-500">${label}</span>
-                            <span>${typeof rating === "number" ? starRow(rating) : '-'}</span>
-                        </div>
-                        ${feedback ? `<p class="text-xs text-slate-500 mt-1">${window.escapeHtml(feedback)}</p>` : ""}
-                    </div>`).join("")}
-                ${legacyComment ? `<div class="bg-slate-50 rounded-xl px-3 py-2"><span class="text-[11px] font-black text-slate-500">Catatan</span><p class="text-xs text-slate-500 mt-1">${window.escapeHtml(legacyComment)}</p></div>` : ""}
-            </div>
-        </div>`;
-    }).join("") : `<p class="text-center text-slate-400 text-sm py-6 sm:col-span-2">Belum ada feedback masuk${tnaFeedbackTrainingFilter !== "all" ? " untuk training ini" : ""}</p>`;
+        return {
+            name: e.userName || userName(e.userId),
+            itemTitle: itemTitleOf("training", e.trainingId),
+            materiRating: r.materi, materiFb: fb.materi || "",
+            trainerRating: r.trainer, trainerFb: fb.trainer || "",
+            fasilitasRating: r.fasilitas, fasilitasFb: fb.fasilitas || "",
+            komentar: legacyComment || "",
+        };
+    });
+    const showItemCol = tnaFeedbackTrainingFilter === "all";
+    const feedbackRows = feedbackRowsData.length ? feedbackRowsData.map((row, idx) => `
+        <tr class="border-b border-slate-50 hover:bg-slate-50/60">
+            <td class="px-3 py-2.5 text-center align-top text-[11px] font-bold text-slate-400">${idx + 1}</td>
+            <td class="px-3 py-2.5 text-xs font-bold text-slate-700 align-top whitespace-nowrap">${window.escapeHtml(row.name)}</td>
+            ${showItemCol ? `<td class="px-3 py-2.5 text-[11px] text-slate-400 align-top whitespace-nowrap">${window.escapeHtml(row.itemTitle)}</td>` : ""}
+            ${feedbackRatingCell(row.materiRating, row.materiFb)}
+            ${feedbackRatingCell(row.trainerRating, row.trainerFb)}
+            ${feedbackRatingCell(row.fasilitasRating, row.fasilitasFb)}
+            <td class="px-3 py-2.5 text-xs text-slate-500 align-top">${row.komentar ? window.escapeHtml(row.komentar) : '<span class="text-slate-300">-</span>'}</td>
+        </tr>`).join("") : `<tr><td colspan="${showItemCol ? 7 : 6}" class="text-center py-6 text-slate-400 text-sm">Belum ada feedback masuk${tnaFeedbackTrainingFilter !== "all" ? " untuk training ini" : ""}</td></tr>`;
 
     const trainingOptions = [...window.STATE.trainings].sort((a, b) => tsMillis(b.date) - tsMillis(a.date));
 
@@ -6556,7 +6625,22 @@ function renderTnaFeedbackRecap() {
 
         <div class="bg-white rounded-3xl border border-slate-100 shadow-sm p-4">
             <h3 class="font-black text-sm text-slate-700 mb-3"><i class="fas fa-comment-dots text-amber-400 mr-1"></i> Rincian Feedback per Peserta</h3>
-            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">${feedbackCards}</div>
+            <div class="overflow-x-auto">
+                <table class="w-full text-left">
+                    <thead class="bg-slate-50 text-[10px] font-black uppercase text-slate-400">
+                        <tr>
+                            <th class="px-3 py-2.5 text-center bg-slate-50">No</th>
+                            <th class="px-3 py-2.5 bg-slate-50">Nama</th>
+                            ${showItemCol ? '<th class="px-3 py-2.5 bg-slate-50">Training</th>' : ''}
+                            <th class="px-3 py-2.5 bg-slate-50">Materi</th>
+                            <th class="px-3 py-2.5 bg-slate-50">Trainer</th>
+                            <th class="px-3 py-2.5 bg-slate-50">Fasilitas</th>
+                            <th class="px-3 py-2.5 bg-slate-50">Komentar</th>
+                        </tr>
+                    </thead>
+                    <tbody>${feedbackRows}</tbody>
+                </table>
+            </div>
         </div>
     `);
 }
@@ -6691,7 +6775,7 @@ function renderCourseBuilder(id) {
                         <textarea oninput="courseDraft.modules[${mi}].lessons[${li}].content=this.value" placeholder="Isi materi / catatan teks..." rows="2" class="w-full border border-slate-200 rounded-lg px-2 py-1.5 text-xs">${window.escapeHtml(l.content||'')}</textarea>
                     </div>
                 `).join("")}
-                <button onclick="courseDraft.modules[${mi}].lessons=courseDraft.modules[${mi}].lessons||[]; courseDraft.modules[${mi}].lessons.push({id:'l'+Date.now(),title:'',type:'video',videoUrl:'',content:''}); rerenderBuilder()" class="text-[11px] font-bold text-indigo-500 hover:text-indigo-700"><i class="fas fa-plus mr-1"></i> Tambah Lesson</button>
+                <button onclick="courseDraft.modules[${mi}].lessons=courseDraft.modules[${mi}].lessons||[]; courseDraft.modules[${mi}].lessons.push({id:'l'+Date.now(),title:'',type:'video',videoUrl:'',content:''}); rerenderBuilder()" class="text-[11px] font-bold text-indigo-500 hover:text-indigo-700"><i class="fas fa-plus mr-1"></i> Tambah Materi</button>
             </div>
         </div>
     `).join("");
@@ -6768,7 +6852,7 @@ function renderCourseBuilder(id) {
 
                 <div class="bg-white rounded-2xl border border-slate-100 shadow-sm p-3 space-y-2">
                     <div class="flex items-center justify-between">
-                        <h3 class="font-black text-sm text-slate-700">Modul & Lesson</h3>
+                        <h3 class="font-black text-sm text-slate-700">Modul & Materi</h3>
                         <button onclick="courseDraft.modules.push({id:'m'+Date.now(),title:'',lessons:[]}); rerenderBuilder()" class="text-[11px] font-bold text-indigo-500 hover:text-indigo-700"><i class="fas fa-plus mr-1"></i> Tambah Modul</button>
                     </div>
                     <div class="space-y-3">${modulesHtml || '<p class="text-xs text-slate-400">Belum ada modul.</p>'}</div>
@@ -6788,7 +6872,7 @@ function renderCourseBuilder(id) {
                         <label class="text-xs text-slate-500 font-semibold">Nilai kelulusan (%)</label>
                         <input type="number" min="0" max="100" value="${d.quiz.passingScore}" oninput="courseDraft.quiz.passingScore=parseInt(this.value)||0" class="w-20 border border-slate-200 rounded-lg px-2 py-1 text-sm">
                     </div>
-                    <div class="space-y-3">${questionsHtml || '<p class="text-xs text-slate-400">Belum ada soal. Kalau tanpa kuis, training otomatis selesai setelah semua lesson ditandai.</p>'}</div>
+                    <div class="space-y-3">${questionsHtml || '<p class="text-xs text-slate-400">Belum ada soal. Kalau tanpa kuis, training otomatis selesai setelah semua materi ditandai.</p>'}</div>
                 </div>
 
                 <div class="bg-white rounded-2xl border border-slate-100 shadow-sm p-3 space-y-2">
@@ -7128,7 +7212,7 @@ window.ROUTES["admin/trainings"] = requireAdmin(function (id) {
 });
 
 function renderTrainingAdminList() {
-    const rows = [...window.STATE.trainings].sort((a,b)=>new Date(b.date)-new Date(a.date)).map(t => {
+    const rows = [...window.STATE.trainings].sort((a,b)=>new Date(b.date)-new Date(a.date)).map((t, idx) => {
         const status = window.trainingSessionStatus(t);
         const invited = trainingInvitedCount(t);
         const attended = trainingAttendedCountSafe(t.id);
@@ -7136,35 +7220,50 @@ function renderTrainingAdminList() {
         const passCount = window.STATE.certificates.filter(c => c.trainingId === t.id).length;
         const passPct = attended ? Math.round((passCount / attended) * 100) : 0;
         const statusActions = status === "not_started"
-            ? `<button onclick="window.guardedClick(this, () => window.setTrainingSessionStatus('${t.id}','ongoing'))" class="text-[10px] font-black px-2.5 py-1.5 rounded-lg bg-sky-500 hover:bg-sky-600 text-white transition"><i class="fas fa-play mr-1"></i>Mulai</button>`
+            ? `<button onclick="window.guardedClick(this, () => window.setTrainingSessionStatus('${t.id}','ongoing'))" class="text-[10px] font-black px-2.5 py-1 rounded-lg bg-sky-500 hover:bg-sky-600 text-white transition whitespace-nowrap"><i class="fas fa-play mr-1"></i>Mulai</button>`
             : status === "ongoing"
-            ? `<button onclick="window.guardedClick(this, () => window.setTrainingSessionStatus('${t.id}','finished'))" class="text-[10px] font-black px-2.5 py-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-600 text-white transition"><i class="fas fa-flag-checkered mr-1"></i>Selesaikan</button>`
-            : `<button onclick="window.guardedClick(this, () => window.setTrainingSessionStatus('${t.id}','ongoing'))" class="text-[10px] font-black px-2.5 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-500 transition"><i class="fas fa-rotate-left mr-1"></i>Buka Lagi</button>`;
+            ? `<button onclick="window.guardedClick(this, () => window.setTrainingSessionStatus('${t.id}','finished'))" class="text-[10px] font-black px-2.5 py-1 rounded-lg bg-emerald-500 hover:bg-emerald-600 text-white transition whitespace-nowrap"><i class="fas fa-flag-checkered mr-1"></i>Selesaikan</button>`
+            : `<button onclick="window.guardedClick(this, () => window.setTrainingSessionStatus('${t.id}','ongoing'))" class="text-[10px] font-black px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-500 transition whitespace-nowrap"><i class="fas fa-rotate-left mr-1"></i>Buka Lagi</button>`;
         return `
         <tr class="border-b border-slate-50 hover:bg-slate-50/60">
-            <td class="px-3 py-3 min-w-[220px]">
-                <p class="font-bold text-slate-700 text-sm">${window.escapeHtml(t.title)}</p>
-                <p class="text-[11px] text-slate-400">${window.fmtDate(t.date)} • ${window.escapeHtml(t.location||'-')} • <i class="fas fa-user-tie"></i> ${window.escapeHtml(t.trainer||'-')} • ${(t.modules||[]).length} modul</p>
-                <p class="text-[10px] font-bold text-amber-600 mt-0.5"><i class="fas fa-users mr-1"></i>${window.trainingScopeSummaryHtml(t, 'tna-row-' + t.id)}</p>
+            <td class="px-2 py-2 text-center">
+                <p class="text-[10px] font-bold text-slate-400">${idx + 1}</p>
             </td>
-            <td class="px-3 py-3 text-center">
-                <div class="flex flex-col items-center gap-1.5">
+            <td class="px-2 py-2 min-w-[150px]">
+                <p class="font-bold text-slate-700 text-[11px] truncate max-w-[200px]">${window.escapeHtml(t.title)}</p>
+                <p class="text-[9px] font-bold text-slate-400 mt-1 whitespace-nowrap"><i class="fas fa-layer-group mr-1"></i>${(t.modules||[]).length} modul</p>
+            </td>
+            <td class="px-2 py-2 min-w-[120px]">
+                <p class="text-[11px] font-bold text-slate-600 whitespace-nowrap">${window.fmtDate(t.date)}</p>
+                <p class="text-[9px] text-slate-400 mt-1 truncate max-w-[140px]"><i class="fas fa-location-dot mr-1"></i>${window.escapeHtml(t.location||'-')}</p>
+            </td>
+            <td class="px-2 py-2 min-w-[100px]">
+                <p class="text-[11px] font-semibold text-slate-600 truncate max-w-[120px]"><i class="fas fa-user-tie text-slate-300 mr-1"></i>${window.escapeHtml(t.trainer||'-')}</p>
+            </td>
+            <td class="px-2 py-2 min-w-[160px]">
+                <p class="text-[9px] font-bold text-amber-600"><i class="fas fa-users mr-1"></i>${window.trainingScopeSummaryHtml(t, 'tna-row-' + t.id)}</p>
+            </td>
+            <td class="px-2 py-2 text-center">
+                <div class="flex flex-col items-center gap-1">
                     ${trainingSessionBadgeHtml(t)}
                     ${statusActions}
                 </div>
             </td>
-            <td class="px-3 py-3 text-center text-sm font-bold text-slate-600">${invited}</td>
-            <td class="px-3 py-3 text-center text-sm font-bold text-slate-600">${attended}</td>
-            <td class="px-3 py-3 text-center"><span class="text-[10px] font-black px-2 py-1 rounded-full bg-emerald-50 text-emerald-600">${attendancePct}%</span></td>
-            <td class="px-3 py-3 text-center text-sm font-bold text-slate-600">${passCount}</td>
-            <td class="px-3 py-3 text-center"><span class="text-[10px] font-black px-2 py-1 rounded-full bg-amber-50 text-amber-600">${passPct}%</span></td>
-            <td class="px-3 py-3 text-center"><span class="font-mono text-xs bg-amber-50 text-amber-600 px-2 py-1 rounded-lg font-bold">${window.escapeHtml(t.attendanceCode||'-')}</span></td>
-            <td class="px-3 py-3 text-right space-x-2 whitespace-nowrap">
-                <button onclick="window.openTrainingQr('${t.id}')" title="Tampilkan QR Code Presensi" class="text-sky-500 hover:text-sky-700"><i class="fas fa-qrcode"></i></button>
-                <button onclick="window.openTrainingInvite('${t.id}')" title="Kirim Undangan" class="text-amber-500 hover:text-amber-700"><i class="fas fa-paper-plane"></i></button>
-                <a href="#/admin/training-report/${t.id}" title="Laporan Keterlaksanaan" class="text-emerald-500 hover:text-emerald-700"><i class="fas fa-chart-simple"></i></a>
-                <a href="#/admin/trainings/${t.id}" class="text-indigo-500 hover:text-indigo-700"><i class="fas fa-pen"></i></a>
-                <button onclick="window.guardedClick(this, () => window.deleteTraining('${t.id}'))" class="text-rose-400 hover:text-rose-600"><i class="fas fa-trash"></i></button>
+            <td class="px-2 py-2 text-center">
+                <p class="text-[11px] font-bold text-slate-700 whitespace-nowrap">${attended}<span class="text-slate-300 font-semibold">/${invited}</span></p>
+                <span class="text-[9px] font-black px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-600 inline-block mt-1 whitespace-nowrap">${attendancePct}% hadir</span>
+            </td>
+            <td class="px-2 py-2 text-center">
+                <p class="text-[11px] font-bold text-slate-700">${passCount}</p>
+                <span class="text-[9px] font-black px-2 py-0.5 rounded-full bg-amber-50 text-amber-600 inline-block mt-1 whitespace-nowrap">${passPct}% lulus</span>
+            </td>
+            <td class="px-2 py-2 text-center"><span class="font-mono text-[9px] bg-amber-50 text-amber-600 px-2 py-1 rounded-lg font-bold whitespace-nowrap">${window.escapeHtml(t.attendanceCode||'-')}</span></td>
+            <td class="px-2 py-2 text-right space-x-2 whitespace-nowrap">
+                <button onclick="window.openTrainingQr('${t.id}')" title="Tampilkan QR Code Presensi" class="text-sky-500 hover:text-sky-700 text-[11px]"><i class="fas fa-qrcode"></i></button>
+                <button onclick="window.openTrainingInvite('${t.id}')" title="Kirim Undangan" class="text-amber-500 hover:text-amber-700 text-[11px]"><i class="fas fa-paper-plane"></i></button>
+                <a href="#/admin/training-report/${t.id}" title="Laporan Keterlaksanaan" class="text-emerald-500 hover:text-emerald-700 text-[11px]"><i class="fas fa-chart-simple"></i></a>
+                <a href="#/admin/trainings/${t.id}" class="text-indigo-500 hover:text-indigo-700 text-[11px]"><i class="fas fa-pen"></i></a>
+                <button onclick="window.guardedClick(this, () => window.deleteTraining('${t.id}'))" class="text-rose-400 hover:text-rose-600 text-[11px]"><i class="fas fa-trash"></i></button>
             </td>
         </tr>`;
     }).join("");
@@ -7178,20 +7277,21 @@ function renderTrainingAdminList() {
         <p class="text-xs text-slate-400 -mt-3 mb-4"><i class="fas fa-circle-info mr-1"></i> Training baru default-nya berstatus "Belum Dimulai" — peserta baru bisa daftar & mengikuti setelah kamu tekan "Mulai Training".</p>
         <div class="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-auto max-h-[75vh]">
             <table class="w-full text-left border-separate border-spacing-0">
-                <thead class="text-[10px] font-black uppercase text-slate-400">
+                <thead class="text-[9px] font-black uppercase text-slate-400">
                     <tr>
-                        <th class="sticky top-0 z-10 bg-slate-50 px-3 py-3 border-b border-slate-100">Training</th>
-                        <th class="sticky top-0 z-10 bg-slate-50 px-3 py-3 border-b border-slate-100 text-center">Status</th>
-                        <th class="sticky top-0 z-10 bg-slate-50 px-3 py-3 border-b border-slate-100 text-center">Diundang</th>
-                        <th class="sticky top-0 z-10 bg-slate-50 px-3 py-3 border-b border-slate-100 text-center">Hadir</th>
-                        <th class="sticky top-0 z-10 bg-slate-50 px-3 py-3 border-b border-slate-100 text-center">% Hadir</th>
-                        <th class="sticky top-0 z-10 bg-slate-50 px-3 py-3 border-b border-slate-100 text-center">Lulus</th>
-                        <th class="sticky top-0 z-10 bg-slate-50 px-3 py-3 border-b border-slate-100 text-center">% Lulus</th>
-                        <th class="sticky top-0 z-10 bg-slate-50 px-3 py-3 border-b border-slate-100 text-center">Kode</th>
-                        <th class="sticky top-0 z-10 bg-slate-50 px-3 py-3 border-b border-slate-100 text-right">Aksi</th>
+                        <th class="sticky top-0 z-10 bg-slate-50 px-2 py-2 border-b border-slate-100 text-center">No</th>
+                        <th class="sticky top-0 z-10 bg-slate-50 px-2 py-2 border-b border-slate-100">Training</th>
+                        <th class="sticky top-0 z-10 bg-slate-50 px-2 py-2 border-b border-slate-100">Jadwal &amp; Lokasi</th>
+                        <th class="sticky top-0 z-10 bg-slate-50 px-2 py-2 border-b border-slate-100">Trainer</th>
+                        <th class="sticky top-0 z-10 bg-slate-50 px-2 py-2 border-b border-slate-100">Target Peserta</th>
+                        <th class="sticky top-0 z-10 bg-slate-50 px-2 py-2 border-b border-slate-100 text-center">Status</th>
+                        <th class="sticky top-0 z-10 bg-slate-50 px-2 py-2 border-b border-slate-100 text-center">Kehadiran</th>
+                        <th class="sticky top-0 z-10 bg-slate-50 px-2 py-2 border-b border-slate-100 text-center">Kelulusan</th>
+                        <th class="sticky top-0 z-10 bg-slate-50 px-2 py-2 border-b border-slate-100 text-center">Kode</th>
+                        <th class="sticky top-0 z-10 bg-slate-50 px-2 py-2 border-b border-slate-100 text-right">Aksi</th>
                     </tr>
                 </thead>
-                <tbody>${rows || `<tr><td colspan="9" class="text-center py-10 text-slate-400">Belum ada jadwal training</td></tr>`}</tbody>
+                <tbody>${rows || `<tr><td colspan="10" class="text-center py-10 text-slate-400">Belum ada jadwal training</td></tr>`}</tbody>
             </table>
         </div>
     `);
@@ -8522,7 +8622,7 @@ function renderTrainingBuilder(id) {
                         <textarea oninput="trainingDraft.modules[${mi}].lessons[${li}].content=this.value" placeholder="Isi materi / catatan teks..." rows="2" class="w-full border border-slate-200 rounded-lg px-2 py-1.5 text-xs">${window.escapeHtml(l.content||'')}</textarea>
                     </div>
                 `).join("")}
-                <button onclick="trainingDraft.modules[${mi}].lessons=trainingDraft.modules[${mi}].lessons||[]; trainingDraft.modules[${mi}].lessons.push({id:'l'+Date.now(),title:'',type:'video',videoUrl:'',content:''}); rerenderTrainingBuilder()" class="text-[11px] font-bold text-amber-500 hover:text-amber-700"><i class="fas fa-plus mr-1"></i> Tambah Lesson</button>
+                <button onclick="trainingDraft.modules[${mi}].lessons=trainingDraft.modules[${mi}].lessons||[]; trainingDraft.modules[${mi}].lessons.push({id:'l'+Date.now(),title:'',type:'video',videoUrl:'',content:''}); rerenderTrainingBuilder()" class="text-[11px] font-bold text-amber-500 hover:text-amber-700"><i class="fas fa-plus mr-1"></i> Tambah Materi</button>
             </div>
         </div>
     `).join("");
@@ -8617,7 +8717,7 @@ function renderTrainingBuilder(id) {
 
                 <div class="bg-white rounded-2xl border border-slate-100 shadow-sm p-3 space-y-2">
                     <div class="flex items-center justify-between">
-                        <h3 class="font-black text-sm text-slate-700">Modul & Lesson (opsional)</h3>
+                        <h3 class="font-black text-sm text-slate-700">Modul & Materi (opsional)</h3>
                         <button onclick="trainingDraft.modules.push({id:'m'+Date.now(),title:'',lessons:[]}); rerenderTrainingBuilder()" class="text-[11px] font-bold text-amber-500 hover:text-amber-700"><i class="fas fa-plus mr-1"></i> Tambah Modul</button>
                     </div>
                     <p class="text-xs text-slate-400">Materi tambahan yang wajib dipelajari peserta secara mandiri (video/PPT/teks), selain sesi tatap muka/online.</p>
@@ -9434,6 +9534,68 @@ window.ROUTES["admin/training-report"] = function (id) {
 };
 
 let trainingReportAttendanceFilter = "all"; // all | hadir | belum
+let trainingReportSortColumn = "default"; // default (hadir dulu, lalu nama A-Z) | nama | hadir | pretest | posttest | tugas | progress | status | kpi0, kpi1, ...
+let trainingReportSortDir = "asc"; // asc | desc
+let trainingFeedbackSortColumn = "default"; // default (urutan asli) | nama | materi | trainer | fasilitas | komentar
+let trainingFeedbackSortDir = "asc"; // asc | desc
+
+// Klik header kolom di tabel "Rincian per Peserta" buat sort by kolom itu. Klik pertama =
+// ascending, klik kedua (kolom sama) = descending, klik ketiga = balik ke urutan default
+// (hadir dulu, lalu nama A-Z). Klik header kolom lain langsung mulai dari ascending lagi.
+window.setTrainingReportSort = function (col, id) {
+    if (trainingReportSortColumn === col) {
+        if (trainingReportSortDir === "asc") {
+            trainingReportSortDir = "desc";
+        } else {
+            trainingReportSortColumn = "default";
+            trainingReportSortDir = "asc";
+        }
+    } else {
+        trainingReportSortColumn = col;
+        trainingReportSortDir = "asc";
+    }
+    renderTrainingReport(id);
+};
+
+// Klik header kolom di tabel "Rincian Feedback Evaluasi Peserta" buat sort by kolom itu — sama
+// persis polanya dengan window.setTrainingReportSort di atas.
+window.setTrainingFeedbackSort = function (col, id) {
+    if (trainingFeedbackSortColumn === col) {
+        if (trainingFeedbackSortDir === "asc") {
+            trainingFeedbackSortDir = "desc";
+        } else {
+            trainingFeedbackSortColumn = "default";
+            trainingFeedbackSortDir = "asc";
+        }
+    } else {
+        trainingFeedbackSortColumn = col;
+        trainingFeedbackSortDir = "asc";
+    }
+    renderTrainingReport(id);
+};
+
+// Search nama peserta di tabel "Rincian per Peserta" — sengaja murni manipulasi DOM (tanpa
+// render ulang seluruh halaman) supaya fokus & posisi kursor di kotak pencarian gak ke-reset
+// tiap admin ngetik satu huruf. Nomor urut baris ikut di-update biar tetap rapi sesuai baris
+// yang lagi kelihatan (bukan nomor asli sebelum difilter).
+window.filterTrainingReportParticipants = function (query) {
+    const tbody = document.getElementById("training-report-tbody");
+    if (!tbody) return;
+    const q = String(query || "").toLowerCase().trim();
+    const rows = [...tbody.querySelectorAll("tr[data-pname]")];
+    let visibleCount = 0;
+    rows.forEach(tr => {
+        const match = !q || tr.getAttribute("data-pname").includes(q);
+        tr.style.display = match ? "" : "none";
+        if (match) {
+            visibleCount++;
+            const numCell = tr.querySelector(".training-report-row-num");
+            if (numCell) numCell.textContent = visibleCount;
+        }
+    });
+    const emptyMsg = document.getElementById("training-report-search-empty");
+    if (emptyMsg) emptyMsg.classList.toggle("hide", !(rows.length > 0 && visibleCount === 0));
+};
 // Cache data lengkap (semua peserta) buat viewer non-admin, biar gak fetch ulang tiap ganti
 // filter "Semua/Sudah Hadir/Belum Hadir" (yang cuma re-render, bukan ganti training).
 let __trainingReportCache = null; // { id, data }
@@ -9548,43 +9710,73 @@ function renderTrainingReportContent(id, t) {
     }
 
     // ---- Card summary bergaya sama dengan Dashboard Admin (donut + panel gelap) ----
-    function ringStatCard(icon, color, pct, label, subLabel) {
+    // Tiap card sekarang bisa nerima `onclick` (opsional) yang diteruskan ke diagramStatCardDark
+    // biar cardnya jadi <button> dan bisa diklik buat buka popup rincian (lihat
+    // window.openTrainingReportCardDetail di bawah & pemanggilan cards di bawah ini).
+    function ringStatCard(icon, color, pct, label, subLabel, onclick) {
         const c = DONUT_STAT_COLORS[color] || DONUT_STAT_COLORS.indigo;
-        return diagramStatCardDark(icon, color, donutDiagramSvg(Math.max(0, Math.min(100, pct || 0)), c.hex), label, subLabel);
+        return diagramStatCardDark(icon, color, donutDiagramSvg(Math.max(0, Math.min(100, pct || 0)), c.hex), label, subLabel, onclick);
     }
-    function valueStatCardDark(icon, color, value, label, subLabel) {
-        return diagramStatCardDark(icon, color, `<span class="text-lg font-black text-white">${value}</span>`, label, subLabel);
+    function valueStatCardDark(icon, color, value, label, subLabel, onclick) {
+        return diagramStatCardDark(icon, color, `<span class="text-lg font-black text-white">${value}</span>`, label, subLabel, onclick);
     }
-    function ratingStatCardDark(icon, color, val, label) {
-        if (val === null) return diagramStatCardDark(icon, color, `<span class="text-lg font-black text-white/40">-</span>`, label, "Belum ada data");
+    function ratingStatCardDark(icon, color, val, label, onclick) {
+        if (val === null) return diagramStatCardDark(icon, color, `<span class="text-lg font-black text-white/40">-</span>`, label, "Belum ada data", onclick);
         const v = Math.round(val);
         const stars = [1, 2, 3, 4, 5].map(n => `<i class="fas fa-star text-[9px] ${n <= v ? 'text-amber-300' : 'text-white/20'}"></i>`).join("");
         const diagramHtml = `<div class="flex flex-col items-center gap-1.5"><span class="text-base font-black text-white leading-none">${val}</span><div class="flex gap-0.5">${stars}</div></div>`;
-        return diagramStatCardDark(icon, color, diagramHtml, label, `${val}/5`);
+        return diagramStatCardDark(icon, color, diagramHtml, label, `${val}/5`, onclick);
     }
 
-    // ---- Rincian feedback evaluasi per peserta (rating bintang & feedback teks per poin) ----
-    const feedbackCards = evals.length ? evals.map(e => {
+    // ---- Rincian feedback evaluasi per peserta (rating bintang & feedback teks per poin),
+    // ditampilkan sebagai tabel (bukan kartu) biar tetap ringkas kalau pesertanya banyak.
+    // Sama kayak tabel "Rincian per Peserta" di atas: ada nomor urut & tiap kolom bisa diklik
+    // buat sort (window.setTrainingFeedbackSort). ----
+    const feedbackRowsData = evals.map(e => {
         const r = e.ratings || {};
         const fb = e.feedbacks || {};
         const legacyComment = (!fb.materi && !fb.trainer && !fb.fasilitas) ? e.comment : null; // data lama sebelum feedback per-poin
-        const rows = [["Materi", r.materi, fb.materi], ["Trainer", r.trainer, fb.trainer], ["Fasilitas", r.fasilitas, fb.fasilitas]];
-        return `
-        <div class="border border-slate-100 rounded-2xl p-4">
-            <p class="text-sm font-bold text-slate-700 mb-2">${window.escapeHtml(e.userName || userName(e.userId))}</p>
-            <div class="space-y-2">
-                ${rows.map(([label, rating, feedback]) => `
-                    <div class="bg-slate-50 rounded-xl px-3 py-2">
-                        <div class="flex items-center justify-between gap-2">
-                            <span class="text-xs font-bold text-slate-600">${label}</span>
-                            <span>${starRow(rating)}</span>
-                        </div>
-                        ${feedback ? `<p class="text-xs text-slate-500 mt-1">${window.escapeHtml(feedback)}</p>` : ""}
-                    </div>`).join("")}
-                ${legacyComment ? `<div class="bg-slate-50 rounded-xl px-3 py-2"><span class="text-xs font-bold text-slate-600">Komentar</span><p class="text-xs text-slate-500 mt-1">${window.escapeHtml(legacyComment)}</p></div>` : ""}
-            </div>
-        </div>`;
-    }).join("") : `<p class="text-sm text-slate-400 text-center py-5">Belum ada evaluasi yang diisi peserta.</p>`;
+        return {
+            name: e.userName || userName(e.userId),
+            materiRating: r.materi || 0, materiFb: fb.materi || "",
+            trainerRating: r.trainer || 0, trainerFb: fb.trainer || "",
+            fasilitasRating: r.fasilitas || 0, fasilitasFb: fb.fasilitas || "",
+            komentar: legacyComment || "",
+        };
+    });
+    function feedbackSortValueOf(row, col) {
+        if (col === "nama") return row.name;
+        if (col === "materi") return row.materiRating;
+        if (col === "trainer") return row.trainerRating;
+        if (col === "fasilitas") return row.fasilitasRating;
+        if (col === "komentar") return row.komentar;
+        return 0;
+    }
+    if (trainingFeedbackSortColumn !== "default") {
+        feedbackRowsData.sort((a, b) => {
+            const av = feedbackSortValueOf(a, trainingFeedbackSortColumn);
+            const bv = feedbackSortValueOf(b, trainingFeedbackSortColumn);
+            let cmp = (typeof av === "string" || typeof bv === "string")
+                ? String(av).localeCompare(String(bv), "id", { sensitivity: "base" })
+                : (av - bv);
+            if (cmp === 0) cmp = String(a.name).localeCompare(String(b.name), "id", { sensitivity: "base" });
+            return trainingFeedbackSortDir === "desc" ? -cmp : cmp;
+        });
+    }
+    function feedbackRatingCell(rating, feedback) {
+        return `<td class="px-3 py-2.5 align-top">
+            <div class="mb-1">${starRow(rating)}</div>
+            <p class="text-xs text-slate-500 leading-snug">${feedback ? window.escapeHtml(feedback) : '<span class="text-slate-300">-</span>'}</p>
+        </td>`;
+    }
+    const feedbackRows = feedbackRowsData.length ? feedbackRowsData.map((row, rowIdx) => `<tr class="border-b border-slate-50 hover:bg-slate-50/60">
+            <td class="px-3 py-2.5 text-center align-top text-[11px] font-bold text-slate-400">${rowIdx + 1}</td>
+            <td class="px-3 py-2.5 text-xs font-bold text-slate-700 align-top whitespace-nowrap">${window.escapeHtml(row.name)}</td>
+            ${feedbackRatingCell(row.materiRating, row.materiFb)}
+            ${feedbackRatingCell(row.trainerRating, row.trainerFb)}
+            ${feedbackRatingCell(row.fasilitasRating, row.fasilitasFb)}
+            <td class="px-3 py-2.5 text-xs text-slate-500 align-top">${row.komentar ? window.escapeHtml(row.komentar) : '<span class="text-slate-300">-</span>'}</td>
+        </tr>`).join("") : `<tr><td colspan="6" class="text-center py-6 text-slate-400 text-sm">Belum ada evaluasi yang diisi peserta.</td></tr>`;
 
     // ---- Rincian per peserta terdaftar ----
     const totalLessons = totalLessonsOf(t);
@@ -9604,47 +9796,193 @@ function renderTrainingReportContent(id, t) {
         return steps.length ? Math.round((done / steps.length) * 100) : 0;
     }
 
-    const regsFiltered = regs.filter(r => {
-        if (trainingReportAttendanceFilter === "all") return true;
-        const has = !!attendanceOfUserForTraining(id, r.userId);
-        return trainingReportAttendanceFilter === "hadir" ? has : !has;
+    // ---- Sumber baris tabel = SEMUA karyawan yang termasuk target/diundang training ini
+    // (window.trainingTargetEmployees), BUKAN cuma yang sudah mendaftar — supaya laporan
+    // menunjukkan status lengkap tiap orang yang diundang, termasuk yang belum daftar/hadir
+    // sama sekali. Tiap karyawan dicocokkan ke akun user (login)-nya lewat username, sama
+    // seperti pola di window.openTrainingInvite. ----
+    const usersByUsernameForReport = {};
+    window.STATE.users.forEach(u => { usersByUsernameForReport[normalizeUsername(u.username)] = u; });
+
+    const invitedParticipants = targetEmployees.map(e => {
+        const user = usersByUsernameForReport[normalizeUsername(e.username)];
+        const userId = user ? user.id : null;
+        const reg2 = userId ? regOfUserForTraining(id, userId) : null;
+        const att = userId ? attendanceOfUserForTraining(id, userId) : null;
+        const name = (reg2 && reg2.userName) || e.nama || e.username || "Pengguna";
+        return { emp: e, userId, name, att };
     });
 
-    const detailRows = regsFiltered.map(r => {
-        const att = attendanceOfUserForTraining(id, r.userId);
-        const pre = pretestAttemptOfUserTraining(id, r.userId);
-        const postList = postTestAttemptsOfUserTraining(id, r.userId);
+    const regsFiltered = invitedParticipants.filter(p => {
+        if (trainingReportAttendanceFilter === "all") return true;
+        return trainingReportAttendanceFilter === "hadir" ? !!p.att : !p.att;
+    });
+
+    // ---- KPI bulan sebelum training s/d bulan berjalan, beserta status naik/turunnya per
+    // peserta — reuse computeTrainingGrowth & pola tabel yang sama persis dengan "Rincian per
+    // Peserta" di halaman Efektivitas Training TNA per Training, biar angka & tampilannya
+    // konsisten di kedua halaman. ----
+    const growth = computeTrainingGrowth(t);
+    const growthNotEligibleSub = growth.reason === "no-prev-month" ? "Tidak ada bulan pembanding" : "Data KPI belum cukup";
+    const effColor = !growth.eligible ? "slate" : (growth.effectivenessPct >= 50 ? "emerald" : (growth.effectivenessPct > 0 ? "amber" : "rose"));
+    const growthByUserId = {};
+    growth.rows.forEach(gr => { growthByUserId[gr.userId] = gr; });
+
+    const kpiMonthsToShow = growth.eligible ? (() => {
+        const kpiTrainingYear = new Date(t.date).getFullYear();
+        const kpiNow = new Date();
+        const kpiCurrentMonth = kpiNow.getFullYear() === kpiTrainingYear ? kpiNow.getMonth() + 1 : 12;
+        const arr = [];
+        for (let m = growth.beforeMonth; m <= kpiCurrentMonth; m++) arr.push(m);
+        return arr;
+    })() : [];
+    const kpiColCount = growth.eligible ? kpiMonthsToShow.length : 1;
+
+    // Header kolom yang bisa diklik buat sort (ikon panah kecil naik/turun nunjukin status
+    // sort kolom itu). Klik header manapun -> renderTrainingReport dipanggil ulang lewat
+    // window.setTrainingReportSort, jadi urutan barisnya dihitung ulang di bawah.
+    function sortThHtml(label, col, opts) {
+        opts = opts || {};
+        const active = trainingReportSortColumn === col;
+        const icon = active ? (trainingReportSortDir === "asc" ? "fa-sort-up text-amber-500" : "fa-sort-down text-amber-500") : "fa-sort text-slate-300";
+        return `<th onclick="window.setTrainingReportSort('${col}','${id}')" class="px-3 py-2.5 bg-slate-50 cursor-pointer select-none hover:text-slate-600 ${opts.center ? 'text-center' : ''}" title="Urutkan berdasarkan ${window.escapeHtml(label)}"><span class="inline-flex items-center gap-1 whitespace-nowrap">${window.escapeHtml(label)} <i class="fas ${icon}"></i></span></th>`;
+    }
+
+    // Header kolom sortable buat tabel "Rincian Feedback Evaluasi Peserta" — sama polanya
+    // dengan sortThHtml di atas, tapi pakai state trainingFeedbackSortColumn/Dir sendiri.
+    function feedbackSortThHtml(label, col, opts) {
+        opts = opts || {};
+        const active = trainingFeedbackSortColumn === col;
+        const icon = active ? (trainingFeedbackSortDir === "asc" ? "fa-sort-up text-amber-500" : "fa-sort-down text-amber-500") : "fa-sort text-slate-300";
+        return `<th onclick="window.setTrainingFeedbackSort('${col}','${id}')" class="px-3 py-2.5 bg-slate-50 cursor-pointer select-none hover:text-slate-600 ${opts.center ? 'text-center' : ''}" title="Urutkan berdasarkan ${window.escapeHtml(label)}"><span class="inline-flex items-center gap-1 whitespace-nowrap">${window.escapeHtml(label)} <i class="fas ${icon}"></i></span></th>`;
+    }
+
+    const kpiColHeadHtml = growth.eligible
+        ? kpiMonthsToShow.map((m, idx) => {
+            const tag = idx === 0 ? " (Sebelum)" : (m === growth.month ? " (Training)" : "");
+            return sortThHtml(`KPI ${KPI_MONTH_NAMES_FULL[m - 1]}${tag}`, `kpi${idx}`, { center: true, nowrap: true });
+        }).join("")
+        : `<th class="px-3 py-2.5 text-center whitespace-nowrap bg-slate-50">KPI Growth</th>`;
+
+    // ---- Bangun data per baris DULU (bukan langsung HTML) supaya bisa disort berdasarkan
+    // kolom apapun yang diklik admin, baru setelah urut baru dirender jadi HTML. ----
+    const rowsData = regsFiltered.map(p => {
+        const userId = p.userId;
+        const att = p.att;
+        const pre = userId ? pretestAttemptOfUserTraining(id, userId) : null;
+        const postList = userId ? postTestAttemptsOfUserTraining(id, userId) : [];
         const post = postList[0] || null;
-        const asub = reportData("assignmentSubmissions").find(s => s.trainingId === id && s.userId === r.userId) || null;
-        const ev = evalOfUserForTraining(id, r.userId);
-        const cert = certOfUserForTraining(id, r.userId);
-        const progress = participantProgress(r.userId, att, pre, post, asub, ev, cert);
+        const asub = userId ? (reportData("assignmentSubmissions").find(s => s.trainingId === id && s.userId === userId) || null) : null;
+        const ev = userId ? evalOfUserForTraining(id, userId) : null;
+        const cert = userId ? certOfUserForTraining(id, userId) : null;
+        const progress = participantProgress(userId, att, pre, post, asub, ev, cert);
         const postLocked = hasQuizForProgress && postList.length >= MAX_POSTTEST_ATTEMPTS && !(post && post.passed);
         const oldestFailedAttemptId = postLocked ? postList[postList.length - 1].id : null;
-        return `<tr class="border-b border-slate-50 hover:bg-slate-50/60">
-            <td class="px-3 py-2.5 text-sm font-bold text-slate-700">${window.escapeHtml(r.userName || userName(r.userId))}</td>
-            <td class="px-3 py-2.5 text-center">${att ? '<i class="fas fa-circle-check text-emerald-500"></i>' : '<i class="fas fa-circle-xmark text-slate-300"></i>'}</td>
-            <td class="px-3 py-2.5 text-center text-xs text-slate-600">${pre ? pre.score : '-'}</td>
-            <td class="px-3 py-2.5 text-center text-xs text-slate-600">
+
+        // Kolom KPI per bulan + status Naik/Turun: sama persis rumus & tampilannya dengan
+        // "Rincian per Peserta" di halaman Efektivitas Training TNA per Training — cuma keisi
+        // buat peserta yang HADIR (growth.rows cuma berisi peserta hadir). Peserta yang BELUM
+        // training (belum hadir) sengaja dikosongkan total kolom KPI-nya (tanpa isi apapun).
+        const emp = p.emp;
+        const gRow = userId ? (growthByUserId[userId] || null) : null;
+        const baseline = gRow && gRow.hasData ? gRow.before : null;
+        let kpiCellsHtml;
+        const kpiValues = []; // dipakai buat sort per kolom KPI, sejajar index-nya dgn kpiMonthsToShow
+        if (!growth.eligible) {
+            kpiCellsHtml = `<td class="px-3 py-2.5 text-center align-top text-[10px] text-slate-400 whitespace-nowrap">${growthNotEligibleSub}</td>`;
+        } else if (!att) {
+            kpiCellsHtml = kpiMonthsToShow.map(() => `<td class="px-3 py-2.5 text-center align-top whitespace-nowrap"></td>`).join("");
+            kpiMonthsToShow.forEach(() => kpiValues.push(null));
+        } else {
+            kpiCellsHtml = kpiMonthsToShow.map((m, idx) => {
+                const raw = emp && emp.kpi ? (emp.kpi[m] ?? emp.kpi[String(m)]) : undefined;
+                const val = kpiToPct(raw);
+                const hasValue = val !== null;
+                kpiValues.push(hasValue ? val : null);
+                if (idx === 0) {
+                    // Kolom bulan sebelum training = baseline, tanpa keterangan naik/turun.
+                    return `<td class="px-3 py-2.5 text-center align-top text-xs text-slate-600 whitespace-nowrap">${hasValue ? val + "%" : "-"}</td>`;
+                }
+                if (!hasValue) {
+                    return `<td class="px-3 py-2.5 text-center align-top text-xs text-slate-300 whitespace-nowrap">-</td>`;
+                }
+                if (baseline === null) {
+                    return `<td class="px-3 py-2.5 text-center align-top text-xs text-slate-600 whitespace-nowrap">${val}%<p class="text-[9px] text-slate-400 font-normal">Data tidak lengkap</p></td>`;
+                }
+                const diff = Math.round((val - baseline) * 10) / 10;
+                const ketHtml = diff > 0
+                    ? `<p class="text-[9px] text-emerald-600 font-bold">Naik (+${diff}%)</p>`
+                    : (diff < 0
+                        ? `<p class="text-[9px] text-rose-500 font-bold">Turun (${diff}%)</p>`
+                        : `<p class="text-[9px] text-slate-400 font-bold">Tetap</p>`);
+                return `<td class="px-3 py-2.5 text-center align-top text-xs text-slate-600 whitespace-nowrap">${val}%${ketHtml}</td>`;
+            }).join("");
+        }
+
+        return {
+            p, userId, att, pre, post, postList, asub, cert, progress, postLocked, oldestFailedAttemptId,
+            kpiCellsHtml, kpiValues, name: p.name
+        };
+    });
+
+    // ---- Sort: default = peserta HADIR dulu lalu nama A-Z. Kalau admin klik salah satu
+    // header kolom, urutkan berdasarkan nilai kolom itu (ascending/descending sesuai
+    // trainingReportSortDir), dengan nama A-Z sebagai tie-breaker. ----
+    function sortValueOf(row, col) {
+        if (col === "nama") return String(row.name).toLowerCase();
+        if (col === "hadir") return row.att ? 1 : 0;
+        if (col === "pretest") return row.pre ? row.pre.score : -1;
+        if (col === "posttest") return row.post ? row.post.score : -1;
+        if (col === "tugas") return (row.asub && row.asub.status === "graded") ? row.asub.score : -1;
+        if (col === "progress") return row.progress;
+        if (col === "status") return row.cert ? 1 : 0;
+        if (col && col.indexOf("kpi") === 0) {
+            const idx = parseInt(col.slice(3), 10);
+            const v = row.kpiValues[idx];
+            return (v === null || v === undefined) ? -1 : v;
+        }
+        return 0;
+    }
+    rowsData.sort((a, b) => {
+        if (trainingReportSortColumn === "default") {
+            if (!!a.att !== !!b.att) return a.att ? -1 : 1;
+            return String(a.name).localeCompare(String(b.name), "id", { sensitivity: "base" });
+        }
+        const av = sortValueOf(a, trainingReportSortColumn);
+        const bv = sortValueOf(b, trainingReportSortColumn);
+        let cmp = (typeof av === "string" || typeof bv === "string")
+            ? String(av).localeCompare(String(bv), "id", { sensitivity: "base" })
+            : (av - bv);
+        if (cmp === 0) cmp = String(a.name).localeCompare(String(b.name), "id", { sensitivity: "base" });
+        return trainingReportSortDir === "desc" ? -cmp : cmp;
+    });
+
+    const detailRows = rowsData.map((row, rowIdx) => {
+        const { userId, att, pre, post, postList, asub, cert, progress, postLocked, oldestFailedAttemptId, kpiCellsHtml, name } = row;
+        return `<tr class="border-b border-slate-50 hover:bg-slate-50/60" data-pname="${window.escapeHtml(String(name).toLowerCase())}">
+            <td class="px-3 py-2.5 text-center align-top text-[11px] font-bold text-slate-400 training-report-row-num">${rowIdx + 1}</td>
+            <td class="px-3 py-2.5 text-xs font-bold text-slate-700 align-top whitespace-nowrap">${window.escapeHtml(name)}</td>
+            <td class="px-3 py-2.5 text-center align-top whitespace-nowrap">
+                ${att ? '<i class="fas fa-circle-check text-emerald-500"></i>' : '<i class="fas fa-circle-xmark text-slate-300"></i>'}
+                ${(window.sel.isAdmin() && !att && userId) ? `<button onclick="window.guardedClick(this, () => window.sendAttendanceReminder('${id}','${userId}'))" title="Kirim Reminder Kehadiran via WhatsApp" class="text-amber-500 hover:text-amber-700 ml-1"><i class="fab fa-whatsapp"></i></button>` : ''}
+            </td>
+            <td class="px-3 py-2.5 text-center align-top text-xs text-slate-600">${pre ? pre.score : '-'}</td>
+            <td class="px-3 py-2.5 text-center align-top text-xs text-slate-600 whitespace-nowrap">
                 ${post ? `${post.score} ${post.passed ? '<span class="text-emerald-600 font-bold">(Lulus)</span>' : '<span class="text-rose-500 font-bold">(Belum)</span>'}` : '-'}
                 ${hasQuizForProgress ? `<div class="text-[10px] text-slate-400 mt-0.5">${postList.length}/${MAX_POSTTEST_ATTEMPTS}x percobaan</div>` : ''}
+                ${(window.sel.isAdmin() && postLocked) ? `<button onclick="window.guardedClick(this, () => window.adminDeleteQuizAttempt('${oldestFailedAttemptId}'))" title="Sudah ${MAX_POSTTEST_ATTEMPTS}x gagal post-test — hapus 1 percobaan supaya bisa mengulang" class="text-rose-400 hover:text-rose-600 mt-0.5"><i class="fas fa-rotate-left"></i></button>` : ''}
             </td>
-            <td class="px-3 py-2.5 text-center text-xs text-slate-600">${asub ? (asub.status === 'graded' ? asub.score : 'Menunggu nilai') : '-'}</td>
-            <td class="px-3 py-2.5 text-center">${ev ? '<i class="fas fa-circle-check text-emerald-500"></i>' : '<i class="fas fa-circle-xmark text-slate-300"></i>'}</td>
-            <td class="px-3 py-2.5">
+            <td class="px-3 py-2.5 text-center align-top text-xs text-slate-600">${asub ? (asub.status === 'graded' ? asub.score : 'Menunggu nilai') : '-'}</td>
+            <td class="px-3 py-2.5 align-top">
                 <div class="flex items-center gap-2">
                     <div class="w-16 bg-slate-100 rounded-full h-1.5 overflow-hidden shrink-0"><div class="h-1.5 ${progress >= 100 ? 'bg-emerald-500' : 'bg-amber-400'}" style="width:${progress}%"></div></div>
                     <span class="text-[10px] font-black text-slate-500 shrink-0">${progress}%</span>
                 </div>
             </td>
-            <td class="px-3 py-2.5 text-center"><span class="text-[10px] font-black px-2 py-1 rounded-full ${cert ? 'bg-emerald-50 text-emerald-600' : 'bg-amber-50 text-amber-600'}">${cert ? 'Lulus' : 'Proses'}</span></td>
-            <td class="px-3 py-2.5 text-center whitespace-nowrap">
-                ${(window.sel.isAdmin() && !att) ? `<button onclick="window.guardedClick(this, () => window.sendAttendanceReminder('${id}','${r.userId}'))" title="Kirim Reminder Kehadiran via WhatsApp" class="text-amber-500 hover:text-amber-700 mx-1"><i class="fab fa-whatsapp"></i></button>` : ''}
-                ${(window.sel.isAdmin() && postLocked) ? `<button onclick="window.guardedClick(this, () => window.adminDeleteQuizAttempt('${oldestFailedAttemptId}'))" title="Sudah ${MAX_POSTTEST_ATTEMPTS}x gagal post-test — hapus 1 percobaan supaya bisa mengulang" class="text-rose-400 hover:text-rose-600 mx-1"><i class="fas fa-rotate-left"></i></button>` : ''}
-                ${(window.sel.isAdmin() && (att || postLocked)) ? '' : '<span class="text-slate-200 text-xs">-</span>'}
-            </td>
+            <td class="px-3 py-2.5 text-center align-top"><span class="text-[10px] font-black px-2 py-1 rounded-full ${cert ? 'bg-emerald-50 text-emerald-600' : 'bg-amber-50 text-amber-600'}">${cert ? 'Lulus' : 'Proses'}</span></td>
+            ${kpiCellsHtml}
         </tr>`;
-    }).join("") || `<tr><td colspan="9" class="text-center py-6 text-slate-400 text-sm">${trainingReportAttendanceFilter === "all" ? "Belum ada peserta terdaftar" : "Tidak ada peserta yang cocok dengan filter ini"}</td></tr>`;
+    }).join("") || `<tr><td colspan="${8 + kpiColCount}" class="text-center py-6 text-slate-400 text-sm">${trainingReportAttendanceFilter === "all" ? "Belum ada karyawan yang termasuk target peserta training ini" : "Tidak ada peserta yang cocok dengan filter ini"}</td></tr>`;
 
     const isAdminViewer = window.sel.isAdmin();
     window.setPage(`
@@ -9669,55 +10007,223 @@ function renderTrainingReportContent(id, t) {
         </div>
 
         ${(() => {
+            // growth, growthNotEligibleSub, effColor sudah dihitung di atas (dipakai juga
+            // buat kolom KPI Sebelum/Sesudah & Status Growth di tabel Rincian per Peserta).
+            // Urutan card mengikuti alur Kirkpatrick: (1) pelaksanaan/kehadiran & kelulusan,
+            // (2) Level 1 Reaction — rating feedback dikumpulkan jadi satu grup (overall lalu
+            // per poin), (3) Level 2 Learning — pre/post-test & tugas, (4) Level 3-4
+            // Behavior/Results — dampak ke KPI (Peserta KPI Naik & Efektivitas) di paling akhir.
+            // Simpan data mentah di belakang tiap card ke variabel global, supaya waktu salah
+            // satu card diklik, popup-nya (window.openTrainingReportCardDetail) tinggal baca
+            // dari sini — gak perlu itung ulang & otomatis selalu konsisten sama angka yang
+            // lagi ditampilkan di card (termasuk pas admin lagi apply filter Sudah/Belum Hadir).
+            window.__trainingReportCardDetail = { t, invitedParticipants, rowsData, growth, evals, hasAssignmentFeature };
+            const clickFn = (kind) => `window.openTrainingReportCardDetail('${kind}')`;
+
             const cards = [
-                valueStatCardDark("fa-users", "indigo", targetCount, "Jumlah Target Peserta", ""),
-                ringStatCard("fa-user-check", "emerald", attendancePct, "Kehadiran (Jumlah & %)", `${attendedCount}/${targetCount}`),
-                ringStatCard("fa-graduation-cap", "amber", passPct, "Kelulusan (dari yang Hadir)", `${passCount}/${attendedCount}`),
-                ratingStatCardDark("fa-star", "amber", avgRating, "Rata-rata Rating Feedback"),
+                valueStatCardDark("fa-users", "indigo", targetCount, "Jumlah Target Peserta", "", clickFn("target")),
+                ringStatCard("fa-user-check", "emerald", attendancePct, "Kehadiran (Jumlah & %)", `${attendedCount}/${targetCount}`, clickFn("attendance")),
+                ringStatCard("fa-graduation-cap", "amber", passPct, "Kelulusan (dari yang Hadir)", `${passCount}/${attendedCount}`, clickFn("pass")),
+                ratingStatCardDark("fa-star", "amber", avgRating, "Rata-rata Rating Feedback", clickFn("rating-overall")),
+                ratingStatCardDark("fa-book-open", "indigo", avgMateri, "Rating Materi", clickFn("rating-materi")),
+                ratingStatCardDark("fa-chalkboard-user", "amber", avgTrainer, "Rating Trainer", clickFn("rating-trainer")),
+                ratingStatCardDark("fa-building", "emerald", avgFasilitas, "Rating Fasilitas", clickFn("rating-fasilitas")),
             ];
-            if (avgPre !== null || avgPost !== null) cards.push(diagramStatCardDark("fa-chart-line", "violet", prePostBarDiagramSvg(avgPre || 0, avgPost || 0), "Progress Pre & Post-test", `${avgPre !== null ? avgPre : '-'} → ${avgPost !== null ? avgPost : '-'}`));
-            if (hasAssignmentFeature) cards.push(ringStatCard("fa-file-signature", "indigo", assignmentPct, "Penyelesaian Tugas", `${assignmentSubmittedCount}/${targetCount}`));
-            cards.push(ratingStatCardDark("fa-book-open", "indigo", avgMateri, "Rating Materi"));
-            cards.push(ratingStatCardDark("fa-chalkboard-user", "amber", avgTrainer, "Rating Trainer"));
-            cards.push(ratingStatCardDark("fa-building", "emerald", avgFasilitas, "Rating Fasilitas"));
+            if (avgPre !== null || avgPost !== null) cards.push(diagramStatCardDark("fa-chart-line", "violet", prePostBarDiagramSvg(avgPre || 0, avgPost || 0), "Progress Pre & Post-test", `${avgPre !== null ? avgPre : '-'} → ${avgPost !== null ? avgPost : '-'}`, clickFn("prepost")));
+            if (hasAssignmentFeature) cards.push(ringStatCard("fa-file-signature", "indigo", assignmentPct, "Penyelesaian Tugas", `${assignmentSubmittedCount}/${targetCount}`, clickFn("assignment")));
+            cards.push(valueStatCardDark("fa-arrow-trend-up", "emerald", growth.eligible ? growth.naikCount : "-", "Peserta KPI Naik", growth.eligible ? `dari ${growth.attendedCount} hadir` : growthNotEligibleSub, clickFn("kpi-naik")));
+            cards.push(ringStatCard("fa-percent", effColor, growth.eligible ? growth.effectivenessPct : 0, "Efektivitas (%)", growth.eligible ? `${growth.naikCount}/${growth.attendedCount} naik` : growthNotEligibleSub, clickFn("efektivitas")));
             return `<div class="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">${cards.join("")}</div>`;
         })()}
 
         <div class="bg-white rounded-3xl border border-slate-100 shadow-sm p-4 mb-4">
             <div class="flex items-center justify-between flex-wrap gap-2 mb-3">
-                <h3 class="font-black text-sm text-slate-700">Rincian per Peserta Terdaftar</h3>
+                <h3 class="font-black text-sm text-slate-700">Rincian per Peserta</h3>
                 <div class="flex gap-1 bg-slate-100 rounded-xl p-1">
                     <button onclick="trainingReportAttendanceFilter='all'; renderTrainingReport('${id}')" class="text-[11px] font-bold px-2.5 py-1.5 rounded-lg transition ${trainingReportAttendanceFilter === 'all' ? 'bg-white shadow text-slate-700' : 'text-slate-500'}">Semua</button>
                     <button onclick="trainingReportAttendanceFilter='hadir'; renderTrainingReport('${id}')" class="text-[11px] font-bold px-2.5 py-1.5 rounded-lg transition ${trainingReportAttendanceFilter === 'hadir' ? 'bg-white shadow text-emerald-600' : 'text-slate-500'}">Sudah Hadir</button>
                     <button onclick="trainingReportAttendanceFilter='belum'; renderTrainingReport('${id}')" class="text-[11px] font-bold px-2.5 py-1.5 rounded-lg transition ${trainingReportAttendanceFilter === 'belum' ? 'bg-white shadow text-rose-600' : 'text-slate-500'}">Belum Hadir</button>
                 </div>
             </div>
-            <div class="overflow-x-auto">
+            <div class="mb-3">
+                <div class="relative w-full sm:w-64">
+                    <i class="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-slate-300 text-[11px]"></i>
+                    <input type="text" oninput="window.filterTrainingReportParticipants(this.value)" placeholder="Cari nama peserta..." class="w-full pl-8 pr-3 py-2 text-xs rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-amber-200">
+                </div>
+            </div>
+
+            <div class="overflow-auto rounded-xl border border-slate-100" style="max-height: 560px;">
                 <table class="w-full text-left">
-                    <thead class="bg-slate-50 text-[10px] font-black uppercase text-slate-400">
+                    <thead class="bg-slate-50 text-[10px] font-black uppercase text-slate-400 sticky top-0 z-10 shadow-sm">
                         <tr>
-                            <th class="px-3 py-2.5">Nama</th>
-                            <th class="px-3 py-2.5 text-center">Hadir</th>
-                            <th class="px-3 py-2.5 text-center">Pre-test</th>
-                            <th class="px-3 py-2.5 text-center">Post-test</th>
-                            <th class="px-3 py-2.5 text-center">Tugas</th>
-                            <th class="px-3 py-2.5 text-center">Evaluasi</th>
-                            <th class="px-3 py-2.5">Progress</th>
-                            <th class="px-3 py-2.5 text-center">Status</th>
-                            <th class="px-3 py-2.5 text-center">Aksi</th>
+                            <th class="px-3 py-2.5 text-center bg-slate-50">No</th>
+                            ${sortThHtml("Nama", "nama")}
+                            ${sortThHtml("Hadir", "hadir", { center: true })}
+                            ${sortThHtml("Pre-test", "pretest", { center: true })}
+                            ${sortThHtml("Post-test", "posttest", { center: true })}
+                            ${sortThHtml("Tugas", "tugas", { center: true })}
+                            ${sortThHtml("Progress", "progress")}
+                            ${sortThHtml("Status", "status", { center: true })}
+                            ${kpiColHeadHtml}
                         </tr>
                     </thead>
-                    <tbody>${detailRows}</tbody>
+                    <tbody id="training-report-tbody">${detailRows}</tbody>
                 </table>
             </div>
+            <p id="training-report-search-empty" class="hide text-center text-xs text-slate-400 py-4">Tidak ada peserta yang cocok dengan pencarian.</p>
         </div>
 
         <div class="bg-white rounded-3xl border border-slate-100 shadow-sm p-4">
             <h3 class="font-black text-sm text-slate-700 mb-3"><i class="fas fa-comment-dots text-amber-400 mr-1"></i> Rincian Feedback Evaluasi Peserta</h3>
-            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">${feedbackCards}</div>
+            <div class="overflow-x-auto">
+                <table class="w-full text-left">
+                    <thead class="bg-slate-50 text-[10px] font-black uppercase text-slate-400">
+                        <tr>
+                            <th class="px-3 py-2.5 text-center bg-slate-50">No</th>
+                            ${feedbackSortThHtml("Nama", "nama")}
+                            ${feedbackSortThHtml("Materi", "materi")}
+                            ${feedbackSortThHtml("Trainer", "trainer")}
+                            ${feedbackSortThHtml("Fasilitas", "fasilitas")}
+                            ${feedbackSortThHtml("Komentar", "komentar")}
+                        </tr>
+                    </thead>
+                    <tbody>${feedbackRows}</tbody>
+                </table>
+            </div>
         </div>
     `);
 }
+
+// Isi & buka modal detail (reuse "modal-dashboard-detail", sama kayak
+// window.openEmployeeStatDetail / window.openOnboardingScheduleDetail) waktu salah satu card
+// ringkasan di halaman Laporan Keterlaksanaan Training TNA diklik. Datanya dibaca dari
+// window.__trainingReportCardDetail yang diisi ulang tiap kali renderTrainingReportContent()
+// jalan, jadi otomatis konsisten sama angka yang lagi ditampilkan di card (termasuk filter
+// Sudah/Belum Hadir yang lagi aktif).
+// kind: 'target' | 'attendance' | 'pass' | 'rating-overall' | 'rating-materi' |
+//       'rating-trainer' | 'rating-fasilitas' | 'prepost' | 'assignment' | 'kpi-naik' | 'efektivitas'
+window.openTrainingReportCardDetail = function (kind) {
+    const titleEl = document.getElementById("dashboard-detail-title");
+    const bodyEl = document.getElementById("dashboard-detail-body");
+    const data = window.__trainingReportCardDetail;
+    if (!titleEl || !bodyEl || !data) return;
+    const { invitedParticipants, rowsData, growth, evals, hasAssignmentFeature } = data;
+
+    function starsHtml(val) {
+        const v = Math.round(val || 0);
+        return [1, 2, 3, 4, 5].map(n => `<i class="fas fa-star text-[9px] ${n <= v ? "text-amber-400" : "text-slate-200"}"></i>`).join("");
+    }
+    function emptyMsg(icon, text) {
+        return `<div class="text-center py-10 text-slate-400"><i class="fas ${icon} text-3xl mb-2"></i><p class="font-bold text-sm">${text}</p></div>`;
+    }
+    function personRow(name, subtitle, right) {
+        return `
+        <div class="flex items-center justify-between gap-3 p-3 rounded-2xl border border-slate-100 hover:bg-slate-50/60 transition">
+            <div class="min-w-0">
+                <p class="text-sm font-bold text-slate-700 truncate">${window.escapeHtml(name || "-")}</p>
+                ${subtitle ? `<p class="text-[11px] text-slate-400 truncate">${window.escapeHtml(subtitle)}</p>` : ""}
+            </div>
+            ${right}
+        </div>`;
+    }
+
+    if (kind === "target" || kind === "attendance") {
+        titleEl.innerHTML = kind === "target" ? `<i class="fas fa-users mr-1"></i> Target Peserta Training` : `<i class="fas fa-user-check mr-1"></i> Kehadiran Peserta`;
+        const list = invitedParticipants.slice().sort((a, b) => {
+            if (kind === "attendance" && !!a.att !== !!b.att) return a.att ? -1 : 1;
+            return String(a.name).localeCompare(String(b.name), "id", { sensitivity: "base" });
+        });
+        bodyEl.innerHTML = list.length ? list.map(p => personRow(p.name, p.emp ? p.emp.dept : "", p.att
+            ? `<span class="shrink-0 text-[10px] font-black px-2 py-1 rounded-full bg-emerald-50 text-emerald-600"><i class="fas fa-check mr-1"></i>Hadir</span>`
+            : `<span class="shrink-0 text-[10px] font-black px-2 py-1 rounded-full bg-slate-100 text-slate-500">Belum Hadir</span>`
+        )).join("") : emptyMsg("fa-users", "Belum ada target peserta untuk training ini.");
+    }
+
+    else if (kind === "pass") {
+        titleEl.innerHTML = `<i class="fas fa-graduation-cap mr-1"></i> Kelulusan Peserta (dari yang Hadir)`;
+        const list = rowsData.filter(r => r.att).slice().sort((a, b) => {
+            if (!!a.cert !== !!b.cert) return a.cert ? -1 : 1;
+            return String(a.p.name).localeCompare(String(b.p.name), "id", { sensitivity: "base" });
+        });
+        bodyEl.innerHTML = list.length ? list.map(r => personRow(r.p.name, r.p.emp ? r.p.emp.dept : "", r.cert
+            ? `<span class="shrink-0 text-[10px] font-black px-2 py-1 rounded-full bg-emerald-50 text-emerald-600">Lulus</span>`
+            : `<span class="shrink-0 text-[10px] font-black px-2 py-1 rounded-full bg-amber-50 text-amber-600">Proses</span>`
+        )).join("") : emptyMsg("fa-graduation-cap", "Belum ada peserta yang hadir.");
+    }
+
+    else if (kind === "rating-overall" || kind === "rating-materi" || kind === "rating-trainer" || kind === "rating-fasilitas") {
+        const meta = {
+            "rating-overall": { title: "Rata-rata Rating Feedback (Keseluruhan)", icon: "fa-star" },
+            "rating-materi": { title: "Rincian Rating Materi", icon: "fa-book-open" },
+            "rating-trainer": { title: "Rincian Rating Trainer", icon: "fa-chalkboard-user" },
+            "rating-fasilitas": { title: "Rincian Rating Fasilitas", icon: "fa-building" },
+        }[kind];
+        titleEl.innerHTML = `<i class="fas ${meta.icon} mr-1"></i> ${meta.title}`;
+        const list = (evals || []).slice().sort((a, b) => (b.submittedAt?.seconds || 0) - (a.submittedAt?.seconds || 0));
+        bodyEl.innerHTML = list.length ? list.map(e => {
+            const name = e.userName || userName(e.userId);
+            const r = e.ratings || {};
+            const fb = e.feedbacks || {};
+            let val, feedbackText;
+            if (kind === "rating-overall") {
+                const vals = [r.materi, r.trainer, r.fasilitas].filter(v => typeof v === "number");
+                val = vals.length ? Math.round((vals.reduce((a2, b2) => a2 + b2, 0) / vals.length) * 10) / 10 : 0;
+                feedbackText = (!fb.materi && !fb.trainer && !fb.fasilitas) ? e.comment : null;
+            } else {
+                const key = kind.split("-")[1];
+                val = r[key] || 0;
+                feedbackText = fb[key] || null;
+            }
+            return `
+            <div class="p-3 rounded-2xl border border-slate-100 hover:bg-amber-50/40 transition">
+                <div class="flex items-center justify-between gap-3">
+                    <p class="text-sm font-bold text-slate-700 truncate">${window.escapeHtml(name)}</p>
+                    <div class="shrink-0 flex items-center gap-1.5"><span class="text-xs font-black text-amber-600">${val}</span><div class="flex gap-0.5">${starsHtml(val)}</div></div>
+                </div>
+                ${feedbackText ? `<p class="text-xs text-slate-500 leading-snug mt-1">${window.escapeHtml(feedbackText)}</p>` : ""}
+            </div>`;
+        }).join("") : emptyMsg("fa-star", "Belum ada evaluasi yang diisi peserta.");
+    }
+
+    else if (kind === "prepost") {
+        titleEl.innerHTML = `<i class="fas fa-chart-line mr-1"></i> Rincian Pre & Post-test`;
+        const list = rowsData.filter(r => r.pre || r.post);
+        bodyEl.innerHTML = list.length ? list.map(r => {
+            const preScore = r.pre ? r.pre.score : null;
+            const postScore = r.post ? r.post.score : null;
+            const delta = (typeof preScore === "number" && typeof postScore === "number") ? postScore - preScore : null;
+            const trendHtml = delta === null ? "" : `<span class="text-[10px] font-bold ${delta >= 0 ? "text-emerald-500" : "text-rose-500"}">${delta >= 0 ? "+" : ""}${delta}</span>`;
+            return personRow(r.p.name, r.p.emp ? r.p.emp.dept : "", `<div class="shrink-0 text-right"><p class="text-xs font-black text-slate-700">${preScore ?? "-"} → ${postScore ?? "-"}</p>${trendHtml}</div>`);
+        }).join("") : emptyMsg("fa-chart-line", "Belum ada data pre/post-test.");
+    }
+
+    else if (kind === "assignment") {
+        titleEl.innerHTML = `<i class="fas fa-file-signature mr-1"></i> Rincian Penyelesaian Tugas`;
+        const list = rowsData.filter(r => r.att);
+        bodyEl.innerHTML = list.length ? list.map(r => {
+            const badge = r.asub
+                ? (r.asub.status === "graded" ? `<span class="shrink-0 text-[10px] font-black px-2 py-1 rounded-full bg-emerald-50 text-emerald-600">Nilai ${r.asub.score ?? "-"}</span>` : `<span class="shrink-0 text-[10px] font-black px-2 py-1 rounded-full bg-amber-50 text-amber-600">Menunggu Nilai</span>`)
+                : `<span class="shrink-0 text-[10px] font-black px-2 py-1 rounded-full bg-slate-100 text-slate-500">Belum Kumpul</span>`;
+            return personRow(r.p.name, r.p.emp ? r.p.emp.dept : "", badge);
+        }).join("") : emptyMsg("fa-file-signature", hasAssignmentFeature ? "Belum ada peserta yang hadir." : "Training ini tidak punya fitur Tugas.");
+    }
+
+    else if (kind === "kpi-naik" || kind === "efektivitas") {
+        titleEl.innerHTML = kind === "kpi-naik" ? `<i class="fas fa-arrow-trend-up mr-1"></i> Peserta dengan KPI Naik` : `<i class="fas fa-percent mr-1"></i> Rincian Efektivitas Training`;
+        const rows = kind === "kpi-naik" ? (growth.rows || []).filter(r => r.naik) : (growth.rows || []);
+        const list = rows.slice().sort((a, b) => String(a.name || "").localeCompare(String(b.name || ""), "id", { sensitivity: "base" }));
+        bodyEl.innerHTML = list.length ? list.map(r => {
+            const badge = !r.hasData
+                ? `<span class="shrink-0 text-[10px] font-black px-2 py-1 rounded-full bg-slate-100 text-slate-500">Data Tidak Lengkap</span>`
+                : r.naik
+                ? `<span class="shrink-0 text-[10px] font-black px-2 py-1 rounded-full bg-emerald-50 text-emerald-600">Naik (+${r.growth}%)</span>`
+                : `<span class="shrink-0 text-[10px] font-black px-2 py-1 rounded-full bg-rose-50 text-rose-500">${r.growth < 0 ? "Turun" : "Tetap"} (${r.growth}%)</span>`;
+            return personRow(r.name, r.hasData ? `${r.before}% → ${r.during}%` : "", badge);
+        }).join("") : emptyMsg("fa-percent", !growth.eligible ? (growth.reason === "no-prev-month" ? "Tidak ada bulan pembanding untuk training ini." : "Data KPI belum cukup.") : "Belum ada peserta yang hadir.");
+    }
+
+    window.openModal("modal-dashboard-detail");
+};
 
 // ================= LAPORAN KETERLAKSANAAN ONBOARDING (per training) =================
 // Sama konsepnya dengan renderTrainingReport (Training TNA), tapi buat 1 training Onboarding
@@ -9984,7 +10490,7 @@ function renderCourseReportContent(id, c) {
                     <thead class="bg-slate-50 text-[10px] font-black uppercase text-slate-400">
                         <tr>
                             <th class="px-3 py-2.5">Nama</th>
-                            <th class="px-3 py-2.5 text-center">Lesson</th>
+                            <th class="px-3 py-2.5 text-center">Materi</th>
                             <th class="px-3 py-2.5 text-center">Pre-test</th>
                             <th class="px-3 py-2.5 text-center">Post-test</th>
                             <th class="px-3 py-2.5 text-center">Tugas</th>
@@ -11643,7 +12149,7 @@ function buildOnboardingTableRow(course, userId, ordered) {
     <tr class="border-b border-slate-50 hover:bg-slate-50/60 align-top">
         <td class="px-3 py-3">
             <p class="font-bold text-slate-700 text-xs">${window.escapeHtml(course.title)}</p>
-            <p class="text-[10px] text-slate-400 mt-0.5">${(course.modules || []).length} modul • ${doneLessons}/${totalLessons} lesson selesai</p>
+            <p class="text-[10px] text-slate-400 mt-0.5">${(course.modules || []).length} modul • ${doneLessons}/${totalLessons} materi selesai</p>
             ${lock.locked ? `<p class="text-[10px] text-rose-400 font-semibold mt-0.5"><i class="fas fa-lock mr-1"></i>Menunggu "${window.escapeHtml(lock.blockingTitle)}"</p>` : ""}
         </td>
         <td class="px-3 py-3 text-center">
@@ -11663,7 +12169,7 @@ function buildOnboardingTable(ordered, userId) {
         <table class="w-full text-left">
             <thead class="bg-slate-50 text-[9px] font-black uppercase text-slate-400">
                 <tr>
-                    <th class="px-3 py-2.5">Judul &amp; Lesson</th>
+                    <th class="px-3 py-2.5">Judul &amp; Materi</th>
                     <th class="px-3 py-2.5 text-center">Status Penyelesaian</th>
                     <th class="px-3 py-2.5 text-center">Nilai Pre-Test</th>
                     <th class="px-3 py-2.5 text-center">Nilai Post-Test</th>
