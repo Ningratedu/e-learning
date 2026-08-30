@@ -6347,11 +6347,15 @@ function renderCourseAdminList() {
         // Sertifikat dihitung cuma yang pemiliknya MASIH termasuk target peserta terbaru (bukan
         // seluruh sertifikat yang pernah terbit) — supaya kalau target/scope-nya diubah admin
         // (misal ada karyawan yang di-exclude belakangan, atau dept/level-nya berubah), angka
-        // "Selesai" & "% Selesai" ikut nyesuaiin dan gak bisa lebih dari 100%.
+        // "Selesai" & "% Selesai" ikut nyesuaiin dan gak bisa lebih dari 100%. Karyawan yang
+        // sudah resign juga dikeluarkan di sini (bukan cuma di targetCount) — kalau tidak,
+        // sertifikat yang sempat dia selesaikan sebelum resign tetap kehitung di pembilang
+        // padahal orangnya udah gak ada di penyebut (targetCount), yang bikin persentase bisa
+        // lewat 100%.
         const completedCount = window.STATE.certificates.filter(cert => {
             if (cert.type !== "course" || cert.courseId !== c.id) return false;
             const emp = employeeOfUserId(cert.userId);
-            return !!emp && window.courseParticipantMatch(c, emp, null);
+            return !!emp && !emp.tglResign && window.courseParticipantMatch(c, emp, null);
         }).length;
         // Pakai Math.floor, BUKAN Math.round: kalau dibulatkan (round), training yang
         // misalnya baru 199 dari 200 target peserta selesai (99.5%) bisa kebulet jadi
