@@ -10728,7 +10728,14 @@ function renderCourseReportContent(id, c) {
         const st = participantStatus(p);
         const totalLessons = (c.modules || []).reduce((s, m) => s + (m.lessons || []).length, 0);
         const enr = p.user ? enrollmentOfUser(id, p.user.id) : null;
-        const doneLessons = Math.min(totalLessons, (enr?.completedLessonIds || []).length);
+        // Kalau sertifikatnya udah terbit (status "Selesai"), materi dianggap TUNTAS SEMUA —
+        // jangan pakai enr.completedLessonIds.length mentah-mentah, karena itu bisa "ketinggalan"
+        // kalau modul/materi baru ditambahin ke training ini SETELAH karyawan tsb selesai (jadi
+        // completedLessonIds-nya cuma nyocokin materi lama, bikin kolom Materi nunjuk misal 3/5
+        // padahal statusnya udah Selesai). Sertifikat = bukti tuntas versi materi waktu itu, jadi
+        // kolom Materi ikut nunjukin lunas (x = y) biar gak kelihatan kontradiktif sama Status.
+        const cert = p.user ? certOfUser(id, p.user.id) : null;
+        const doneLessons = cert ? totalLessons : Math.min(totalLessons, (enr?.completedLessonIds || []).length);
         const pretest = p.user ? pretestAttemptOfUser(id, p.user.id) : null;
         const postList = p.user ? postTestAttemptsOfUser(id, p.user.id) : [];
         const latestPost = postList[0] || null;
@@ -12496,7 +12503,10 @@ function buildOnboardingTableRow(course, userId, ordered) {
     const enr = enrollmentOfUser(course.id, userId);
     const cert = certOfUser(course.id, userId);
     const totalLessons = (course.modules || []).reduce((s, m) => s + (m.lessons || []).length, 0);
-    const doneLessons = Math.min(totalLessons, (enr?.completedLessonIds || []).length);
+    // Sama seperti di Laporan Keterlaksanaan Onboarding: kalau sertifikatnya udah terbit, materi
+    // dianggap tuntas semua (x = y) — jangan cuma pakai completedLessonIds mentah, karena bisa
+    // "ketinggalan" kalau materi baru ditambahin ke training ini SETELAH karyawan selesai.
+    const doneLessons = cert ? totalLessons : Math.min(totalLessons, (enr?.completedLessonIds || []).length);
 
     const hasQuiz = !!(course.quiz && (course.quiz.questions || []).length);
     const pretest = hasQuiz ? pretestAttemptOfUser(course.id, userId) : null;
