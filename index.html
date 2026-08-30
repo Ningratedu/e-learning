@@ -1549,7 +1549,10 @@ window.deptAllowed = function (item) {
 // yang udah register).
 window.courseTargetEmployees = function (c) {
     const employees = window.STATE.employees || [];
-    return employees.filter(e => window.courseParticipantMatch(c, e, null));
+    // Karyawan yang sudah resign (punya tglResign) dikeluarkan dari target peserta — training
+    // onboarding sifatnya selalu "belum tuntas/berjalan" per karyawan (gak ada tanggal sesi
+    // tetap seperti Training TNA), jadi begitu resign otomatis gak lagi dihitung target.
+    return employees.filter(e => !e.tglResign).filter(e => window.courseParticipantMatch(c, e, null));
 };
 
 // Label ringkas target peserta training onboarding, buat ditampilkan di daftar admin —
@@ -1700,7 +1703,14 @@ window.trainingAllowedForUser = function (t) {
 // Keterlaksanaan (menghitung "jumlah target peserta" sebagai penyebut persentase).
 window.trainingTargetEmployees = function (t) {
     const employees = window.STATE.employees || [];
-    return employees.filter(e => window.trainingParticipantMatch(t, e, null));
+    // Karyawan resign DIKELUARKAN dari target peserta HANYA untuk training yang belum
+    // terlaksana (sessionStatus belum "finished") — training yang statusnya sudah "Sudah
+    // Terlaksana" tetap menghitung mereka apa adanya, supaya laporan/riwayat keterlaksanaan
+    // yang sudah lewat tidak berubah-ubah gara-gara ada karyawan yang resign belakangan.
+    const isFinished = window.trainingSessionStatus(t) === "finished";
+    return employees
+        .filter(e => isFinished || !e.tglResign)
+        .filter(e => window.trainingParticipantMatch(t, e, null));
 };
 // Label ringkas scope peserta sebuah training, buat ditampilkan di UI admin.
 window.trainingScopeLabel = function (t) {
@@ -2285,6 +2295,9 @@ window.doLogin = async function () {
     const userDoc = snap.docs[0];
     const data = userDoc.data();
     if (data.password !== password) { window.toast("Password salah", "error"); return; }
+    // Akun karyawan yang sudah resign (lihat commitEmployeeImport) dinonaktifkan lewat status
+    // "inactive" — datanya tetap ada tapi gak boleh dipakai login lagi.
+    if (data.status === "inactive") { window.toast("Akun ini sudah non-aktif. Hubungi admin kalau ini keliru.", "error"); return; }
 
     localStorage.setItem(SESSION_KEY, userDoc.id);
     window.STATE.user = { id: userDoc.id, ...data };
@@ -2333,7 +2346,11 @@ window.tryRestoreSession = async function () {
     try {
         const d = await getDoc(ref("users", id));
         if (!d.exists()) { localStorage.removeItem(SESSION_KEY); return false; }
-        window.STATE.user = { id: d.id, ...d.data() };
+        const data = d.data();
+        // Kalau akunnya dinonaktifkan (karyawan resign) SETELAH sesi login-nya tersimpan di
+        // device ini, paksa logout begitu sesi dicoba di-restore (mis. buka lagi/refresh).
+        if (data.status === "inactive") { localStorage.removeItem(SESSION_KEY); return false; }
+        window.STATE.user = { id: d.id, ...data };
         return true;
     } catch (e) {
         console.error(e);
@@ -5017,7 +5034,8 @@ window.buildAdminReminders = function () {
     let overdueEmployees = 0, overdueBatchCount = 0;
     batches.forEach(b => {
         if (b.deadline.getTime() < Date.now()) {
-            const notDone = b.members.filter(m => !m.isDone);
+            // Karyawan resign gak lagi dihitung sebagai target yang "belum tuntas" onboarding.
+            const notDone = b.members.filter(m => !m.isDone && !m.isResigned);
             if (notDone.length) { overdueEmployees += notDone.length; overdueBatchCount++; }
         }
     });
@@ -11099,6 +11117,8 @@ function parseEmployeeWorkbook(file, callback) {
                         if (c.includes("tgl bergabung") || c.includes("tanggal bergabung")) colIdx.tglBergabung = i;
                         if (c.includes("no kontak") || c.includes("kontak")) colIdx.kontak = i;
                         if (c.includes("tanggal lahir")) colIdx.tglLahir = i;
+                        if (c.includes("tanggal resign") || c.includes("tgl resign")) colIdx.tglResign = i;
+                        if (c.includes("alasan resign")) colIdx.alasanResign = i;
                         // Kolom KPI bulanan (mis. "KPI Januari", "KPI Februari", dst) — dicocokkan
                         // ke nomor bulan 1-12 supaya urutan kolom di Excel bebas (gak harus Jan→Des).
                         if (c.includes("kpi")) {
@@ -11151,6 +11171,11 @@ function parseEmployeeWorkbook(file, callback) {
                     tglBergabung: excelCellToDate(row[colIdx.tglBergabung]),
                     kontak: excelCellToString(row[colIdx.kontak]),
                     tglLahir: excelCellToDate(row[colIdx.tglLahir]),
+                    // Kalau "Tanggal Resign" terisi, karyawan ini dianggap sudah resign: akunnya
+                    // otomatis dinonaktifkan (lihat commitEmployeeImport) tapi datanya (termasuk
+                    // tanggal & alasan resign) tetap disimpan penuh secara admin.
+                    tglResign: excelCellToDate(row[colIdx.tglResign]),
+                    alasanResign: excelCellToString(row[colIdx.alasanResign]),
                     kpi,
                 });
             }
@@ -11188,9 +11213,11 @@ window.uploadEmployeeExcel = function () {
             const willCreate = employees.filter(emp => !existingByUsername[emp.username]).length;
             const willUpdate = employees.length - willCreate;
             const hasKpiCols = employees.some(emp => emp.kpi);
+            const resignedCount = employees.filter(emp => emp.tglResign).length;
             const msg = `${employees.length} data karyawan terbaca` + (skipped ? ` (${skipped} baris dilewati karena data tidak lengkap)` : "") +
                 `.\n\n${willCreate} akun BARU akan dibuat (aktif, password default "pembelajar").\n${willUpdate} akun yang sudah ada akan disinkron nama/departemen/emailnya (password tidak diubah).` +
                 (hasKpiCols ? `\n\nData KPI bulanan terdeteksi di file ini dan akan digabung ke data KPI karyawan yang sudah ada (bulan lain yang sudah tersimpan sebelumnya tidak akan hilang).` : "") +
+                (resignedCount ? `\n\n${resignedCount} karyawan terdeteksi punya Tanggal Resign — akun mereka akan dinonaktifkan (tidak bisa login), tapi datanya tetap tersimpan.` : "") +
                 `\n\nLanjutkan impor?`;
             if (!confirm(msg)) return;
 
@@ -11224,11 +11251,17 @@ window.commitEmployeeImport = async function (employees, existingByUsername, exi
             // bulan baru tidak menghapus KPI bulan-bulan sebelumnya yang sudah tersimpan.
             const existingEmp = existingEmployeeByUsername[emp.username];
             const mergedKpi = (existingEmp && existingEmp.kpi) || emp.kpi ? { ...(existingEmp && existingEmp.kpi), ...(emp.kpi || {}) } : null;
+            // Karyawan dianggap resign kalau kolom "Tanggal Resign"-nya terisi di Excel. Akun
+            // loginnya (koleksi "users") otomatis di-nonaktifkan (status "inactive") supaya gak
+            // bisa login lagi, TAPI data karyawannya (termasuk tanggal & alasan resign) tetap
+            // disimpan penuh di koleksi "employees" secara admin — tidak dihapus.
+            const isResigned = !!emp.tglResign;
             batch.set(ref("employees", empDocId), {
                 no: emp.no, nama: emp.nama, username: emp.username, dept: emp.dept,
                 designation: emp.designation, rm: emp.rm, bm: emp.bm, mentor: emp.mentor,
                 posisi: emp.posisi, masaKerja: emp.masaKerja, keterangan: emp.keterangan,
                 tglBergabung: emp.tglBergabung, kontak: emp.kontak, tglLahir: emp.tglLahir,
+                tglResign: emp.tglResign, alasanResign: emp.alasanResign,
                 kpi: mergedKpi,
                 updatedAt: serverTimestamp()
             }, { merge: true });
@@ -11236,12 +11269,13 @@ window.commitEmployeeImport = async function (employees, existingByUsername, exi
             const existing = existingByUsername[emp.username];
             if (existing && !processedUsernames.has(emp.username)) {
                 batch.update(ref("users", existing.id), {
-                    name: emp.nama, dept: emp.dept, email: emp.kontak, employeeId: empDocId, status: "active"
+                    name: emp.nama, dept: emp.dept, email: emp.kontak, employeeId: empDocId,
+                    status: isResigned ? "inactive" : "active"
                 });
             } else if (!existing && !processedUsernames.has(emp.username)) {
                 batch.set(ref("users", empDocId), {
                     username: emp.username, name: emp.nama, email: emp.kontak, dept: emp.dept,
-                    password: "pembelajar", role: "user", status: "active",
+                    password: "pembelajar", role: "user", status: isResigned ? "inactive" : "active",
                     employeeId: empDocId, createdAt: serverTimestamp()
                 }, { merge: true });
             }
@@ -11254,9 +11288,9 @@ window.commitEmployeeImport = async function (employees, existingByUsername, exi
 window.downloadEmployeeTemplate = function () {
     if (typeof XLSX === "undefined") { window.toast("Modul Excel belum siap, coba lagi sesaat.", "warn"); return; }
     const wsData = [
-        ["No", "Nama Karyawan", "Nama Pengguna", "Departemen", "Designation", "RM", "BM", "Mentor/SPV", "Posisi", "Masa Kerja", "Keterangan", "Tgl Bergabung", "No Kontak", "Tanggal Lahir",
+        ["No", "Nama Karyawan", "Nama Pengguna", "Departemen", "Designation", "RM", "BM", "Mentor/SPV", "Posisi", "Masa Kerja", "Keterangan", "Tgl Bergabung", "No Kontak", "Tanggal Lahir", "Tanggal Resign", "Alasan Resign",
             "KPI Januari", "KPI Februari", "KPI Maret", "KPI April", "KPI Mei", "KPI Juni", "KPI Juli", "KPI Agustus", "KPI September", "KPI Oktober", "KPI November", "KPI Desember"],
-        [1, "Ahmad Hanafi", "hanafi", "After Sales", "Pelaksana After Sales", "", "", "", "Officer", 7.0, "Non Sales", new Date(2019, 8, 4), "6289660719900", new Date(1993, 11, 22),
+        [1, "Ahmad Hanafi", "hanafi", "After Sales", "Pelaksana After Sales", "", "", "", "Officer", 7.0, "Non Sales", new Date(2019, 8, 4), "6289660719900", new Date(1993, 11, 22), "", "",
             0.85, 0.9, 0.92, "", "", "", "", "", "", "", "", ""],
     ];
     const ws = XLSX.utils.aoa_to_sheet(wsData);
@@ -11470,8 +11504,9 @@ function renderEmployeeAdminList() {
 
     const rows = list.map(e => {
         const acc = usersByUsername[e.username];
+        const isResigned = !!e.tglResign;
         return `
-        <tr class="border-b border-slate-50 hover:bg-slate-50/60">
+        <tr class="border-b border-slate-50 hover:bg-slate-50/60 ${isResigned ? 'opacity-60' : ''}">
             <td class="px-3 py-3">
                 <p class="font-bold text-slate-700 text-sm">${window.escapeHtml(e.nama)}</p>
                 <p class="text-[11px] text-slate-400">@${window.escapeHtml(e.username)} • ${window.escapeHtml(e.designation||'-')}</p>
@@ -11480,7 +11515,9 @@ function renderEmployeeAdminList() {
             <td class="px-3 py-3 text-xs text-slate-500">${window.escapeHtml(e.kontak||'-')}</td>
             <td class="px-3 py-3 text-xs text-slate-500">${window.fmtDate(e.tglBergabung)} <span class="block text-[10px] text-slate-400">${fmtMasaKerja(e.masaKerja)}</span></td>
             <td class="px-3 py-3 text-center">
-                ${acc ? `<span class="text-[10px] font-black px-2 py-1 rounded-full bg-emerald-50 text-emerald-600">Aktif</span>` : `<span class="text-[10px] font-black px-2 py-1 rounded-full bg-rose-50 text-rose-500">Belum ada akun</span>`}
+                ${isResigned
+                    ? `<span title="${window.escapeHtml(e.alasanResign||'-')}" class="text-[10px] font-black px-2 py-1 rounded-full bg-rose-50 text-rose-500"><i class="fas fa-user-slash mr-1"></i>Non-aktif</span><p class="text-[10px] text-slate-400 mt-1">Resign ${window.fmtDate(e.tglResign)}</p>`
+                    : (acc ? `<span class="text-[10px] font-black px-2 py-1 rounded-full bg-emerald-50 text-emerald-600">Aktif</span>` : `<span class="text-[10px] font-black px-2 py-1 rounded-full bg-rose-50 text-rose-500">Belum ada akun</span>`)}
             </td>
             <td class="px-3 py-3 text-right">
                 <button onclick="window.showEmployeeDetail('${e.id}')" class="text-indigo-500 hover:text-indigo-700"><i class="fas fa-circle-info"></i></button>
@@ -11722,7 +11759,11 @@ window.buildOnboardingBatches = function () {
         const isDone = ordered.length === 0 || completedCount === ordered.length;
 
         if (!batches[batch.key]) batches[batch.key] = { ...batch, members: [] };
-        batches[batch.key].members.push({ employee: e, user, ordered, completedCount, isDone });
+        // isResigned: karyawan yang sudah resign TETAP ditampilkan di jadwal (biar histori &
+        // data batch-nya lengkap), tapi dikeluarkan dari semua hitungan target/selesai/proses
+        // (lihat pemakaian .filter(m => !m.isResigned) di renderOnboardingSchedule) — jadi dia
+        // gak lagi "menggantung" sebagai target yang harus menyelesaikan onboarding.
+        batches[batch.key].members.push({ employee: e, user, ordered, completedCount, isDone, isResigned: !!e.tglResign });
     });
     return Object.values(batches).sort((a, b) => a.deadline - b.deadline);
 };
@@ -12176,8 +12217,10 @@ function renderOnboardingSchedule() {
     </div>`;
 
     const weekCards = weeks.map(w => {
-        const target = w.batches.reduce((s, b) => s + b.members.length, 0);
-        const completed = w.batches.reduce((s, b) => s + b.members.filter(m => m.isDone).length, 0);
+        // Target & completed di level minggu HANYA dihitung dari member yang belum resign —
+        // karyawan resign tetap tampil di tabel batch di bawah, tapi gak lagi masuk hitungan.
+        const target = w.batches.reduce((s, b) => s + b.members.filter(m => !m.isResigned).length, 0);
+        const completed = w.batches.reduce((s, b) => s + b.members.filter(m => !m.isResigned && m.isDone).length, 0);
         const pct = target ? Math.round((completed / target) * 100) : 0;
         const isOpen = onboardingScheduleOpenWeeks.has(w.key);
         const isCurrentWeek = w.key === onboardingWeekBucket(today).key;
@@ -12192,13 +12235,17 @@ function renderOnboardingSchedule() {
             : `${window.fmtDate(minStart)} – ${window.fmtDate(maxDeadline)}`;
 
         const batchBlocks = w.batches.slice().sort((a, b) => a.deadline - b.deadline).map(b => {
-            const bTarget = b.members.length;
-            const bCompleted = b.members.filter(m => m.isDone).length;
-            const bProgress = b.members.filter(m => !m.isDone && m.completedCount > 0).length;
+            // Karyawan resign dikeluarkan dari target/statistik batch (lihat activeMembers),
+            // tapi tetap dirender di tabel peserta di bawah lewat b.members (bukan activeMembers)
+            // supaya datanya gak hilang & admin masih bisa lihat riwayatnya.
+            const activeMembers = b.members.filter(m => !m.isResigned);
+            const bTarget = activeMembers.length;
+            const bCompleted = activeMembers.filter(m => m.isDone).length;
+            const bProgress = activeMembers.filter(m => !m.isDone && m.completedCount > 0).length;
             const bNotStarted = bTarget - bCompleted - bProgress;
             const bIsCurrent = b.start <= today && today <= b.deadline;
             const bIsOverdue = b.deadline < today && bCompleted < bTarget;
-            const bExt = computeBatchExtendedStats(b.members);
+            const bExt = computeBatchExtendedStats(activeMembers);
 
             const bMiniCards = [
                 miniValueCard("fa-users", "indigo", bTarget, "Target Peserta"),
@@ -12211,19 +12258,28 @@ function renderOnboardingSchedule() {
             if (bExt.hasAnyAssignment) bMiniCards.push(miniRingCard("fa-file-signature", "indigo", bTarget ? Math.round((bExt.assignmentSubmittedCount / bTarget) * 100) : 0, "Penyelesaian Tugas", `${bExt.assignmentSubmittedCount}/${bTarget}`));
             const bCardsHtml = `<div class="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-3">${bMiniCards.join("")}</div>`;
 
-            const rows = b.members.slice().sort((a, z) => (a.isDone === z.isDone ? 0 : a.isDone ? 1 : -1)).map(m => {
+            // Karyawan resign tetap ditampilkan (baris paling bawah, agak pudar) biar histori
+            // batch-nya lengkap, tapi statusnya "Resign" — bukan Selesai/Proses/Belum Mulai —
+            // karena mereka sudah gak dihitung sebagai target yang harus selesai onboarding.
+            const rows = b.members.slice().sort((a, z) => {
+                if (a.isResigned !== z.isResigned) return a.isResigned ? 1 : -1;
+                return a.isDone === z.isDone ? 0 : a.isDone ? 1 : -1;
+            }).map(m => {
                 const e = m.employee;
                 const sisaLabel = m.ordered.length ? `${m.completedCount}/${m.ordered.length} training` : "Tidak ada training ditargetkan";
-                return `<tr class="border-b border-slate-50 hover:bg-slate-50/60">
-                    <td class="px-3 py-2 text-sm font-bold text-slate-700">${window.escapeHtml(e.nama)}</td>
+                const statusBadge = m.isResigned
+                    ? `<span title="${window.escapeHtml(m.alasanResign || e.alasanResign || '-')}" class="text-[10px] font-black px-2 py-1 rounded-full bg-rose-50 text-rose-500"><i class="fas fa-user-slash mr-1"></i>Resign</span>`
+                    : `<span class="text-[10px] font-black px-2 py-1 rounded-full ${m.isDone ? 'bg-emerald-50 text-emerald-600' : 'bg-amber-50 text-amber-600'}">${m.isDone ? 'Selesai' : 'Proses'}</span>`;
+                return `<tr class="border-b border-slate-50 hover:bg-slate-50/60 ${m.isResigned ? 'opacity-60' : ''}">
+                    <td class="px-3 py-2 text-sm font-bold text-slate-700">${window.escapeHtml(e.nama)}${m.isResigned ? `<p class="text-[10px] font-semibold text-rose-400 mt-0.5">Resign ${window.fmtDate(e.tglResign)}</p>` : ''}</td>
                     <td class="px-3 py-2 text-xs text-slate-500">${window.escapeHtml(e.dept || '-')}</td>
                     <td class="px-3 py-2 text-xs text-slate-500">${window.fmtDate(e.tglBergabung)}</td>
                     <td class="px-3 py-2 text-xs text-slate-500">${sisaLabel}</td>
-                    <td class="px-3 py-2 text-center"><span class="text-[10px] font-black px-2 py-1 rounded-full ${m.isDone ? 'bg-emerald-50 text-emerald-600' : 'bg-amber-50 text-amber-600'}">${m.isDone ? 'Selesai' : 'Proses'}</span></td>
+                    <td class="px-3 py-2 text-center">${statusBadge}</td>
                     <td class="px-3 py-2 text-center">
                         <div class="flex items-center justify-center gap-2.5">
                             <button onclick="window.showEmployeeDetail('${e.id}')" title="Lihat Detail Karyawan" class="text-indigo-400 hover:text-indigo-600"><i class="fas fa-circle-info"></i></button>
-                            ${(!m.isDone && m.ordered.length) ? `<button onclick="window.guardedClick(this, () => window.sendTrainingReminder('${e.id}'))" title="Kirim Reminder via WhatsApp" class="text-amber-500 hover:text-amber-700"><i class="fab fa-whatsapp"></i></button>` : '<span class="text-slate-200 text-xs">-</span>'}
+                            ${(!m.isResigned && !m.isDone && m.ordered.length) ? `<button onclick="window.guardedClick(this, () => window.sendTrainingReminder('${e.id}'))" title="Kirim Reminder via WhatsApp" class="text-amber-500 hover:text-amber-700"><i class="fab fa-whatsapp"></i></button>` : '<span class="text-slate-200 text-xs">-</span>'}
                         </div>
                     </td>
                 </tr>`;
@@ -12280,7 +12336,11 @@ function renderOnboardingSchedule() {
     // Bulan/Minggu di atas. ----
     const globalSummaryHtml = (() => {
         const allBatches = weeks.flatMap(w => w.batches);
-        const allMembers = allBatches.flatMap(b => b.members);
+        // Sama seperti di level batch/minggu: karyawan resign dikeluarkan dari ringkasan
+        // global (target/selesai/proses/belum-mulai & rating/pre-post/tugas) karena mereka
+        // bukan lagi target yang harus menyelesaikan onboarding. Mereka tetap kelihatan di
+        // tabel per-batch di atas, cuma gak masuk hitungan agregat ini.
+        const allMembers = allBatches.flatMap(b => b.members).filter(m => !m.isResigned);
         const gTarget = allMembers.length;
         const gCompleted = allMembers.filter(m => m.isDone).length;
         const gProgress = allMembers.filter(m => !m.isDone && m.completedCount > 0).length;
@@ -12680,7 +12740,9 @@ window.showEmployeeDetail = function (empId) {
 
     document.getElementById("employee-detail-body").innerHTML = `
         <h3 class="font-black text-lg text-slate-800 mb-1">${window.escapeHtml(e.nama)}</h3>
-        <p class="text-xs text-slate-400 mb-3">@${window.escapeHtml(e.username)}</p>
+        <p class="text-xs text-slate-400 mb-3">@${window.escapeHtml(e.username)}
+            ${e.tglResign ? `<span class="ml-1 text-[10px] font-black px-2 py-1 rounded-full bg-rose-50 text-rose-500"><i class="fas fa-user-slash mr-1"></i>Non-aktif (Resign)</span>` : `<span class="ml-1 text-[10px] font-black px-2 py-1 rounded-full bg-emerald-50 text-emerald-600"><i class="fas fa-user-check mr-1"></i>Aktif</span>`}
+        </p>
         ${row("Departemen", e.dept)}
         ${row("Designation", e.designation)}
         ${row("Posisi", e.posisi)}
@@ -12692,6 +12754,8 @@ window.showEmployeeDetail = function (empId) {
         ${row("Tgl Bergabung", window.fmtDate(e.tglBergabung))}
         ${row("No Kontak", e.kontak)}
         ${row("Tanggal Lahir", window.fmtDate(e.tglLahir))}
+        ${e.tglResign ? row("Tanggal Resign", window.fmtDate(e.tglResign)) : ""}
+        ${e.tglResign ? row("Alasan Resign", e.alasanResign) : ""}
         ${buildEmployeeKpiSummary(e)}
         ${buildEmployeeTrainingSummary(e, linkedUser)}
     `;
