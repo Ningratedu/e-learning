@@ -1446,6 +1446,27 @@ window.sel = {
         });
         return [...set].sort((a, b) => a.localeCompare(b));
     },
+    // Daftar nama designation (jabatan) yang ADA di antara karyawan pada departemen DAN level/posisi
+    // yang diberikan (cascading filter 2 tingkat: designation dipersempit sesuai departemen+level
+    // yang sudah terpilih). Kalau "depts"/"levels" kosong, tidak difilter di tingkat itu.
+    designationNamesForDeptsAndLevels(depts, levels) {
+        const deptsLower = (Array.isArray(depts) ? depts : []).map(d => String(d).trim().toLowerCase()).filter(Boolean);
+        const levelsLower = (Array.isArray(levels) ? levels : []).map(l => String(l).trim().toLowerCase()).filter(Boolean);
+        const set = new Set();
+        (window.STATE.employees || []).forEach(e => {
+            if (deptsLower.length) {
+                const dept = (e.dept || "").trim().toLowerCase();
+                if (!dept || !deptsLower.includes(dept)) return;
+            }
+            if (levelsLower.length) {
+                const posisi = (e.posisi || "").trim().toLowerCase();
+                if (!posisi || !levelsLower.includes(posisi)) return;
+            }
+            const x = (e.designation || "").trim();
+            if (x) set.add(x);
+        });
+        return [...set].sort((a, b) => a.localeCompare(b));
+    },
     // Cari data karyawan (dept/posisi lengkap) milik akun user yang sedang login, dicocokkan
     // lewat username (dipakai buat cek target peserta Training TNA).
     employeeOfUser(user) {
@@ -6710,6 +6731,11 @@ let courseDeptFilterSearch = "";
 let coursePosFilterSearch = "";
 let courseDesigFilterSearch = "";
 let courseFilterOpen = null; // null | 'dept' | 'level' | 'desig' | 'emp' — dropdown Target Peserta mana yang lagi kebuka
+// Ceklis sementara (belum disimpan) buat dropdown filter Target Peserta yang lagi kebuka. Isinya
+// di-clone dari data tersimpan pas dropdown dibuka, dan baru dituliskan balik ke courseDraft
+// (dan baru mempengaruhi cascading filter lain) pas tombol "Terapkan" ditekan — biar admin bisa
+// ceklis beberapa pilihan dulu baru simpan sekaligus, gak langsung apply tiap satu diklik.
+let courseFilterStaging = [];
 // Migrasi participants training onboarding ke model BARU (excluded-list, "semua by default") —
 // persis konsepnya dengan migrateTrainingParticipants buat Training TNA. Kalau training
 // onboarding-nya baru dibuat (belum ada field participants sama sekali) atau sudah pakai model
@@ -6853,20 +6879,21 @@ function renderCourseBuilder(id) {
                                 ${["Umum","Pemula","Menengah","Lanjutan"].map(lv=>`<option ${d.level===lv?'selected':''}>${lv}</option>`).join("")}
                             </select>
                         </div>
+                        <div>
+                            <label class="text-[10px] font-bold uppercase text-slate-400">Urutan Pengerjaan</label>
+                            <input type="number" step="1" value="${Number.isFinite(d.order) ? d.order : 1}" oninput="courseDraft.order=parseInt(this.value)||1" class="w-full border border-slate-200 rounded-lg px-2.5 py-1.5 text-sm mt-1">
+                            <p class="text-[10px] text-slate-400 mt-1">Angka lebih kecil = lebih dulu, dihitung per departemen.</p>
+                        </div>
                         <div class="form-full">
                             <label class="text-[10px] font-bold uppercase text-slate-400">Gambar Cover</label>
                             <div class="flex items-center gap-2 mt-1">
-                                <input value="${window.escapeHtml(d.coverImage)}" oninput="courseDraft.coverImage=this.value" placeholder="URL gambar cover (opsional)" class="flex-1 border border-slate-200 rounded-lg px-2.5 py-1.5 text-sm">
+                                <input value="${window.escapeHtml(d.coverImage)}" oninput="courseDraft.coverImage=this.value" placeholder="URL gambar cover (opsional)" class="flex-1 min-w-0 border border-slate-200 rounded-lg px-2.5 py-1.5 text-sm">
                                 <label class="shrink-0 text-[11px] font-bold text-indigo-500 hover:text-indigo-700 bg-indigo-50 px-2.5 py-2 rounded-lg cursor-pointer whitespace-nowrap">
                                     <i class="fas fa-upload mr-1"></i> Upload
                                     <input type="file" accept="image/*" class="hidden" onchange="window.uploadCoverImage(this)">
                                 </label>
+                                ${d.coverImage ? `<img src="${d.coverImage}" title="Preview gambar cover" class="shrink-0 w-9 h-9 rounded-lg object-cover border border-emerald-200" onerror="this.style.display='none'">` : ""}
                             </div>
-                        </div>
-                        <div>
-                            <label class="text-[10px] font-bold uppercase text-slate-400">Urutan Pengerjaan</label>
-                            <input type="number" step="1" value="${Number.isFinite(d.order) ? d.order : 1}" oninput="courseDraft.order=parseInt(this.value)||1" class="w-full border border-slate-200 rounded-lg px-2.5 py-1.5 text-sm mt-1">
-                            <p class="text-[10px] text-slate-400 mt-1">Angka lebih kecil = lebih dulu. Dihitung ulang per departemen.</p>
                         </div>
                         <div id="course-participant-filters" class="form-full space-y-3 border border-slate-100 rounded-2xl p-3" onclick="event.stopPropagation()">
                             <h3 class="font-black text-sm text-slate-700"><i class="fas fa-users text-indigo-500 mr-1"></i> Target Peserta</h3>
@@ -6877,11 +6904,6 @@ function renderCourseBuilder(id) {
                         <div class="flex items-center justify-between text-[10px] font-bold text-indigo-500 mb-1"><span><i class="fas fa-spinner fa-spin mr-1"></i>Mengupload gambar...</span><span id="cover-progress-pct">0%</span></div>
                         <div class="h-1.5 bg-slate-200 rounded-full overflow-hidden"><div id="cover-progress-bar" class="h-full bg-indigo-500 transition-all" style="width:0%"></div></div>
                     </div>
-                    ${d.coverImage ? `
-                    <div class="flex items-center gap-2 text-[11px] font-bold text-emerald-600 bg-emerald-50 rounded-xl px-3 py-2">
-                        <i class="fas fa-circle-check"></i> Gambar cover terpasang
-                        <img src="${d.coverImage}" class="w-10 h-10 rounded-lg object-cover ml-auto border border-emerald-200" onerror="this.style.display='none'">
-                    </div>` : ""}
                 </div>
 
                 <div class="bg-white rounded-2xl border border-slate-100 shadow-sm p-3 space-y-2">
@@ -6966,11 +6988,12 @@ function courseIncludedLevelNames() {
     const excluded = new Set((courseDraft.participants.excludedPositions || []).map(x => x.toLowerCase()));
     return scoped.filter(pos => !excluded.has(pos.toLowerCase()));
 }
-// Nama-nama designation (jabatan) yang masih termasuk target — dikurangi designation yang
-// dikecualikan admin. Beda konsep dari "Level" (posisi), jadi tidak di-cascade ke dept/level.
+// Nama-nama designation (jabatan) yang masih termasuk target: dipersempit (cascading) ke
+// departemen+level yang masih termasuk, lalu dikurangi designation yang dikecualikan admin.
 function courseIncludedDesignationNames() {
+    const scoped = window.sel.designationNamesForDeptsAndLevels(courseIncludedDeptNames(), courseIncludedLevelNames());
     const excluded = new Set((courseDraft.participants.excludedDesignations || []).map(x => x.toLowerCase()));
-    return window.sel.allDesignationNames().filter(x => !excluded.has(x.toLowerCase()));
+    return scoped.filter(x => !excluded.has(x.toLowerCase()));
 }
 // Daftar karyawan yang cocok departemen+level+designation yang masih termasuk target — ini yang
 // muncul di dropdown "Filter Nama Karyawan" (ikut nyempit otomatis kalau dept/level/designation
@@ -6989,90 +7012,132 @@ function courseScopedEmployeesForNameFilter() {
         return true;
     });
 }
+// Ambil array "excluded" yang tersimpan (committed) di courseDraft sesuai jenis filter.
+function courseFilterExcludedArrayFor(which) {
+    const p = courseDraft.participants;
+    if (which === 'dept') return p.excludedDepartments || (p.excludedDepartments = []);
+    if (which === 'level') return p.excludedPositions || (p.excludedPositions = []);
+    if (which === 'desig') return p.excludedDesignations || (p.excludedDesignations = []);
+    if (which === 'emp') return p.excludedEmployeeUsernames || (p.excludedEmployeeUsernames = []);
+    return [];
+}
+// Buka/tutup salah satu dropdown filter Target Peserta. Pas dibuka, ceklis sementara
+// (courseFilterStaging) di-clone dari pilihan yang sudah tersimpan, biar admin bisa ubah-ubah
+// ceklisnya dulu tanpa langsung mempengaruhi cascading filter lain / ringkasan jumlah target.
 window.toggleCourseFilterOpen = function (which) {
-    courseFilterOpen = (courseFilterOpen === which) ? null : which;
+    if (courseFilterOpen === which) {
+        courseFilterOpen = null;
+        courseFilterStaging = [];
+    } else {
+        courseFilterOpen = which;
+        courseFilterStaging = [...courseFilterExcludedArrayFor(which)];
+    }
     window.reRenderCourseParticipantFilters();
 };
 document.addEventListener("click", function () {
     if (!courseFilterOpen) return;
     courseFilterOpen = null;
+    courseFilterStaging = [];
     window.reRenderCourseParticipantFilters();
 });
-window.toggleCourseExcludeDept = function (dep) {
-    const arr = courseDraft.participants.excludedDepartments;
-    const idx = arr.findIndex(x => x.toLowerCase() === dep.toLowerCase());
-    if (idx >= 0) arr.splice(idx, 1); else arr.push(dep);
+// Tombol "Terapkan" di dalam dropdown: baru di titik ini ceklis sementara dituliskan balik ke
+// courseDraft (dan baru dipakai buat cascading filter di bawahnya / ringkasan jumlah target).
+window.applyCourseFilter = function (which) {
+    const p = courseDraft.participants;
+    const val = [...courseFilterStaging];
+    if (which === 'dept') p.excludedDepartments = val;
+    else if (which === 'level') p.excludedPositions = val;
+    else if (which === 'desig') p.excludedDesignations = val;
+    else if (which === 'emp') p.excludedEmployeeUsernames = val;
+    courseFilterOpen = null;
+    courseFilterStaging = [];
     window.reRenderCourseParticipantFilters();
+};
+// Tombol "Batal": buang ceklis sementara, balik ke pilihan yang sudah tersimpan sebelumnya.
+window.cancelCourseFilter = function () {
+    courseFilterOpen = null;
+    courseFilterStaging = [];
+    window.reRenderCourseParticipantFilters();
+};
+window.toggleCourseExcludeDept = function (dep) {
+    const idx = courseFilterStaging.findIndex(x => x.toLowerCase() === dep.toLowerCase());
+    if (idx >= 0) courseFilterStaging.splice(idx, 1); else courseFilterStaging.push(dep);
+    window.reRenderCourseDeptFilterList();
 };
 window.toggleCourseExcludeAllDepts = function () {
     const all = window.sel.allDeptNames();
-    const arr = courseDraft.participants.excludedDepartments;
-    const allExcluded = all.length > 0 && all.every(dep => arr.some(x => x.toLowerCase() === dep.toLowerCase()));
-    courseDraft.participants.excludedDepartments = allExcluded ? [] : [...all];
-    window.reRenderCourseParticipantFilters();
+    const allExcluded = all.length > 0 && all.every(dep => courseFilterStaging.some(x => x.toLowerCase() === dep.toLowerCase()));
+    courseFilterStaging = allExcluded ? [] : [...all];
+    window.reRenderCourseDeptFilterList();
 };
 window.toggleCourseExcludeLevel = function (pos) {
-    const arr = courseDraft.participants.excludedPositions;
-    const idx = arr.findIndex(x => x.toLowerCase() === pos.toLowerCase());
-    if (idx >= 0) arr.splice(idx, 1); else arr.push(pos);
-    window.reRenderCourseParticipantFilters();
+    const idx = courseFilterStaging.findIndex(x => x.toLowerCase() === pos.toLowerCase());
+    if (idx >= 0) courseFilterStaging.splice(idx, 1); else courseFilterStaging.push(pos);
+    window.reRenderCoursePosFilterList();
 };
 window.toggleCourseExcludeAllLevels = function () {
     const scoped = window.sel.posisiNamesForDepts(courseIncludedDeptNames());
-    const arr = courseDraft.participants.excludedPositions;
-    const allExcluded = scoped.length > 0 && scoped.every(pos => arr.some(x => x.toLowerCase() === pos.toLowerCase()));
+    const allExcluded = scoped.length > 0 && scoped.every(pos => courseFilterStaging.some(x => x.toLowerCase() === pos.toLowerCase()));
     if (allExcluded) {
-        courseDraft.participants.excludedPositions = arr.filter(x => !scoped.some(pos => pos.toLowerCase() === x.toLowerCase()));
+        courseFilterStaging = courseFilterStaging.filter(x => !scoped.some(pos => pos.toLowerCase() === x.toLowerCase()));
     } else {
-        const set = new Set(arr.map(x => x.toLowerCase()));
-        scoped.forEach(pos => { if (!set.has(pos.toLowerCase())) arr.push(pos); });
+        const set = new Set(courseFilterStaging.map(x => x.toLowerCase()));
+        scoped.forEach(pos => { if (!set.has(pos.toLowerCase())) courseFilterStaging.push(pos); });
     }
-    window.reRenderCourseParticipantFilters();
+    window.reRenderCoursePosFilterList();
 };
 window.toggleCourseExcludeDesignation = function (desig) {
-    const arr = courseDraft.participants.excludedDesignations;
-    const idx = arr.findIndex(x => x.toLowerCase() === desig.toLowerCase());
-    if (idx >= 0) arr.splice(idx, 1); else arr.push(desig);
-    window.reRenderCourseParticipantFilters();
+    const idx = courseFilterStaging.findIndex(x => x.toLowerCase() === desig.toLowerCase());
+    if (idx >= 0) courseFilterStaging.splice(idx, 1); else courseFilterStaging.push(desig);
+    window.reRenderCourseDesignationFilterList();
 };
 window.toggleCourseExcludeAllDesignations = function () {
-    const all = window.sel.allDesignationNames();
-    const arr = courseDraft.participants.excludedDesignations;
-    const allExcluded = all.length > 0 && all.every(x => arr.some(y => y.toLowerCase() === x.toLowerCase()));
-    courseDraft.participants.excludedDesignations = allExcluded ? [] : [...all];
-    window.reRenderCourseParticipantFilters();
+    const scoped = window.sel.designationNamesForDeptsAndLevels(courseIncludedDeptNames(), courseIncludedLevelNames());
+    const allExcluded = scoped.length > 0 && scoped.every(x => courseFilterStaging.some(y => y.toLowerCase() === x.toLowerCase()));
+    if (allExcluded) {
+        courseFilterStaging = courseFilterStaging.filter(x => !scoped.some(y => y.toLowerCase() === x.toLowerCase()));
+    } else {
+        const set = new Set(courseFilterStaging.map(x => x.toLowerCase()));
+        scoped.forEach(x => { if (!set.has(x.toLowerCase())) courseFilterStaging.push(x); });
+    }
+    window.reRenderCourseDesignationFilterList();
 };
 window.toggleCourseExcludeEmployee = function (username) {
-    const arr = courseDraft.participants.excludedEmployeeUsernames;
     const norm = normalizeUsername(username);
-    const idx = arr.findIndex(u => normalizeUsername(u) === norm);
-    if (idx >= 0) arr.splice(idx, 1); else arr.push(username);
-    window.reRenderCourseParticipantFilters();
+    const idx = courseFilterStaging.findIndex(u => normalizeUsername(u) === norm);
+    if (idx >= 0) courseFilterStaging.splice(idx, 1); else courseFilterStaging.push(username);
+    window.reRenderCourseParticipantPicker();
 };
 window.toggleCourseExcludeAllEmployees = function () {
     const scoped = courseScopedEmployeesForNameFilter();
-    const arr = courseDraft.participants.excludedEmployeeUsernames;
     const allNorm = scoped.map(e => normalizeUsername(e.username));
-    const allExcluded = allNorm.length > 0 && allNorm.every(u => arr.some(x => normalizeUsername(x) === u));
+    const allExcluded = allNorm.length > 0 && allNorm.every(u => courseFilterStaging.some(x => normalizeUsername(x) === u));
     if (allExcluded) {
-        courseDraft.participants.excludedEmployeeUsernames = arr.filter(x => !allNorm.includes(normalizeUsername(x)));
+        courseFilterStaging = courseFilterStaging.filter(x => !allNorm.includes(normalizeUsername(x)));
     } else {
-        const set = new Set(arr.map(x => normalizeUsername(x)));
-        scoped.forEach(e => { const n = normalizeUsername(e.username); if (!set.has(n)) arr.push(e.username); });
+        const set = new Set(courseFilterStaging.map(x => normalizeUsername(x)));
+        scoped.forEach(e => { const n = normalizeUsername(e.username); if (!set.has(n)) courseFilterStaging.push(e.username); });
     }
-    window.reRenderCourseParticipantFilters();
+    window.reRenderCourseParticipantPicker();
 };
+// Tombol "Apply/Batal" yang dipakai di keempat dropdown (departemen/level/designation/karyawan).
+function courseFilterActionButtonsHtml(which) {
+    return `
+        <div class="flex items-center gap-2 pt-2 mt-1.5 border-t border-slate-100">
+            <button type="button" onclick="window.cancelCourseFilter()" class="flex-1 text-[11px] font-bold text-slate-500 hover:text-slate-700 bg-slate-50 hover:bg-slate-100 rounded-lg py-1.5 transition">Batal</button>
+            <button type="button" onclick="window.applyCourseFilter('${which}')" class="flex-1 text-[11px] font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg py-1.5 transition"><i class="fas fa-check mr-1"></i>Terapkan</button>
+        </div>`;
+}
 // Render list checkbox departemen (dropdown "Departemen"), difilter oleh pencarian. Checked =
-// TIDAK dikecualikan (= termasuk target).
+// TIDAK dikecualikan (= termasuk target) di ceklis SEMENTARA (courseFilterStaging).
 function renderCourseDeptFilterRows() {
     const q = courseDeptFilterSearch.trim().toLowerCase();
     const all = window.sel.allDeptNames();
     const names = all.filter(dep => !q || dep.toLowerCase().includes(q));
     if (!all.length) return `<p class="text-xs text-slate-400 px-1 py-1">Belum ada departemen terdaftar dari akun pengguna.</p>`;
     if (!names.length) return `<p class="text-xs text-slate-400 px-1 py-1">Tidak ada departemen yang cocok dengan pencarian.</p>`;
-    const excluded = courseDraft.participants.excludedDepartments;
     return names.map(dep => {
-        const checked = !excluded.some(x => x.toLowerCase() === dep.toLowerCase());
+        const checked = !courseFilterStaging.some(x => x.toLowerCase() === dep.toLowerCase());
         return `<label class="flex items-center gap-2 text-xs px-1.5 py-1.5 rounded-lg hover:bg-slate-50 cursor-pointer">
             <input type="checkbox" ${checked ? 'checked' : ''} onchange="window.toggleCourseExcludeDept('${window.escapeHtml(dep).replace(/'/g, "\\'")}')" class="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500">
             <span class="truncate">${window.escapeHtml(dep)}</span>
@@ -7082,18 +7147,20 @@ function renderCourseDeptFilterRows() {
 window.reRenderCourseDeptFilterList = function () {
     const el = document.getElementById("course-dept-filter-list");
     if (el) el.innerHTML = renderCourseDeptFilterRows();
+    const all = window.sel.allDeptNames();
+    const allCb = document.getElementById("course-dept-filter-all");
+    if (allCb) allCb.checked = all.length > 0 && all.every(dep => !courseFilterStaging.some(x => x.toLowerCase() === dep.toLowerCase()));
 };
 // Render list checkbox level/posisi (dropdown "Level"), dipersempit (cascading) sesuai
-// departemen yang masih termasuk target, dan difilter oleh pencarian.
+// departemen yang SUDAH DITERAPKAN, dan difilter oleh pencarian.
 function renderCoursePosFilterRows() {
     const q = coursePosFilterSearch.trim().toLowerCase();
     const scoped = window.sel.posisiNamesForDepts(courseIncludedDeptNames());
     const names = scoped.filter(pos => !q || pos.toLowerCase().includes(q));
     if (!scoped.length) return `<p class="text-xs text-slate-400 px-1 py-1">Belum ada data posisi/jabatan dari karyawan (atau semua departemen sedang dikecualikan).</p>`;
     if (!names.length) return `<p class="text-xs text-slate-400 px-1 py-1">Tidak ada posisi/jabatan yang cocok dengan pencarian.</p>`;
-    const excluded = courseDraft.participants.excludedPositions;
     return names.map(pos => {
-        const checked = !excluded.some(x => x.toLowerCase() === pos.toLowerCase());
+        const checked = !courseFilterStaging.some(x => x.toLowerCase() === pos.toLowerCase());
         return `<label class="flex items-center gap-2 text-xs px-1.5 py-1.5 rounded-lg hover:bg-slate-50 cursor-pointer">
             <input type="checkbox" ${checked ? 'checked' : ''} onchange="window.toggleCourseExcludeLevel('${window.escapeHtml(pos).replace(/'/g, "\\'")}')" class="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500">
             <span class="truncate">${window.escapeHtml(pos)}</span>
@@ -7103,17 +7170,20 @@ function renderCoursePosFilterRows() {
 window.reRenderCoursePosFilterList = function () {
     const el = document.getElementById("course-pos-filter-list");
     if (el) el.innerHTML = renderCoursePosFilterRows();
+    const scoped = window.sel.posisiNamesForDepts(courseIncludedDeptNames());
+    const allCb = document.getElementById("course-pos-filter-all");
+    if (allCb) allCb.checked = scoped.length > 0 && scoped.every(pos => !courseFilterStaging.some(x => x.toLowerCase() === pos.toLowerCase()));
 };
-// Render list checkbox designation/jabatan (dropdown "Designation"), difilter oleh pencarian.
+// Render list checkbox designation/jabatan (dropdown "Designation"), dipersempit (cascading)
+// sesuai departemen+level yang SUDAH DITERAPKAN, dan difilter oleh pencarian.
 function renderCourseDesignationFilterRows() {
     const q = courseDesigFilterSearch.trim().toLowerCase();
-    const all = window.sel.allDesignationNames();
-    const names = all.filter(x => !q || x.toLowerCase().includes(q));
-    if (!all.length) return `<p class="text-xs text-slate-400 px-1 py-1">Belum ada data designation dari karyawan.</p>`;
+    const scoped = window.sel.designationNamesForDeptsAndLevels(courseIncludedDeptNames(), courseIncludedLevelNames());
+    const names = scoped.filter(x => !q || x.toLowerCase().includes(q));
+    if (!scoped.length) return `<p class="text-xs text-slate-400 px-1 py-1">Belum ada data designation (atau semua departemen/level sedang dikecualikan).</p>`;
     if (!names.length) return `<p class="text-xs text-slate-400 px-1 py-1">Tidak ada designation yang cocok dengan pencarian.</p>`;
-    const excluded = courseDraft.participants.excludedDesignations;
     return names.map(x => {
-        const checked = !excluded.some(y => y.toLowerCase() === x.toLowerCase());
+        const checked = !courseFilterStaging.some(y => y.toLowerCase() === x.toLowerCase());
         return `<label class="flex items-center gap-2 text-xs px-1.5 py-1.5 rounded-lg hover:bg-slate-50 cursor-pointer">
             <input type="checkbox" ${checked ? 'checked' : ''} onchange="window.toggleCourseExcludeDesignation('${window.escapeHtml(x).replace(/'/g, "\\'")}')" class="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500">
             <span class="truncate">${window.escapeHtml(x)}</span>
@@ -7123,10 +7193,13 @@ function renderCourseDesignationFilterRows() {
 window.reRenderCourseDesignationFilterList = function () {
     const el = document.getElementById("course-desig-filter-list");
     if (el) el.innerHTML = renderCourseDesignationFilterRows();
+    const scoped = window.sel.designationNamesForDeptsAndLevels(courseIncludedDeptNames(), courseIncludedLevelNames());
+    const allCb = document.getElementById("course-desig-filter-all");
+    if (allCb) allCb.checked = scoped.length > 0 && scoped.every(x => !courseFilterStaging.some(y => y.toLowerCase() === x.toLowerCase()));
 };
 // Render list checkbox karyawan (dropdown "Nama Karyawan"), dipersempit (cascading) sesuai
-// departemen+level yang masih termasuk target, dikelompokkan urut departemen, dan difilter
-// oleh pencarian.
+// departemen+level+designation yang SUDAH DITERAPKAN, dikelompokkan urut departemen, dan
+// difilter oleh pencarian.
 function renderCourseParticipantPickerRows() {
     const q = courseParticipantSearch.trim().toLowerCase();
     const employees = courseScopedEmployeesForNameFilter().filter(e => {
@@ -7134,9 +7207,8 @@ function renderCourseParticipantPickerRows() {
         return (e.nama || "").toLowerCase().includes(q) || (e.username || "").toLowerCase().includes(q) || (e.dept || "").toLowerCase().includes(q) || (e.posisi || "").toLowerCase().includes(q) || (e.designation || "").toLowerCase().includes(q);
     }).sort((a, b) => (a.dept || "").localeCompare(b.dept || "") || (a.nama || "").localeCompare(b.nama || ""));
     if (!employees.length) return `<p class="text-xs text-slate-400 text-center py-5">Tidak ada karyawan yang cocok.</p>`;
-    const excluded = courseDraft.participants.excludedEmployeeUsernames;
     return employees.map(e => {
-        const checked = !excluded.some(u => normalizeUsername(u) === normalizeUsername(e.username));
+        const checked = !courseFilterStaging.some(u => normalizeUsername(u) === normalizeUsername(e.username));
         return `<label class="flex items-center gap-2 px-3 py-2 text-xs hover:bg-slate-50 cursor-pointer">
             <input type="checkbox" ${checked ? 'checked' : ''} onchange="window.toggleCourseExcludeEmployee('${window.escapeHtml(e.username).replace(/'/g, "\\'")}')" class="accent-indigo-600 shrink-0">
             <span class="flex-1 min-w-0"><span class="font-bold text-slate-700">${window.escapeHtml(e.nama || e.username)}</span> <span class="text-slate-400">• ${window.escapeHtml(e.dept || '-')} • ${window.escapeHtml(e.posisi || '-')}${e.designation ? ' • ' + window.escapeHtml(e.designation) : ''}</span></span>
@@ -7146,9 +7218,12 @@ function renderCourseParticipantPickerRows() {
 window.reRenderCourseParticipantPicker = function () {
     const el = document.getElementById("course-participant-picker-list");
     if (el) el.innerHTML = renderCourseParticipantPickerRows();
+    const scoped = courseScopedEmployeesForNameFilter();
+    const allCb = document.getElementById("course-participant-filter-all");
+    if (allCb) allCb.checked = scoped.length > 0 && scoped.every(e => !courseFilterStaging.some(x => normalizeUsername(x) === normalizeUsername(e.username)));
 };
 // Re-render seluruh blok "Target Peserta" (dropdown row + ringkasan jumlah target) — dipakai
-// tiap kali sebuah checkbox exclude di-toggle, biar ringkasan & dropdown lain (yang cascading)
+// tiap kali sebuah filter diterapkan/dibatalkan, biar ringkasan & dropdown lain (yang cascading)
 // ikut update.
 window.reRenderCourseParticipantFilters = function () {
     const el = document.getElementById("course-participant-filters");
@@ -7167,100 +7242,105 @@ function courseHasAnyParticipantFilter(d) {
     return !!((p.departments || []).length || (p.positions || []).length || (p.employeeUsernames || []).length);
 }
 // Render body kartu "Target Peserta": penjelasan singkat, ringkasan jumlah target, dan baris
-// 4 dropdown (Departemen / Level / Designation / Nama Karyawan) yang masing-masing defaultnya
-// "All" tercentang.
+// 4 dropdown ringkas (Departemen / Level / Designation / Nama Karyawan) yang cascading berurutan
+// (Level ngikut Departemen, Designation ngikut Departemen+Level, Nama Karyawan ngikut ketiganya),
+// dan masing-masing defaultnya "All" tercentang. Tiap dropdown boleh diceklis beberapa dulu,
+// baru berlaku setelah tombol "Terapkan" ditekan.
 function renderCourseParticipantFiltersBlock() {
     const d = courseDraft;
     const totalDepts = window.sel.allDeptNames().length;
     const excludedDeptsCount = (d.participants.excludedDepartments || []).length;
     const scopedLevels = window.sel.posisiNamesForDepts(courseIncludedDeptNames());
     const excludedLevelsCount = (d.participants.excludedPositions || []).length;
-    const totalDesignations = window.sel.allDesignationNames().length;
+    const scopedDesignations = window.sel.designationNamesForDeptsAndLevels(courseIncludedDeptNames(), courseIncludedLevelNames());
     const excludedDesigCount = (d.participants.excludedDesignations || []).length;
     const scopedEmployees = courseScopedEmployeesForNameFilter();
     const excludedEmpCount = (d.participants.excludedEmployeeUsernames || []).length;
     const targetCount = window.courseTargetEmployees(d).length;
 
     function summaryLabel(excludedCount, totalCount) {
-        if (!totalCount) return `<span class="text-slate-400 font-bold">Tidak ada data</span>`;
+        if (!totalCount) return `<span class="text-slate-400 font-bold">-</span>`;
         if (!excludedCount) return `<span class="text-emerald-600 font-bold">Semua</span>`;
-        return `<span class="text-indigo-600 font-bold">${totalCount - excludedCount}/${totalCount} dipilih</span>`;
+        return `<span class="text-indigo-600 font-bold">${totalCount - excludedCount}/${totalCount}</span>`;
+    }
+    function filterTriggerHtml(which, icon, label, excludedCount, totalCount) {
+        return `
+            <div class="relative min-w-0">
+                <button type="button" onclick="event.stopPropagation(); window.toggleCourseFilterOpen('${which}')" class="w-full flex items-center justify-between gap-1 border border-slate-200 rounded-lg px-2 py-1.5 text-[11px] font-bold text-slate-600 hover:border-indigo-300 bg-white">
+                    <span class="flex items-center gap-1 min-w-0"><i class="fas ${icon} text-slate-400 shrink-0"></i><span class="truncate">${label}: ${summaryLabel(excludedCount, totalCount)}</span></span>
+                    <i class="fas fa-chevron-down text-[9px] text-slate-400 transition shrink-0 ${courseFilterOpen === which ? 'rotate-180' : ''}"></i>
+                </button>
+                ${courseFilterOpen === which ? courseFilterPanelHtml(which) : ""}
+            </div>`;
     }
 
     return `
-        <p class="text-xs text-slate-400">Defaultnya training ini terbuka untuk <b>SEMUA karyawan</b>. Hilangkan centang di salah satu filter di bawah kalau ada departemen, level, atau karyawan tertentu yang <b>tidak</b> termasuk target peserta.</p>
         <p class="text-xs font-semibold ${targetCount ? 'text-indigo-600 bg-indigo-50' : 'text-rose-600 bg-rose-50'} rounded-xl px-3 py-2"><i class="fas fa-users mr-1"></i> ${targetCount} karyawan saat ini termasuk target peserta.</p>
-        <div class="flex flex-col sm:flex-row gap-2">
-            <div class="relative flex-1">
-                <button type="button" onclick="event.stopPropagation(); window.toggleCourseFilterOpen('dept')" class="w-full flex items-center justify-between gap-2 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-600 hover:border-indigo-300 bg-white">
-                    <span class="flex items-center gap-1.5 truncate"><i class="fas fa-building text-slate-400"></i> Departemen: ${summaryLabel(excludedDeptsCount, totalDepts)}</span>
-                    <i class="fas fa-chevron-down text-[10px] text-slate-400 transition ${courseFilterOpen === 'dept' ? 'rotate-180' : ''}"></i>
-                </button>
-                ${courseFilterOpen === 'dept' ? `
-                <div class="absolute z-20 mt-1 w-full bg-white border border-slate-200 rounded-xl shadow-lg p-2" onclick="event.stopPropagation()">
-                    <input id="course-dept-filter-search" value="${window.escapeHtml(courseDeptFilterSearch)}" oninput="courseDeptFilterSearch=this.value; window.reRenderCourseDeptFilterList()" placeholder="Cari departemen..." class="w-full border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs mb-1.5">
-                    <label class="flex items-center gap-2 text-xs font-bold px-1.5 py-1.5 rounded-lg hover:bg-slate-50 cursor-pointer border-b border-slate-100 mb-1">
-                        <input type="checkbox" ${excludedDeptsCount === 0 ? 'checked' : ''} onchange="window.toggleCourseExcludeAllDepts()" class="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500">
-                        <span>All Departemen</span>
-                    </label>
-                    <div id="course-dept-filter-list" class="max-h-[180px] overflow-y-auto space-y-0.5">
-                        ${renderCourseDeptFilterRows()}
-                    </div>
-                </div>` : ""}
-            </div>
-            <div class="relative flex-1">
-                <button type="button" onclick="event.stopPropagation(); window.toggleCourseFilterOpen('level')" class="w-full flex items-center justify-between gap-2 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-600 hover:border-indigo-300 bg-white">
-                    <span class="flex items-center gap-1.5 truncate"><i class="fas fa-id-badge text-slate-400"></i> Level: ${summaryLabel(excludedLevelsCount, scopedLevels.length)}</span>
-                    <i class="fas fa-chevron-down text-[10px] text-slate-400 transition ${courseFilterOpen === 'level' ? 'rotate-180' : ''}"></i>
-                </button>
-                ${courseFilterOpen === 'level' ? `
-                <div class="absolute z-20 mt-1 w-full bg-white border border-slate-200 rounded-xl shadow-lg p-2" onclick="event.stopPropagation()">
-                    <input id="course-pos-filter-search" value="${window.escapeHtml(coursePosFilterSearch)}" oninput="coursePosFilterSearch=this.value; window.reRenderCoursePosFilterList()" placeholder="Cari level/posisi..." class="w-full border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs mb-1.5">
-                    <label class="flex items-center gap-2 text-xs font-bold px-1.5 py-1.5 rounded-lg hover:bg-slate-50 cursor-pointer border-b border-slate-100 mb-1">
-                        <input type="checkbox" ${excludedLevelsCount === 0 ? 'checked' : ''} onchange="window.toggleCourseExcludeAllLevels()" class="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500">
-                        <span>All Level</span>
-                    </label>
-                    <div id="course-pos-filter-list" class="max-h-[180px] overflow-y-auto space-y-0.5">
-                        ${renderCoursePosFilterRows()}
-                    </div>
-                </div>` : ""}
-            </div>
-            <div class="relative flex-1">
-                <button type="button" onclick="event.stopPropagation(); window.toggleCourseFilterOpen('desig')" class="w-full flex items-center justify-between gap-2 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-600 hover:border-indigo-300 bg-white">
-                    <span class="flex items-center gap-1.5 truncate"><i class="fas fa-address-card text-slate-400"></i> Designation: ${summaryLabel(excludedDesigCount, totalDesignations)}</span>
-                    <i class="fas fa-chevron-down text-[10px] text-slate-400 transition ${courseFilterOpen === 'desig' ? 'rotate-180' : ''}"></i>
-                </button>
-                ${courseFilterOpen === 'desig' ? `
-                <div class="absolute z-20 mt-1 w-full bg-white border border-slate-200 rounded-xl shadow-lg p-2" onclick="event.stopPropagation()">
-                    <input id="course-desig-filter-search" value="${window.escapeHtml(courseDesigFilterSearch)}" oninput="courseDesigFilterSearch=this.value; window.reRenderCourseDesignationFilterList()" placeholder="Cari designation..." class="w-full border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs mb-1.5">
-                    <label class="flex items-center gap-2 text-xs font-bold px-1.5 py-1.5 rounded-lg hover:bg-slate-50 cursor-pointer border-b border-slate-100 mb-1">
-                        <input type="checkbox" ${excludedDesigCount === 0 ? 'checked' : ''} onchange="window.toggleCourseExcludeAllDesignations()" class="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500">
-                        <span>All Designation</span>
-                    </label>
-                    <div id="course-desig-filter-list" class="max-h-[180px] overflow-y-auto space-y-0.5">
-                        ${renderCourseDesignationFilterRows()}
-                    </div>
-                </div>` : ""}
-            </div>
-            <div class="relative flex-1">
-                <button type="button" onclick="event.stopPropagation(); window.toggleCourseFilterOpen('emp')" class="w-full flex items-center justify-between gap-2 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-600 hover:border-indigo-300 bg-white">
-                    <span class="flex items-center gap-1.5 truncate"><i class="fas fa-user text-slate-400"></i> Nama Karyawan: ${summaryLabel(excludedEmpCount, scopedEmployees.length)}</span>
-                    <i class="fas fa-chevron-down text-[10px] text-slate-400 transition ${courseFilterOpen === 'emp' ? 'rotate-180' : ''}"></i>
-                </button>
-                ${courseFilterOpen === 'emp' ? `
-                <div class="absolute z-20 mt-1 w-full bg-white border border-slate-200 rounded-xl shadow-lg p-2" onclick="event.stopPropagation()">
-                    <input id="course-participant-search" value="${window.escapeHtml(courseParticipantSearch)}" oninput="courseParticipantSearch=this.value; window.reRenderCourseParticipantPicker()" placeholder="Cari nama / username karyawan..." class="w-full border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs mb-1.5">
-                    <label class="flex items-center gap-2 text-xs font-bold px-1.5 py-1.5 rounded-lg hover:bg-slate-50 cursor-pointer border-b border-slate-100 mb-1">
-                        <input type="checkbox" ${excludedEmpCount === 0 ? 'checked' : ''} onchange="window.toggleCourseExcludeAllEmployees()" class="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500">
-                        <span>All Karyawan</span>
-                    </label>
-                    <div id="course-participant-picker-list" class="max-h-[220px] overflow-y-auto divide-y divide-slate-50">
-                        ${renderCourseParticipantPickerRows()}
-                    </div>
-                </div>` : ""}
-            </div>
+        <div class="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
+            ${filterTriggerHtml('dept', 'fa-building', 'Dept', excludedDeptsCount, totalDepts)}
+            ${filterTriggerHtml('level', 'fa-id-badge', 'Level', excludedLevelsCount, scopedLevels.length)}
+            ${filterTriggerHtml('desig', 'fa-address-card', 'Desig', excludedDesigCount, scopedDesignations.length)}
+            ${filterTriggerHtml('emp', 'fa-user', 'Karyawan', excludedEmpCount, scopedEmployees.length)}
         </div>
     `;
+}
+// Isi dropdown panel (search + "All" + list + tombol Terapkan/Batal) untuk salah satu dari
+// keempat filter Target Peserta training onboarding.
+function courseFilterPanelHtml(which) {
+    if (which === 'dept') {
+        return `
+        <div class="absolute z-30 mt-1 w-full min-w-[220px] bg-white border border-slate-200 rounded-xl shadow-lg p-2" onclick="event.stopPropagation()">
+            <input id="course-dept-filter-search" value="${window.escapeHtml(courseDeptFilterSearch)}" oninput="courseDeptFilterSearch=this.value; window.reRenderCourseDeptFilterList()" placeholder="Cari departemen..." class="w-full border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs mb-1.5">
+            <label class="flex items-center gap-2 text-xs font-bold px-1.5 py-1.5 rounded-lg hover:bg-slate-50 cursor-pointer border-b border-slate-100 mb-1">
+                <input id="course-dept-filter-all" type="checkbox" ${courseFilterStaging.length === 0 ? 'checked' : ''} onchange="window.toggleCourseExcludeAllDepts()" class="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500">
+                <span>All Departemen</span>
+            </label>
+            <div id="course-dept-filter-list" class="max-h-[180px] overflow-y-auto space-y-0.5">
+                ${renderCourseDeptFilterRows()}
+            </div>
+            ${courseFilterActionButtonsHtml('dept')}
+        </div>`;
+    }
+    if (which === 'level') {
+        return `
+        <div class="absolute z-30 mt-1 w-full min-w-[220px] bg-white border border-slate-200 rounded-xl shadow-lg p-2" onclick="event.stopPropagation()">
+            <input id="course-pos-filter-search" value="${window.escapeHtml(coursePosFilterSearch)}" oninput="coursePosFilterSearch=this.value; window.reRenderCoursePosFilterList()" placeholder="Cari level/posisi..." class="w-full border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs mb-1.5">
+            <label class="flex items-center gap-2 text-xs font-bold px-1.5 py-1.5 rounded-lg hover:bg-slate-50 cursor-pointer border-b border-slate-100 mb-1">
+                <input id="course-pos-filter-all" type="checkbox" ${courseFilterStaging.length === 0 ? 'checked' : ''} onchange="window.toggleCourseExcludeAllLevels()" class="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500">
+                <span>All Level</span>
+            </label>
+            <div id="course-pos-filter-list" class="max-h-[180px] overflow-y-auto space-y-0.5">
+                ${renderCoursePosFilterRows()}
+            </div>
+            ${courseFilterActionButtonsHtml('level')}
+        </div>`;
+    }
+    if (which === 'desig') {
+        return `
+        <div class="absolute z-30 mt-1 w-full min-w-[220px] bg-white border border-slate-200 rounded-xl shadow-lg p-2" onclick="event.stopPropagation()">
+            <input id="course-desig-filter-search" value="${window.escapeHtml(courseDesigFilterSearch)}" oninput="courseDesigFilterSearch=this.value; window.reRenderCourseDesignationFilterList()" placeholder="Cari designation..." class="w-full border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs mb-1.5">
+            <label class="flex items-center gap-2 text-xs font-bold px-1.5 py-1.5 rounded-lg hover:bg-slate-50 cursor-pointer border-b border-slate-100 mb-1">
+                <input id="course-desig-filter-all" type="checkbox" ${courseFilterStaging.length === 0 ? 'checked' : ''} onchange="window.toggleCourseExcludeAllDesignations()" class="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500">
+                <span>All Designation</span>
+            </label>
+            <div id="course-desig-filter-list" class="max-h-[180px] overflow-y-auto space-y-0.5">
+                ${renderCourseDesignationFilterRows()}
+            </div>
+            ${courseFilterActionButtonsHtml('desig')}
+        </div>`;
+    }
+    return `
+        <div class="absolute z-30 mt-1 w-full min-w-[240px] bg-white border border-slate-200 rounded-xl shadow-lg p-2" onclick="event.stopPropagation()">
+            <input id="course-participant-search" value="${window.escapeHtml(courseParticipantSearch)}" oninput="courseParticipantSearch=this.value; window.reRenderCourseParticipantPicker()" placeholder="Cari nama / username karyawan..." class="w-full border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs mb-1.5">
+            <label class="flex items-center gap-2 text-xs font-bold px-1.5 py-1.5 rounded-lg hover:bg-slate-50 cursor-pointer border-b border-slate-100 mb-1">
+                <input id="course-participant-filter-all" type="checkbox" ${courseFilterStaging.length === 0 ? 'checked' : ''} onchange="window.toggleCourseExcludeAllEmployees()" class="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500">
+                <span>All Karyawan</span>
+            </label>
+            <div id="course-participant-picker-list" class="max-h-[220px] overflow-y-auto divide-y divide-slate-50">
+                ${renderCourseParticipantPickerRows()}
+            </div>
+            ${courseFilterActionButtonsHtml('emp')}
+        </div>`;
 }
 
 window.saveCourseDraft = async function () {
@@ -8599,6 +8679,9 @@ let trainingDeptFilterSearch = "";
 let trainingPosFilterSearch = "";
 let trainingDesigFilterSearch = "";
 let trainingFilterOpen = null; // null | 'dept' | 'level' | 'desig' | 'emp' — dropdown Target Peserta mana yang lagi kebuka
+// Ceklis sementara (belum disimpan) buat dropdown filter Target Peserta yang lagi kebuka — sama
+// konsepnya dengan courseFilterStaging di Training Onboarding (lihat komentar di sana).
+let trainingFilterStaging = [];
 // Migrasi participants training ke model BARU (excluded-list, "semua by default"). Kalau
 // training-nya baru dibuat (belum ada field participants sama sekali) atau sudah pakai model
 // baru, gampang — tinggal pastikan ketiga array excluded-nya ada. Kalau training LAMA (masih
@@ -8796,22 +8879,18 @@ function renderTrainingBuilder(id) {
                             <input value="${window.escapeHtml(d.attendanceCode)}" oninput="trainingDraft.attendanceCode=this.value.toUpperCase()" placeholder="Kode presensi" class="w-full border border-slate-200 rounded-lg px-2.5 py-1.5 text-sm font-mono uppercase mt-1">
                         </div>
                         <div class="form-full flex items-center gap-2">
-                            <input value="${window.escapeHtml(d.coverImage)}" oninput="trainingDraft.coverImage=this.value" placeholder="URL gambar cover (opsional)" class="flex-1 border border-slate-200 rounded-lg px-2.5 py-1.5 text-sm">
+                            <input value="${window.escapeHtml(d.coverImage)}" oninput="trainingDraft.coverImage=this.value" placeholder="URL gambar cover (opsional)" class="flex-1 min-w-0 border border-slate-200 rounded-lg px-2.5 py-1.5 text-sm">
                             <label class="shrink-0 text-[11px] font-bold text-amber-600 hover:text-amber-800 bg-amber-50 px-2.5 py-2 rounded-lg cursor-pointer whitespace-nowrap">
                                 <i class="fas fa-upload mr-1"></i> Upload
                                 <input type="file" accept="image/*" class="hidden" onchange="window.uploadTrainingCoverImage(this)">
                             </label>
+                            ${d.coverImage ? `<img src="${d.coverImage}" title="Preview gambar cover" class="shrink-0 w-9 h-9 rounded-lg object-cover border border-emerald-200" onerror="this.style.display='none'">` : ""}
                         </div>
                     </div>
                     <div id="training-cover-progress" class="hide">
                         <div class="flex items-center justify-between text-[10px] font-bold text-amber-600 mb-1"><span><i class="fas fa-spinner fa-spin mr-1"></i>Mengupload gambar...</span><span id="training-cover-progress-pct">0%</span></div>
                         <div class="h-1.5 bg-slate-200 rounded-full overflow-hidden"><div id="training-cover-progress-bar" class="h-full bg-amber-500 transition-all" style="width:0%"></div></div>
                     </div>
-                    ${d.coverImage ? `
-                    <div class="flex items-center gap-2 text-[11px] font-bold text-emerald-600 bg-emerald-50 rounded-xl px-3 py-2">
-                        <i class="fas fa-circle-check"></i> Gambar cover terpasang
-                        <img src="${d.coverImage}" class="w-10 h-10 rounded-lg object-cover ml-auto border border-emerald-200" onerror="this.style.display='none'">
-                    </div>` : ""}
                 </div>
 
                 <div id="training-participant-filters" class="bg-white rounded-2xl border border-slate-100 shadow-sm p-3 space-y-3" onclick="event.stopPropagation()">
@@ -8900,8 +8979,9 @@ function trainingIncludedLevelNames() {
 // Nama-nama designation (jabatan) yang masih termasuk target — dikurangi designation yang
 // dikecualikan admin. Beda konsep dari "Level" (posisi), jadi tidak di-cascade ke dept/level.
 function trainingIncludedDesignationNames() {
+    const scoped = window.sel.designationNamesForDeptsAndLevels(trainingIncludedDeptNames(), trainingIncludedLevelNames());
     const excluded = new Set((trainingDraft.participants.excludedDesignations || []).map(x => x.toLowerCase()));
-    return window.sel.allDesignationNames().filter(x => !excluded.has(x.toLowerCase()));
+    return scoped.filter(x => !excluded.has(x.toLowerCase()));
 }
 // Daftar karyawan yang cocok departemen+level+designation yang masih termasuk target — ini yang
 // muncul di dropdown "Filter Nama Karyawan" (ikut nyempit otomatis kalau dept/level/designation
@@ -8920,90 +9000,132 @@ function trainingScopedEmployeesForNameFilter() {
         return true;
     });
 }
+// Ambil array "excluded" yang tersimpan (committed) di trainingDraft sesuai jenis filter.
+function trainingFilterExcludedArrayFor(which) {
+    const p = trainingDraft.participants;
+    if (which === 'dept') return p.excludedDepartments || (p.excludedDepartments = []);
+    if (which === 'level') return p.excludedPositions || (p.excludedPositions = []);
+    if (which === 'desig') return p.excludedDesignations || (p.excludedDesignations = []);
+    if (which === 'emp') return p.excludedEmployeeUsernames || (p.excludedEmployeeUsernames = []);
+    return [];
+}
+// Buka/tutup salah satu dropdown filter Target Peserta. Pas dibuka, ceklis sementara
+// (trainingFilterStaging) di-clone dari pilihan yang sudah tersimpan, biar admin bisa ubah-ubah
+// ceklisnya dulu tanpa langsung mempengaruhi cascading filter lain / ringkasan jumlah target.
 window.toggleTrainingFilterOpen = function (which) {
-    trainingFilterOpen = (trainingFilterOpen === which) ? null : which;
+    if (trainingFilterOpen === which) {
+        trainingFilterOpen = null;
+        trainingFilterStaging = [];
+    } else {
+        trainingFilterOpen = which;
+        trainingFilterStaging = [...trainingFilterExcludedArrayFor(which)];
+    }
     window.reRenderTrainingParticipantFilters();
 };
 document.addEventListener("click", function () {
     if (!trainingFilterOpen) return;
     trainingFilterOpen = null;
+    trainingFilterStaging = [];
     window.reRenderTrainingParticipantFilters();
 });
-window.toggleTrainingExcludeDept = function (dep) {
-    const arr = trainingDraft.participants.excludedDepartments;
-    const idx = arr.findIndex(x => x.toLowerCase() === dep.toLowerCase());
-    if (idx >= 0) arr.splice(idx, 1); else arr.push(dep);
+// Tombol "Terapkan" di dalam dropdown: baru di titik ini ceklis sementara dituliskan balik ke
+// trainingDraft (dan baru dipakai buat cascading filter di bawahnya / ringkasan jumlah target).
+window.applyTrainingFilter = function (which) {
+    const p = trainingDraft.participants;
+    const val = [...trainingFilterStaging];
+    if (which === 'dept') p.excludedDepartments = val;
+    else if (which === 'level') p.excludedPositions = val;
+    else if (which === 'desig') p.excludedDesignations = val;
+    else if (which === 'emp') p.excludedEmployeeUsernames = val;
+    trainingFilterOpen = null;
+    trainingFilterStaging = [];
     window.reRenderTrainingParticipantFilters();
+};
+// Tombol "Batal": buang ceklis sementara, balik ke pilihan yang sudah tersimpan sebelumnya.
+window.cancelTrainingFilter = function () {
+    trainingFilterOpen = null;
+    trainingFilterStaging = [];
+    window.reRenderTrainingParticipantFilters();
+};
+window.toggleTrainingExcludeDept = function (dep) {
+    const idx = trainingFilterStaging.findIndex(x => x.toLowerCase() === dep.toLowerCase());
+    if (idx >= 0) trainingFilterStaging.splice(idx, 1); else trainingFilterStaging.push(dep);
+    window.reRenderTrainingDeptFilterList();
 };
 window.toggleTrainingExcludeAllDepts = function () {
     const all = window.sel.allDeptNames();
-    const arr = trainingDraft.participants.excludedDepartments;
-    const allExcluded = all.length > 0 && all.every(dep => arr.some(x => x.toLowerCase() === dep.toLowerCase()));
-    trainingDraft.participants.excludedDepartments = allExcluded ? [] : [...all];
-    window.reRenderTrainingParticipantFilters();
+    const allExcluded = all.length > 0 && all.every(dep => trainingFilterStaging.some(x => x.toLowerCase() === dep.toLowerCase()));
+    trainingFilterStaging = allExcluded ? [] : [...all];
+    window.reRenderTrainingDeptFilterList();
 };
 window.toggleTrainingExcludeLevel = function (pos) {
-    const arr = trainingDraft.participants.excludedPositions;
-    const idx = arr.findIndex(x => x.toLowerCase() === pos.toLowerCase());
-    if (idx >= 0) arr.splice(idx, 1); else arr.push(pos);
-    window.reRenderTrainingParticipantFilters();
+    const idx = trainingFilterStaging.findIndex(x => x.toLowerCase() === pos.toLowerCase());
+    if (idx >= 0) trainingFilterStaging.splice(idx, 1); else trainingFilterStaging.push(pos);
+    window.reRenderTrainingPosFilterList();
 };
 window.toggleTrainingExcludeAllLevels = function () {
     const scoped = window.sel.posisiNamesForDepts(trainingIncludedDeptNames());
-    const arr = trainingDraft.participants.excludedPositions;
-    const allExcluded = scoped.length > 0 && scoped.every(pos => arr.some(x => x.toLowerCase() === pos.toLowerCase()));
+    const allExcluded = scoped.length > 0 && scoped.every(pos => trainingFilterStaging.some(x => x.toLowerCase() === pos.toLowerCase()));
     if (allExcluded) {
-        trainingDraft.participants.excludedPositions = arr.filter(x => !scoped.some(pos => pos.toLowerCase() === x.toLowerCase()));
+        trainingFilterStaging = trainingFilterStaging.filter(x => !scoped.some(pos => pos.toLowerCase() === x.toLowerCase()));
     } else {
-        const set = new Set(arr.map(x => x.toLowerCase()));
-        scoped.forEach(pos => { if (!set.has(pos.toLowerCase())) arr.push(pos); });
+        const set = new Set(trainingFilterStaging.map(x => x.toLowerCase()));
+        scoped.forEach(pos => { if (!set.has(pos.toLowerCase())) trainingFilterStaging.push(pos); });
     }
-    window.reRenderTrainingParticipantFilters();
+    window.reRenderTrainingPosFilterList();
 };
 window.toggleTrainingExcludeDesignation = function (desig) {
-    const arr = trainingDraft.participants.excludedDesignations;
-    const idx = arr.findIndex(x => x.toLowerCase() === desig.toLowerCase());
-    if (idx >= 0) arr.splice(idx, 1); else arr.push(desig);
-    window.reRenderTrainingParticipantFilters();
+    const idx = trainingFilterStaging.findIndex(x => x.toLowerCase() === desig.toLowerCase());
+    if (idx >= 0) trainingFilterStaging.splice(idx, 1); else trainingFilterStaging.push(desig);
+    window.reRenderTrainingDesignationFilterList();
 };
 window.toggleTrainingExcludeAllDesignations = function () {
-    const all = window.sel.allDesignationNames();
-    const arr = trainingDraft.participants.excludedDesignations;
-    const allExcluded = all.length > 0 && all.every(x => arr.some(y => y.toLowerCase() === x.toLowerCase()));
-    trainingDraft.participants.excludedDesignations = allExcluded ? [] : [...all];
-    window.reRenderTrainingParticipantFilters();
+    const scoped = window.sel.designationNamesForDeptsAndLevels(trainingIncludedDeptNames(), trainingIncludedLevelNames());
+    const allExcluded = scoped.length > 0 && scoped.every(x => trainingFilterStaging.some(y => y.toLowerCase() === x.toLowerCase()));
+    if (allExcluded) {
+        trainingFilterStaging = trainingFilterStaging.filter(x => !scoped.some(y => y.toLowerCase() === x.toLowerCase()));
+    } else {
+        const set = new Set(trainingFilterStaging.map(x => x.toLowerCase()));
+        scoped.forEach(x => { if (!set.has(x.toLowerCase())) trainingFilterStaging.push(x); });
+    }
+    window.reRenderTrainingDesignationFilterList();
 };
 window.toggleTrainingExcludeEmployee = function (username) {
-    const arr = trainingDraft.participants.excludedEmployeeUsernames;
     const norm = normalizeUsername(username);
-    const idx = arr.findIndex(u => normalizeUsername(u) === norm);
-    if (idx >= 0) arr.splice(idx, 1); else arr.push(username);
-    window.reRenderTrainingParticipantFilters();
+    const idx = trainingFilterStaging.findIndex(u => normalizeUsername(u) === norm);
+    if (idx >= 0) trainingFilterStaging.splice(idx, 1); else trainingFilterStaging.push(username);
+    window.reRenderTrainingParticipantPicker();
 };
 window.toggleTrainingExcludeAllEmployees = function () {
     const scoped = trainingScopedEmployeesForNameFilter();
-    const arr = trainingDraft.participants.excludedEmployeeUsernames;
     const allNorm = scoped.map(e => normalizeUsername(e.username));
-    const allExcluded = allNorm.length > 0 && allNorm.every(u => arr.some(x => normalizeUsername(x) === u));
+    const allExcluded = allNorm.length > 0 && allNorm.every(u => trainingFilterStaging.some(x => normalizeUsername(x) === u));
     if (allExcluded) {
-        trainingDraft.participants.excludedEmployeeUsernames = arr.filter(x => !allNorm.includes(normalizeUsername(x)));
+        trainingFilterStaging = trainingFilterStaging.filter(x => !allNorm.includes(normalizeUsername(x)));
     } else {
-        const set = new Set(arr.map(x => normalizeUsername(x)));
-        scoped.forEach(e => { const n = normalizeUsername(e.username); if (!set.has(n)) arr.push(e.username); });
+        const set = new Set(trainingFilterStaging.map(x => normalizeUsername(x)));
+        scoped.forEach(e => { const n = normalizeUsername(e.username); if (!set.has(n)) trainingFilterStaging.push(e.username); });
     }
-    window.reRenderTrainingParticipantFilters();
+    window.reRenderTrainingParticipantPicker();
 };
+// Tombol "Apply/Batal" yang dipakai di keempat dropdown (departemen/level/designation/karyawan).
+function trainingFilterActionButtonsHtml(which) {
+    return `
+        <div class="flex items-center gap-2 pt-2 mt-1.5 border-t border-slate-100">
+            <button type="button" onclick="window.cancelTrainingFilter()" class="flex-1 text-[11px] font-bold text-slate-500 hover:text-slate-700 bg-slate-50 hover:bg-slate-100 rounded-lg py-1.5 transition">Batal</button>
+            <button type="button" onclick="window.applyTrainingFilter('${which}')" class="flex-1 text-[11px] font-bold text-white bg-amber-500 hover:bg-amber-600 rounded-lg py-1.5 transition"><i class="fas fa-check mr-1"></i>Terapkan</button>
+        </div>`;
+}
 // Render list checkbox departemen (dropdown "Departemen"), difilter oleh pencarian. Checked =
-// TIDAK dikecualikan (= termasuk target).
+// TIDAK dikecualikan (= termasuk target) di ceklis SEMENTARA (trainingFilterStaging).
 function renderTrainingDeptFilterRows() {
     const q = trainingDeptFilterSearch.trim().toLowerCase();
     const all = window.sel.allDeptNames();
     const names = all.filter(dep => !q || dep.toLowerCase().includes(q));
     if (!all.length) return `<p class="text-xs text-slate-400 px-1 py-1">Belum ada departemen terdaftar dari akun pengguna.</p>`;
     if (!names.length) return `<p class="text-xs text-slate-400 px-1 py-1">Tidak ada departemen yang cocok dengan pencarian.</p>`;
-    const excluded = trainingDraft.participants.excludedDepartments;
     return names.map(dep => {
-        const checked = !excluded.some(x => x.toLowerCase() === dep.toLowerCase());
+        const checked = !trainingFilterStaging.some(x => x.toLowerCase() === dep.toLowerCase());
         return `<label class="flex items-center gap-2 text-xs px-1.5 py-1.5 rounded-lg hover:bg-slate-50 cursor-pointer">
             <input type="checkbox" ${checked ? 'checked' : ''} onchange="window.toggleTrainingExcludeDept('${window.escapeHtml(dep).replace(/'/g, "\\'")}')" class="rounded border-slate-300 text-amber-500 focus:ring-amber-500">
             <span class="truncate">${window.escapeHtml(dep)}</span>
@@ -9013,18 +9135,20 @@ function renderTrainingDeptFilterRows() {
 window.reRenderTrainingDeptFilterList = function () {
     const el = document.getElementById("training-dept-filter-list");
     if (el) el.innerHTML = renderTrainingDeptFilterRows();
+    const all = window.sel.allDeptNames();
+    const allCb = document.getElementById("training-dept-filter-all");
+    if (allCb) allCb.checked = all.length > 0 && all.every(dep => !trainingFilterStaging.some(x => x.toLowerCase() === dep.toLowerCase()));
 };
 // Render list checkbox level/posisi (dropdown "Level"), dipersempit (cascading) sesuai
-// departemen yang masih termasuk target, dan difilter oleh pencarian.
+// departemen yang SUDAH DITERAPKAN, dan difilter oleh pencarian.
 function renderTrainingPosFilterRows() {
     const q = trainingPosFilterSearch.trim().toLowerCase();
     const scoped = window.sel.posisiNamesForDepts(trainingIncludedDeptNames());
     const names = scoped.filter(pos => !q || pos.toLowerCase().includes(q));
     if (!scoped.length) return `<p class="text-xs text-slate-400 px-1 py-1">Belum ada data posisi/jabatan dari karyawan (atau semua departemen sedang dikecualikan).</p>`;
     if (!names.length) return `<p class="text-xs text-slate-400 px-1 py-1">Tidak ada posisi/jabatan yang cocok dengan pencarian.</p>`;
-    const excluded = trainingDraft.participants.excludedPositions;
     return names.map(pos => {
-        const checked = !excluded.some(x => x.toLowerCase() === pos.toLowerCase());
+        const checked = !trainingFilterStaging.some(x => x.toLowerCase() === pos.toLowerCase());
         return `<label class="flex items-center gap-2 text-xs px-1.5 py-1.5 rounded-lg hover:bg-slate-50 cursor-pointer">
             <input type="checkbox" ${checked ? 'checked' : ''} onchange="window.toggleTrainingExcludeLevel('${window.escapeHtml(pos).replace(/'/g, "\\'")}')" class="rounded border-slate-300 text-amber-500 focus:ring-amber-500">
             <span class="truncate">${window.escapeHtml(pos)}</span>
@@ -9034,17 +9158,20 @@ function renderTrainingPosFilterRows() {
 window.reRenderTrainingPosFilterList = function () {
     const el = document.getElementById("training-pos-filter-list");
     if (el) el.innerHTML = renderTrainingPosFilterRows();
+    const scoped = window.sel.posisiNamesForDepts(trainingIncludedDeptNames());
+    const allCb = document.getElementById("training-pos-filter-all");
+    if (allCb) allCb.checked = scoped.length > 0 && scoped.every(pos => !trainingFilterStaging.some(x => x.toLowerCase() === pos.toLowerCase()));
 };
-// Render list checkbox designation/jabatan (dropdown "Designation"), difilter oleh pencarian.
+// Render list checkbox designation/jabatan (dropdown "Designation"), dipersempit (cascading)
+// sesuai departemen+level yang SUDAH DITERAPKAN, dan difilter oleh pencarian.
 function renderTrainingDesignationFilterRows() {
     const q = trainingDesigFilterSearch.trim().toLowerCase();
-    const all = window.sel.allDesignationNames();
-    const names = all.filter(x => !q || x.toLowerCase().includes(q));
-    if (!all.length) return `<p class="text-xs text-slate-400 px-1 py-1">Belum ada data designation dari karyawan.</p>`;
+    const scoped = window.sel.designationNamesForDeptsAndLevels(trainingIncludedDeptNames(), trainingIncludedLevelNames());
+    const names = scoped.filter(x => !q || x.toLowerCase().includes(q));
+    if (!scoped.length) return `<p class="text-xs text-slate-400 px-1 py-1">Belum ada data designation (atau semua departemen/level sedang dikecualikan).</p>`;
     if (!names.length) return `<p class="text-xs text-slate-400 px-1 py-1">Tidak ada designation yang cocok dengan pencarian.</p>`;
-    const excluded = trainingDraft.participants.excludedDesignations;
     return names.map(x => {
-        const checked = !excluded.some(y => y.toLowerCase() === x.toLowerCase());
+        const checked = !trainingFilterStaging.some(y => y.toLowerCase() === x.toLowerCase());
         return `<label class="flex items-center gap-2 text-xs px-1.5 py-1.5 rounded-lg hover:bg-slate-50 cursor-pointer">
             <input type="checkbox" ${checked ? 'checked' : ''} onchange="window.toggleTrainingExcludeDesignation('${window.escapeHtml(x).replace(/'/g, "\\'")}')" class="rounded border-slate-300 text-amber-500 focus:ring-amber-500">
             <span class="truncate">${window.escapeHtml(x)}</span>
@@ -9054,10 +9181,13 @@ function renderTrainingDesignationFilterRows() {
 window.reRenderTrainingDesignationFilterList = function () {
     const el = document.getElementById("training-desig-filter-list");
     if (el) el.innerHTML = renderTrainingDesignationFilterRows();
+    const scoped = window.sel.designationNamesForDeptsAndLevels(trainingIncludedDeptNames(), trainingIncludedLevelNames());
+    const allCb = document.getElementById("training-desig-filter-all");
+    if (allCb) allCb.checked = scoped.length > 0 && scoped.every(x => !trainingFilterStaging.some(y => y.toLowerCase() === x.toLowerCase()));
 };
 // Render list checkbox karyawan (dropdown "Nama Karyawan"), dipersempit (cascading) sesuai
-// departemen+level yang masih termasuk target, dikelompokkan urut departemen, dan difilter
-// oleh pencarian.
+// departemen+level+designation yang SUDAH DITERAPKAN, dikelompokkan urut departemen, dan
+// difilter oleh pencarian.
 function renderTrainingParticipantPickerRows() {
     const q = trainingParticipantSearch.trim().toLowerCase();
     const employees = trainingScopedEmployeesForNameFilter().filter(e => {
@@ -9065,9 +9195,8 @@ function renderTrainingParticipantPickerRows() {
         return (e.nama || "").toLowerCase().includes(q) || (e.username || "").toLowerCase().includes(q) || (e.dept || "").toLowerCase().includes(q) || (e.posisi || "").toLowerCase().includes(q) || (e.designation || "").toLowerCase().includes(q);
     }).sort((a, b) => (a.dept || "").localeCompare(b.dept || "") || (a.nama || "").localeCompare(b.nama || ""));
     if (!employees.length) return `<p class="text-xs text-slate-400 text-center py-5">Tidak ada karyawan yang cocok.</p>`;
-    const excluded = trainingDraft.participants.excludedEmployeeUsernames;
     return employees.map(e => {
-        const checked = !excluded.some(u => normalizeUsername(u) === normalizeUsername(e.username));
+        const checked = !trainingFilterStaging.some(u => normalizeUsername(u) === normalizeUsername(e.username));
         return `<label class="flex items-center gap-2 px-3 py-2 text-xs hover:bg-slate-50 cursor-pointer">
             <input type="checkbox" ${checked ? 'checked' : ''} onchange="window.toggleTrainingExcludeEmployee('${window.escapeHtml(e.username).replace(/'/g, "\\'")}')" class="accent-amber-500 shrink-0">
             <span class="flex-1 min-w-0"><span class="font-bold text-slate-700">${window.escapeHtml(e.nama || e.username)}</span> <span class="text-slate-400">• ${window.escapeHtml(e.dept || '-')} • ${window.escapeHtml(e.posisi || '-')}${e.designation ? ' • ' + window.escapeHtml(e.designation) : ''}</span></span>
@@ -9077,18 +9206,21 @@ function renderTrainingParticipantPickerRows() {
 window.reRenderTrainingParticipantPicker = function () {
     const el = document.getElementById("training-participant-picker-list");
     if (el) el.innerHTML = renderTrainingParticipantPickerRows();
+    const scoped = trainingScopedEmployeesForNameFilter();
+    const allCb = document.getElementById("training-participant-filter-all");
+    if (allCb) allCb.checked = scoped.length > 0 && scoped.every(e => !trainingFilterStaging.some(x => normalizeUsername(x) === normalizeUsername(e.username)));
 };
 // Re-render seluruh blok "Target Peserta" (dropdown row + ringkasan jumlah target) — dipakai
-// tiap kali sebuah checkbox exclude di-toggle, biar ringkasan & dropdown lain (yang cascading)
+// tiap kali sebuah filter diterapkan/dibatalkan, biar ringkasan & dropdown lain (yang cascading)
 // ikut update.
 window.reRenderTrainingParticipantFilters = function () {
     const el = document.getElementById("training-participant-filters");
     if (!el) return;
     el.innerHTML = `<h3 class="font-black text-sm text-slate-700"><i class="fas fa-users text-amber-500 mr-1"></i> Target Peserta</h3>` + renderTrainingParticipantFiltersBlock();
 };
-// Cek apakah training/draft ini punya batasan target peserta (baik model baru "excluded-list"
-// maupun fallback model lama) — kalau tidak ada sama sekali, training-nya terbuka untuk SEMUA
-// karyawan.
+// Cek apakah training/draft ini punya batasan target peserta (baik model baru
+// "excluded-list" maupun fallback model lama) — kalau tidak ada sama sekali, training-nya
+// terbuka untuk SEMUA karyawan.
 function trainingHasAnyParticipantFilter(d) {
     const p = (d && d.participants) || {};
     const isNewModel = ("excludedDepartments" in p) || ("excludedPositions" in p) || ("excludedDesignations" in p) || ("excludedEmployeeUsernames" in p);
@@ -9098,100 +9230,105 @@ function trainingHasAnyParticipantFilter(d) {
     return !!((p.departments || []).length || (p.positions || []).length || (p.employeeUsernames || []).length);
 }
 // Render body kartu "Target Peserta": penjelasan singkat, ringkasan jumlah target, dan baris
-// 4 dropdown (Departemen / Level / Designation / Nama Karyawan) yang masing-masing defaultnya
-// "All" tercentang.
+// 4 dropdown ringkas (Departemen / Level / Designation / Nama Karyawan) yang cascading berurutan
+// (Level ngikut Departemen, Designation ngikut Departemen+Level, Nama Karyawan ngikut ketiganya),
+// dan masing-masing defaultnya "All" tercentang. Tiap dropdown boleh diceklis beberapa dulu,
+// baru berlaku setelah tombol "Terapkan" ditekan.
 function renderTrainingParticipantFiltersBlock() {
     const d = trainingDraft;
     const totalDepts = window.sel.allDeptNames().length;
     const excludedDeptsCount = (d.participants.excludedDepartments || []).length;
     const scopedLevels = window.sel.posisiNamesForDepts(trainingIncludedDeptNames());
     const excludedLevelsCount = (d.participants.excludedPositions || []).length;
-    const totalDesignations = window.sel.allDesignationNames().length;
+    const scopedDesignations = window.sel.designationNamesForDeptsAndLevels(trainingIncludedDeptNames(), trainingIncludedLevelNames());
     const excludedDesigCount = (d.participants.excludedDesignations || []).length;
     const scopedEmployees = trainingScopedEmployeesForNameFilter();
     const excludedEmpCount = (d.participants.excludedEmployeeUsernames || []).length;
     const targetCount = window.trainingTargetEmployees(d).length;
 
     function summaryLabel(excludedCount, totalCount) {
-        if (!totalCount) return `<span class="text-slate-400 font-bold">Tidak ada data</span>`;
+        if (!totalCount) return `<span class="text-slate-400 font-bold">-</span>`;
         if (!excludedCount) return `<span class="text-emerald-600 font-bold">Semua</span>`;
-        return `<span class="text-amber-600 font-bold">${totalCount - excludedCount}/${totalCount} dipilih</span>`;
+        return `<span class="text-amber-600 font-bold">${totalCount - excludedCount}/${totalCount}</span>`;
+    }
+    function filterTriggerHtml(which, icon, label, excludedCount, totalCount) {
+        return `
+            <div class="relative min-w-0">
+                <button type="button" onclick="event.stopPropagation(); window.toggleTrainingFilterOpen('${which}')" class="w-full flex items-center justify-between gap-1 border border-slate-200 rounded-lg px-2 py-1.5 text-[11px] font-bold text-slate-600 hover:border-amber-300 bg-white">
+                    <span class="flex items-center gap-1 min-w-0"><i class="fas ${icon} text-slate-400 shrink-0"></i><span class="truncate">${label}: ${summaryLabel(excludedCount, totalCount)}</span></span>
+                    <i class="fas fa-chevron-down text-[9px] text-slate-400 transition shrink-0 ${trainingFilterOpen === which ? 'rotate-180' : ''}"></i>
+                </button>
+                ${trainingFilterOpen === which ? trainingFilterPanelHtml(which) : ""}
+            </div>`;
     }
 
     return `
-        <p class="text-xs text-slate-400">Defaultnya training ini terbuka untuk <b>SEMUA karyawan</b>. Hilangkan centang di salah satu filter di bawah kalau ada departemen, level, atau karyawan tertentu yang <b>tidak</b> termasuk target peserta.</p>
         <p class="text-xs font-semibold ${targetCount ? 'text-amber-600 bg-amber-50' : 'text-rose-600 bg-rose-50'} rounded-xl px-3 py-2"><i class="fas fa-users mr-1"></i> ${targetCount} karyawan saat ini termasuk target peserta.</p>
-        <div class="flex flex-col sm:flex-row gap-2">
-            <div class="relative flex-1">
-                <button type="button" onclick="event.stopPropagation(); window.toggleTrainingFilterOpen('dept')" class="w-full flex items-center justify-between gap-2 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-600 hover:border-amber-300 bg-white">
-                    <span class="flex items-center gap-1.5 truncate"><i class="fas fa-building text-slate-400"></i> Departemen: ${summaryLabel(excludedDeptsCount, totalDepts)}</span>
-                    <i class="fas fa-chevron-down text-[10px] text-slate-400 transition ${trainingFilterOpen === 'dept' ? 'rotate-180' : ''}"></i>
-                </button>
-                ${trainingFilterOpen === 'dept' ? `
-                <div class="absolute z-20 mt-1 w-full bg-white border border-slate-200 rounded-xl shadow-lg p-2" onclick="event.stopPropagation()">
-                    <input id="training-dept-filter-search" value="${window.escapeHtml(trainingDeptFilterSearch)}" oninput="trainingDeptFilterSearch=this.value; window.reRenderTrainingDeptFilterList()" placeholder="Cari departemen..." class="w-full border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs mb-1.5">
-                    <label class="flex items-center gap-2 text-xs font-bold px-1.5 py-1.5 rounded-lg hover:bg-slate-50 cursor-pointer border-b border-slate-100 mb-1">
-                        <input type="checkbox" ${excludedDeptsCount === 0 ? 'checked' : ''} onchange="window.toggleTrainingExcludeAllDepts()" class="rounded border-slate-300 text-amber-500 focus:ring-amber-500">
-                        <span>All Departemen</span>
-                    </label>
-                    <div id="training-dept-filter-list" class="max-h-[180px] overflow-y-auto space-y-0.5">
-                        ${renderTrainingDeptFilterRows()}
-                    </div>
-                </div>` : ""}
-            </div>
-            <div class="relative flex-1">
-                <button type="button" onclick="event.stopPropagation(); window.toggleTrainingFilterOpen('level')" class="w-full flex items-center justify-between gap-2 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-600 hover:border-amber-300 bg-white">
-                    <span class="flex items-center gap-1.5 truncate"><i class="fas fa-id-badge text-slate-400"></i> Level: ${summaryLabel(excludedLevelsCount, scopedLevels.length)}</span>
-                    <i class="fas fa-chevron-down text-[10px] text-slate-400 transition ${trainingFilterOpen === 'level' ? 'rotate-180' : ''}"></i>
-                </button>
-                ${trainingFilterOpen === 'level' ? `
-                <div class="absolute z-20 mt-1 w-full bg-white border border-slate-200 rounded-xl shadow-lg p-2" onclick="event.stopPropagation()">
-                    <input id="training-pos-filter-search" value="${window.escapeHtml(trainingPosFilterSearch)}" oninput="trainingPosFilterSearch=this.value; window.reRenderTrainingPosFilterList()" placeholder="Cari level/posisi..." class="w-full border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs mb-1.5">
-                    <label class="flex items-center gap-2 text-xs font-bold px-1.5 py-1.5 rounded-lg hover:bg-slate-50 cursor-pointer border-b border-slate-100 mb-1">
-                        <input type="checkbox" ${excludedLevelsCount === 0 ? 'checked' : ''} onchange="window.toggleTrainingExcludeAllLevels()" class="rounded border-slate-300 text-amber-500 focus:ring-amber-500">
-                        <span>All Level</span>
-                    </label>
-                    <div id="training-pos-filter-list" class="max-h-[180px] overflow-y-auto space-y-0.5">
-                        ${renderTrainingPosFilterRows()}
-                    </div>
-                </div>` : ""}
-            </div>
-            <div class="relative flex-1">
-                <button type="button" onclick="event.stopPropagation(); window.toggleTrainingFilterOpen('desig')" class="w-full flex items-center justify-between gap-2 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-600 hover:border-amber-300 bg-white">
-                    <span class="flex items-center gap-1.5 truncate"><i class="fas fa-address-card text-slate-400"></i> Designation: ${summaryLabel(excludedDesigCount, totalDesignations)}</span>
-                    <i class="fas fa-chevron-down text-[10px] text-slate-400 transition ${trainingFilterOpen === 'desig' ? 'rotate-180' : ''}"></i>
-                </button>
-                ${trainingFilterOpen === 'desig' ? `
-                <div class="absolute z-20 mt-1 w-full bg-white border border-slate-200 rounded-xl shadow-lg p-2" onclick="event.stopPropagation()">
-                    <input id="training-desig-filter-search" value="${window.escapeHtml(trainingDesigFilterSearch)}" oninput="trainingDesigFilterSearch=this.value; window.reRenderTrainingDesignationFilterList()" placeholder="Cari designation..." class="w-full border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs mb-1.5">
-                    <label class="flex items-center gap-2 text-xs font-bold px-1.5 py-1.5 rounded-lg hover:bg-slate-50 cursor-pointer border-b border-slate-100 mb-1">
-                        <input type="checkbox" ${excludedDesigCount === 0 ? 'checked' : ''} onchange="window.toggleTrainingExcludeAllDesignations()" class="rounded border-slate-300 text-amber-500 focus:ring-amber-500">
-                        <span>All Designation</span>
-                    </label>
-                    <div id="training-desig-filter-list" class="max-h-[180px] overflow-y-auto space-y-0.5">
-                        ${renderTrainingDesignationFilterRows()}
-                    </div>
-                </div>` : ""}
-            </div>
-            <div class="relative flex-1">
-                <button type="button" onclick="event.stopPropagation(); window.toggleTrainingFilterOpen('emp')" class="w-full flex items-center justify-between gap-2 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-600 hover:border-amber-300 bg-white">
-                    <span class="flex items-center gap-1.5 truncate"><i class="fas fa-user text-slate-400"></i> Nama Karyawan: ${summaryLabel(excludedEmpCount, scopedEmployees.length)}</span>
-                    <i class="fas fa-chevron-down text-[10px] text-slate-400 transition ${trainingFilterOpen === 'emp' ? 'rotate-180' : ''}"></i>
-                </button>
-                ${trainingFilterOpen === 'emp' ? `
-                <div class="absolute z-20 mt-1 w-full bg-white border border-slate-200 rounded-xl shadow-lg p-2" onclick="event.stopPropagation()">
-                    <input id="training-participant-search" value="${window.escapeHtml(trainingParticipantSearch)}" oninput="trainingParticipantSearch=this.value; window.reRenderTrainingParticipantPicker()" placeholder="Cari nama / username karyawan..." class="w-full border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs mb-1.5">
-                    <label class="flex items-center gap-2 text-xs font-bold px-1.5 py-1.5 rounded-lg hover:bg-slate-50 cursor-pointer border-b border-slate-100 mb-1">
-                        <input type="checkbox" ${excludedEmpCount === 0 ? 'checked' : ''} onchange="window.toggleTrainingExcludeAllEmployees()" class="rounded border-slate-300 text-amber-500 focus:ring-amber-500">
-                        <span>All Karyawan</span>
-                    </label>
-                    <div id="training-participant-picker-list" class="max-h-[220px] overflow-y-auto divide-y divide-slate-50">
-                        ${renderTrainingParticipantPickerRows()}
-                    </div>
-                </div>` : ""}
-            </div>
+        <div class="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
+            ${filterTriggerHtml('dept', 'fa-building', 'Dept', excludedDeptsCount, totalDepts)}
+            ${filterTriggerHtml('level', 'fa-id-badge', 'Level', excludedLevelsCount, scopedLevels.length)}
+            ${filterTriggerHtml('desig', 'fa-address-card', 'Desig', excludedDesigCount, scopedDesignations.length)}
+            ${filterTriggerHtml('emp', 'fa-user', 'Karyawan', excludedEmpCount, scopedEmployees.length)}
         </div>
     `;
+}
+// Isi dropdown panel (search + "All" + list + tombol Terapkan/Batal) untuk salah satu dari
+// keempat filter Target Peserta training onboarding.
+function trainingFilterPanelHtml(which) {
+    if (which === 'dept') {
+        return `
+        <div class="absolute z-30 mt-1 w-full min-w-[220px] bg-white border border-slate-200 rounded-xl shadow-lg p-2" onclick="event.stopPropagation()">
+            <input id="training-dept-filter-search" value="${window.escapeHtml(trainingDeptFilterSearch)}" oninput="trainingDeptFilterSearch=this.value; window.reRenderTrainingDeptFilterList()" placeholder="Cari departemen..." class="w-full border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs mb-1.5">
+            <label class="flex items-center gap-2 text-xs font-bold px-1.5 py-1.5 rounded-lg hover:bg-slate-50 cursor-pointer border-b border-slate-100 mb-1">
+                <input id="training-dept-filter-all" type="checkbox" ${trainingFilterStaging.length === 0 ? 'checked' : ''} onchange="window.toggleTrainingExcludeAllDepts()" class="rounded border-slate-300 text-amber-500 focus:ring-amber-500">
+                <span>All Departemen</span>
+            </label>
+            <div id="training-dept-filter-list" class="max-h-[180px] overflow-y-auto space-y-0.5">
+                ${renderTrainingDeptFilterRows()}
+            </div>
+            ${trainingFilterActionButtonsHtml('dept')}
+        </div>`;
+    }
+    if (which === 'level') {
+        return `
+        <div class="absolute z-30 mt-1 w-full min-w-[220px] bg-white border border-slate-200 rounded-xl shadow-lg p-2" onclick="event.stopPropagation()">
+            <input id="training-pos-filter-search" value="${window.escapeHtml(trainingPosFilterSearch)}" oninput="trainingPosFilterSearch=this.value; window.reRenderTrainingPosFilterList()" placeholder="Cari level/posisi..." class="w-full border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs mb-1.5">
+            <label class="flex items-center gap-2 text-xs font-bold px-1.5 py-1.5 rounded-lg hover:bg-slate-50 cursor-pointer border-b border-slate-100 mb-1">
+                <input id="training-pos-filter-all" type="checkbox" ${trainingFilterStaging.length === 0 ? 'checked' : ''} onchange="window.toggleTrainingExcludeAllLevels()" class="rounded border-slate-300 text-amber-500 focus:ring-amber-500">
+                <span>All Level</span>
+            </label>
+            <div id="training-pos-filter-list" class="max-h-[180px] overflow-y-auto space-y-0.5">
+                ${renderTrainingPosFilterRows()}
+            </div>
+            ${trainingFilterActionButtonsHtml('level')}
+        </div>`;
+    }
+    if (which === 'desig') {
+        return `
+        <div class="absolute z-30 mt-1 w-full min-w-[220px] bg-white border border-slate-200 rounded-xl shadow-lg p-2" onclick="event.stopPropagation()">
+            <input id="training-desig-filter-search" value="${window.escapeHtml(trainingDesigFilterSearch)}" oninput="trainingDesigFilterSearch=this.value; window.reRenderTrainingDesignationFilterList()" placeholder="Cari designation..." class="w-full border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs mb-1.5">
+            <label class="flex items-center gap-2 text-xs font-bold px-1.5 py-1.5 rounded-lg hover:bg-slate-50 cursor-pointer border-b border-slate-100 mb-1">
+                <input id="training-desig-filter-all" type="checkbox" ${trainingFilterStaging.length === 0 ? 'checked' : ''} onchange="window.toggleTrainingExcludeAllDesignations()" class="rounded border-slate-300 text-amber-500 focus:ring-amber-500">
+                <span>All Designation</span>
+            </label>
+            <div id="training-desig-filter-list" class="max-h-[180px] overflow-y-auto space-y-0.5">
+                ${renderTrainingDesignationFilterRows()}
+            </div>
+            ${trainingFilterActionButtonsHtml('desig')}
+        </div>`;
+    }
+    return `
+        <div class="absolute z-30 mt-1 w-full min-w-[240px] bg-white border border-slate-200 rounded-xl shadow-lg p-2" onclick="event.stopPropagation()">
+            <input id="training-participant-search" value="${window.escapeHtml(trainingParticipantSearch)}" oninput="trainingParticipantSearch=this.value; window.reRenderTrainingParticipantPicker()" placeholder="Cari nama / username karyawan..." class="w-full border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs mb-1.5">
+            <label class="flex items-center gap-2 text-xs font-bold px-1.5 py-1.5 rounded-lg hover:bg-slate-50 cursor-pointer border-b border-slate-100 mb-1">
+                <input id="training-participant-filter-all" type="checkbox" ${trainingFilterStaging.length === 0 ? 'checked' : ''} onchange="window.toggleTrainingExcludeAllEmployees()" class="rounded border-slate-300 text-amber-500 focus:ring-amber-500">
+                <span>All Karyawan</span>
+            </label>
+            <div id="training-participant-picker-list" class="max-h-[220px] overflow-y-auto divide-y divide-slate-50">
+                ${renderTrainingParticipantPickerRows()}
+            </div>
+            ${trainingFilterActionButtonsHtml('emp')}
+        </div>`;
 }
 
 window.saveTrainingDraft = async function () {
