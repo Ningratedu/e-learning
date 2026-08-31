@@ -311,6 +311,55 @@ html.dark .divide-slate-100 > * + * { border-color: #26304a !important; }
 html.dark input, html.dark select, html.dark textarea { background-color: #0f1626; color: #e2e8f0; border-color: #2a3550 !important; }
 html.dark input::placeholder, html.dark textarea::placeholder { color: #64708a; }
 html.dark ::-webkit-scrollbar-thumb { background: #2a3550; }
+
+/* FIX: kelas hover:bg-slate-* (dipakai buat efek hover baris tabel & item list/dropdown)
+   kelewat pas remapping dark mode di atas, jadi pas di-hover background-nya balik ke
+   abu-abu/putih terang bawaan Tailwind sementara teksnya udah kadung diubah jadi terang
+   -> teks jadi gak kebaca. Di-remap ke warna gelap yang senada sama hover state lain. */
+html.dark .hover\:bg-slate-50:hover,
+html.dark .hover\:bg-slate-50\/60:hover,
+html.dark .hover\:bg-slate-50\/80:hover { background-color: #1c2436 !important; }
+html.dark .hover\:bg-slate-100:hover { background-color: #232c42 !important; }
+html.dark .hover\:bg-slate-200:hover { background-color: #2a3550 !important; }
+
+/* Teks warna aksen (amber/emerald/indigo/rose/sky/violet/orange/teal, shade 500-900) didesain
+   buat kontras di atas latar PUTIH. Kalau dipakai polos langsung di atas kartu/baris gelap
+   (bukan sebagai badge/chip yang punya latar terang bg-*-50/bg-*-100), shade segelap itu
+   kontrasnya jeblok di dark mode -> keliatan kusam/abu-abu & susah dibaca. Badge/chip
+   (elemen yang classnya juga punya bg-*-50 atau bg-*-100) SENGAJA tidak disentuh karena
+   latar chip-nya tetap terang, jadi teks gelap aslinya masih kontras normal di situ. */
+html.dark .text-indigo-500:not([class*="bg-indigo-50"]):not([class*="bg-indigo-100"]),
+html.dark .text-indigo-600:not([class*="bg-indigo-50"]):not([class*="bg-indigo-100"]),
+html.dark .text-indigo-700:not([class*="bg-indigo-50"]):not([class*="bg-indigo-100"]) { color: #818cf8 !important; }
+
+html.dark .text-emerald-500:not([class*="bg-emerald-50"]):not([class*="bg-emerald-100"]),
+html.dark .text-emerald-600:not([class*="bg-emerald-50"]):not([class*="bg-emerald-100"]),
+html.dark .text-emerald-700:not([class*="bg-emerald-50"]):not([class*="bg-emerald-100"]),
+html.dark .text-emerald-800:not([class*="bg-emerald-50"]):not([class*="bg-emerald-100"]),
+html.dark .text-emerald-900:not([class*="bg-emerald-50"]):not([class*="bg-emerald-100"]) { color: #34d399 !important; }
+
+html.dark .text-amber-500:not([class*="bg-amber-50"]):not([class*="bg-amber-100"]),
+html.dark .text-amber-600:not([class*="bg-amber-50"]):not([class*="bg-amber-100"]),
+html.dark .text-amber-700:not([class*="bg-amber-50"]):not([class*="bg-amber-100"]),
+html.dark .text-amber-800:not([class*="bg-amber-50"]):not([class*="bg-amber-100"]) { color: #fbbf24 !important; }
+
+html.dark .text-rose-500:not([class*="bg-rose-50"]):not([class*="bg-rose-100"]),
+html.dark .text-rose-600:not([class*="bg-rose-50"]):not([class*="bg-rose-100"]) { color: #fb7185 !important; }
+
+html.dark .text-sky-500:not([class*="bg-sky-50"]):not([class*="bg-sky-100"]),
+html.dark .text-sky-600:not([class*="bg-sky-50"]):not([class*="bg-sky-100"]),
+html.dark .text-sky-700:not([class*="bg-sky-50"]):not([class*="bg-sky-100"]) { color: #38bdf8 !important; }
+
+html.dark .text-violet-500:not([class*="bg-violet-50"]):not([class*="bg-violet-100"]),
+html.dark .text-violet-600:not([class*="bg-violet-50"]):not([class*="bg-violet-100"]),
+html.dark .text-violet-700:not([class*="bg-violet-50"]):not([class*="bg-violet-100"]),
+html.dark .text-violet-800:not([class*="bg-violet-50"]):not([class*="bg-violet-100"]) { color: #a78bfa !important; }
+
+html.dark .text-orange-600:not([class*="bg-orange-50"]):not([class*="bg-orange-100"]),
+html.dark .text-orange-700:not([class*="bg-orange-50"]):not([class*="bg-orange-100"]) { color: #fb923c !important; }
+
+html.dark .text-teal-600:not([class*="bg-teal-50"]):not([class*="bg-teal-100"]),
+html.dark .text-teal-700:not([class*="bg-teal-50"]):not([class*="bg-teal-100"]) { color: #2dd4bf !important; }
 html.dark .shadow-sm, html.dark .shadow, html.dark .shadow-md, html.dark .shadow-lg, html.dark .shadow-xl, html.dark .shadow-2xl { box-shadow: 0 4px 18px rgba(0,0,0,.45) !important; }
 
 /* ================= HEADER: TICKER BUDAYA KERJA / CORE VALUE (versi "electric circuit") =================
@@ -2858,6 +2907,10 @@ function renderKpiMonthlyChart(stats, token) {
                     const w = chart.width || 0;
                     // Breakpoint kasar: <380px (HP kecil), <640px (HP/tablet), sisanya (laptop/desktop)
                     const fontSize = w < 380 ? 8 : w < 640 ? 9.5 : 11.5;
+                    // Warna default label nilai nyesuaiin tema — di dark mode pakai warna terang
+                    // (#e2e8f0) biar kebaca, di light mode tetap slate gelap (#334155) seperti semula.
+                    const isDarkTheme = document.documentElement.classList.contains("dark");
+                    const defaultLabelColor = isDarkTheme ? "#e2e8f0" : "#334155";
                     ctx.save();
                     ctx.textAlign = "center";
                     ctx.textBaseline = "bottom";
@@ -2867,7 +2920,7 @@ function renderKpiMonthlyChart(stats, token) {
                         const isHighlight = (stats.best && i === stats.best.i) || (stats.worst && i === stats.worst.i);
                         ctx.fillStyle = (stats.best && i === stats.best.i) ? "#10b981"
                             : (stats.worst && i === stats.worst.i) ? "#f43f5e"
-                            : "#334155";
+                            : defaultLabelColor;
                         ctx.font = `bold ${isHighlight ? fontSize + 1 : fontSize}px 'Helvetica Neue', Arial, sans-serif`;
                         ctx.fillText(`${value}%`, point.x, point.y - 8);
                     });
