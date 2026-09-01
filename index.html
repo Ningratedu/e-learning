@@ -11205,7 +11205,16 @@ window.adminDeleteQuizAttempt = async function (attemptId) {
 // Akun yang usernya sudah ada TIDAK di-reset passwordnya (biar gak ganggu yang udah pernah login/
 // ganti password sendiri) — cuma nama/departemen/emailnya yang disinkron ulang.
 let employeeSearch = "";
-let employeeDeptFilter = "";
+// Sort & filter tabel Data Karyawan (gaya Excel): employeeSortCol/-Dir nyimpen kolom &
+// arah sort yang lagi aktif (klik header lain buat ganti kolom, klik panah buat toggle
+// asc/desc). employeeColumnFilters nyimpen per-kolom Set nilai yang DICENTANG di popover
+// filter — kalau sebuah kolom gak ada entrinya di object ini, artinya kolom itu "tampilkan
+// semua" (belum difilter). Popover filter yang lagi kebuka disimpen di employeeOpenFilterCol
+// biar cuma satu yang kebuka dalam satu waktu & otomatis ketutup pas render ulang / klik di luar.
+let employeeSortCol = "nama";
+let employeeSortDir = "asc";
+let employeeColumnFilters = {};
+let employeeOpenFilterCol = null;
 
 function normalizeUsername(u) {
     return String(u || "").trim().toLowerCase().replace(/\s+/g, "");
@@ -11306,14 +11315,18 @@ function parseEmployeeWorkbook(file, callback) {
                 const username = normalizeUsername(row[colIdx.username]);
                 if (!nama && !username) continue;
                 if (!nama || !username) { skipped++; continue; }
-                // Kumpulkan nilai KPI per bulan (kalau kolomnya ada di file & selnya terisi) jadi
-                // object { "1": 0.85, "8": 0.92, ... } — bulan yang belum ada datanya tidak dimasukkan
-                // (bukan 0), supaya nanti bisa dibedakan antara "belum ada data" vs "KPI 0%".
+                // Kumpulkan nilai KPI per bulan untuk SETIAP kolom KPI yang ada di file ini, jadi
+                // object { "1": 0.85, "8": null, ... }. Kolom yang selnya kosong tetap dimasukkan
+                // dengan nilai null (bukan dihilangkan begitu saja) — supaya saat disimpan, bulan
+                // itu ikut ter-update jadi kosong meskipun sebelumnya sudah pernah ada angkanya.
+                // Bulan yang kolomnya memang tidak ada sama sekali di file ini tidak disentuh
+                // (lihat commitEmployeeImport: hanya kolom yang ada di file yang dipakai untuk
+                // menimpa data KPI lama).
                 let kpi = null;
                 if (colIdx.kpiCols) {
+                    kpi = {};
                     Object.entries(colIdx.kpiCols).forEach(([bulan, ci]) => {
-                        const val = excelCellToKpiValue(row[ci]);
-                        if (val !== null) { kpi = kpi || {}; kpi[bulan] = val; }
+                        kpi[bulan] = excelCellToKpiValue(row[ci]);
                     });
                 }
                 employees.push({
@@ -11376,7 +11389,7 @@ window.uploadEmployeeExcel = function () {
             const resignedCount = employees.filter(emp => emp.tglResign).length;
             const msg = `${employees.length} data karyawan terbaca` + (skipped ? ` (${skipped} baris dilewati karena data tidak lengkap)` : "") +
                 `.\n\n${willCreate} akun BARU akan dibuat (aktif, password default "pembelajar").\n${willUpdate} akun yang sudah ada akan disinkron nama/departemen/emailnya (password tidak diubah).` +
-                (hasKpiCols ? `\n\nData KPI bulanan terdeteksi di file ini dan akan digabung ke data KPI karyawan yang sudah ada (bulan lain yang sudah tersimpan sebelumnya tidak akan hilang).` : "") +
+                (hasKpiCols ? `\n\nData KPI bulanan terdeteksi di file ini. Untuk bulan yang kolomnya ada di file (baik terisi maupun dikosongkan), data KPI akan DITIMPA sesuai isi file ini — kalau selnya kosong, data KPI bulan itu akan ikut jadi kosong walaupun sebelumnya sudah pernah ada angkanya. Bulan yang kolomnya tidak ada di file ini tidak akan berubah.` : "") +
                 (resignedCount ? `\n\n${resignedCount} karyawan terdeteksi punya Tanggal Resign — akun mereka akan dinonaktifkan (tidak bisa login), tapi datanya tetap tersimpan.` : "") +
                 `\n\nLanjutkan impor?`;
             if (!confirm(msg)) return;
@@ -11407,10 +11420,14 @@ window.commitEmployeeImport = async function (employees, existingByUsername, exi
         const batch = writeBatch(db);
         chunk.forEach(emp => {
             const empDocId = "emp_" + emp.username;
-            // KPI bulanan digabung (bukan ditimpa total) dengan data lama, supaya import KPI
-            // bulan baru tidak menghapus KPI bulan-bulan sebelumnya yang sudah tersimpan.
+            // KPI bulanan: bulan yang KOLOMNYA ada di file ini (baik terisi angka maupun kosong)
+            // akan MENIMPA data lama — jadi kalau di file barunya kosong, bulan itu ikut jadi
+            // kosong lagi walaupun sebelumnya sudah pernah ada angkanya. Bulan yang kolomnya
+            // memang tidak ada sama sekali di file ini (mis. file cuma punya kolom KPI Januari-Maret)
+            // tetap dipertahankan dari data lama, tidak ikut terhapus.
             const existingEmp = existingEmployeeByUsername[emp.username];
-            const mergedKpi = (existingEmp && existingEmp.kpi) || emp.kpi ? { ...(existingEmp && existingEmp.kpi), ...(emp.kpi || {}) } : null;
+            const existingKpi = (existingEmp && existingEmp.kpi) || null;
+            const mergedKpi = (existingKpi || emp.kpi) ? { ...(existingKpi || {}), ...(emp.kpi || {}) } : null;
             // Karyawan dianggap resign kalau kolom "Tanggal Resign"-nya terisi di Excel. Akun
             // loginnya (koleksi "users") otomatis di-nonaktifkan (status "inactive") supaya gak
             // bisa login lagi, TAPI data karyawannya (termasuk tanggal & alasan resign) tetap
@@ -11649,41 +11666,301 @@ window.openEmployeeStatDetail = function (type) {
 };
 
 
+function fmtKpiPercent(kpi, month) {
+    const raw = kpi ? (kpi[month] ?? kpi[String(month)]) : null;
+    return typeof raw === "number" ? `${Math.round(raw * 1000) / 10}%` : "-";
+}
+
+// Ubah tanggal (Date / ISO string / Firestore timestamp {seconds}) jadi angka ms buat
+// dibandingin pas sorting. Return null kalau kosong/gak valid (dipakai fmtDate juga).
+function empToTs(v) {
+    if (!v) return null;
+    const d = v.seconds ? new Date(v.seconds * 1000) : new Date(v);
+    return isNaN(d) ? null : d.getTime();
+}
+
+// ================= KONFIGURASI KOLOM TABEL DATA KARYAWAN =================
+// Satu sumber kebenaran buat SEMUA kolom tabel (urutan header = urutan cell = urutan yang
+// dipakai buat sort & filter), biar nggak ada yang kegeser/ketinggalan kayak sebelumnya.
+// Tiap kolom:
+// - raw(e, meta)     -> nilai "mentah" dipakai buat SORT & jadi KEY filter (angka/ms/string).
+//                        null/undefined/"" dianggap kosong ("__blank__" di filter, selalu di
+//                        bawah pas di-sort ke arah manapun).
+// - display(e, meta) -> label yang muncul di daftar checkbox popover filter.
+// - cell(e, meta)    -> HTML isi <td>.
+// - sortable/filterable -> default true, set eksplisit `false` buat kolom aksi (Detail).
+// meta = { acc, isResigned } dihitung sekali per baris karyawan (lihat renderEmployeeAdminList).
+function buildEmployeeColumns() {
+    const kpiCols = KPI_MONTH_NAMES_SHORT.map((m, i) => ({
+        id: "kpi" + (i + 1), label: `KPI ${m}`, align: "center",
+        raw: (e) => { const v = e.kpi ? (e.kpi[i + 1] ?? e.kpi[String(i + 1)]) : null; return typeof v === "number" ? v : null; },
+        display: (e) => fmtKpiPercent(e.kpi, i + 1),
+        cell: (e) => fmtKpiPercent(e.kpi, i + 1),
+    }));
+
+    return [
+        // Kolom "No" SENGAJA gak bisa di-sort/filter — nomornya harus tetap urut 1, 2, 3, ...
+        // mengikuti urutan baris yang lagi ditampilkan (bukan angka "No" mentah dari Excel,
+        // yang bisa lompat/bolong kalau ada baris yang difilter atau tabelnya di-sort ulang).
+        { id: "no", label: "No", sortable: false, filterable: false,
+            cell: (e, meta, idx) => `${idx + 1}` },
+        { id: "nama", label: "Nama Karyawan",
+            raw: (e) => e.nama || "", display: (e) => e.nama || "-",
+            cell: (e) => `<p class="font-bold text-slate-700 text-[11px]">${window.escapeHtml(e.nama)}</p>` },
+        { id: "username", label: "Nama Pengguna",
+            raw: (e) => e.username || "", display: (e) => e.username ? "@" + e.username : "-",
+            cell: (e) => `<span class="block max-w-[90px] truncate" title="@${window.escapeHtml(e.username || "")}">@${window.escapeHtml(e.username)}</span>` },
+        { id: "akun", label: "Akun", align: "center",
+            raw: (e, meta) => meta.isResigned ? "nonaktif" : (meta.acc ? "aktif" : "belum"),
+            display: (e, meta) => meta.isResigned ? "Non-aktif" : (meta.acc ? "Aktif" : "Belum ada akun"),
+            cell: (e, meta) => meta.isResigned
+                ? `<span title="${window.escapeHtml(e.alasanResign || "-")}" class="text-[9px] font-black px-2 py-1 rounded-full bg-rose-50 text-rose-500"><i class="fas fa-user-slash mr-1"></i>Non-aktif</span>`
+                : (meta.acc ? `<span class="text-[9px] font-black px-2 py-1 rounded-full bg-emerald-50 text-emerald-600">Aktif</span>` : `<span class="text-[9px] font-black px-2 py-1 rounded-full bg-rose-50 text-rose-500">Belum ada akun</span>`) },
+        { id: "dept", label: "Departemen",
+            raw: (e) => e.dept || "", display: (e) => e.dept || "-",
+            cell: (e) => window.escapeHtml(e.dept || "-") },
+        { id: "designation", label: "Designation",
+            raw: (e) => e.designation || "", display: (e) => e.designation || "-",
+            cell: (e) => window.escapeHtml(e.designation || "-") },
+        { id: "rm", label: "RM",
+            raw: (e) => e.rm || "", display: (e) => e.rm || "-",
+            cell: (e) => window.escapeHtml(e.rm || "-") },
+        { id: "bm", label: "BM",
+            raw: (e) => e.bm || "", display: (e) => e.bm || "-",
+            cell: (e) => window.escapeHtml(e.bm || "-") },
+        { id: "mentor", label: "Mentor/SPV",
+            raw: (e) => e.mentor || "", display: (e) => e.mentor || "-",
+            cell: (e) => window.escapeHtml(e.mentor || "-") },
+        { id: "posisi", label: "Posisi",
+            raw: (e) => e.posisi || "", display: (e) => e.posisi || "-",
+            cell: (e) => window.escapeHtml(e.posisi || "-") },
+        { id: "masaKerja", label: "Masa Kerja",
+            raw: (e) => (e.masaKerja === null || e.masaKerja === undefined || isNaN(e.masaKerja)) ? null : Number(e.masaKerja),
+            display: (e) => fmtMasaKerja(e.masaKerja),
+            cell: (e) => fmtMasaKerja(e.masaKerja) },
+        { id: "keterangan", label: "Keterangan",
+            raw: (e) => e.keterangan || "", display: (e) => e.keterangan || "-",
+            cell: (e) => `<span class="block max-w-[160px] truncate" title="${window.escapeHtml(e.keterangan || "")}">${window.escapeHtml(e.keterangan || "-")}</span>` },
+        { id: "tglBergabung", label: "Tgl Bergabung",
+            raw: (e) => empToTs(e.tglBergabung), display: (e) => window.fmtDate(e.tglBergabung),
+            cell: (e) => window.fmtDate(e.tglBergabung) },
+        { id: "kontak", label: "No Kontak",
+            raw: (e) => e.kontak || "", display: (e) => e.kontak || "-",
+            cell: (e) => window.escapeHtml(e.kontak || "-") },
+        { id: "tglLahir", label: "Tanggal Lahir",
+            raw: (e) => empToTs(e.tglLahir), display: (e) => window.fmtDate(e.tglLahir),
+            cell: (e) => window.fmtDate(e.tglLahir) },
+        { id: "tglResign", label: "Tanggal Resign",
+            raw: (e) => empToTs(e.tglResign), display: (e) => e.tglResign ? window.fmtDate(e.tglResign) : "-",
+            cell: (e) => e.tglResign ? window.fmtDate(e.tglResign) : "-" },
+        { id: "alasanResign", label: "Alasan Resign",
+            raw: (e) => e.alasanResign || "", display: (e) => e.alasanResign || "-",
+            cell: (e) => `<span class="block max-w-[160px] truncate" title="${window.escapeHtml(e.alasanResign || "")}">${window.escapeHtml(e.alasanResign || "-")}</span>` },
+        ...kpiCols,
+        { id: "detail", label: "Detail", align: "right", sortable: false, filterable: false,
+            cell: (e) => `<button onclick="window.showEmployeeDetail('${e.id}')" class="text-indigo-500 hover:text-indigo-700"><i class="fas fa-circle-info"></i></button>` },
+    ];
+}
+
+// Karyawan yang lolos search-box + SEMUA filter kolom AKTIF, kecuali kolom `excludeColId`
+// (dipakai buat ngitung pilihan checkbox di popover kolom itu sendiri — gaya Excel: opsi yang
+// ditawarkan ngikutin filter kolom lain yang udah aktif, bukan seluruh data mentah).
+function employeeRowsMatchingFilters(columns, metaByEmp, excludeColId) {
+    const term = employeeSearch.trim().toLowerCase();
+    return window.STATE.employees.filter(e => {
+        if (term && !((e.nama || "").toLowerCase().includes(term) || (e.username || "").toLowerCase().includes(term))) return false;
+        const meta = metaByEmp.get(e);
+        for (const col of columns) {
+            if (col.id === excludeColId || col.filterable === false) continue;
+            const filterSet = employeeColumnFilters[col.id];
+            if (!filterSet) continue;
+            const raw = col.raw ? col.raw(e, meta) : null;
+            const key = (raw === null || raw === undefined || raw === "") ? "__blank__" : String(raw);
+            if (!filterSet.has(key)) return false;
+        }
+        return true;
+    });
+}
+
+// Popover filter ala Excel: cuma dirender kalau kolom ini yang lagi kebuka
+// (employeeOpenFilterCol), jadi nggak perlu ngitung daftar checkbox buat 30 kolom tiap render.
+function employeeFilterPopoverHtml(col, columns, metaByEmp) {
+    if (col.filterable === false || employeeOpenFilterCol !== col.id) return "";
+
+    const base = employeeRowsMatchingFilters(columns, metaByEmp, col.id);
+    const seen = new Map(); // key mentah -> label yang ditampilkan
+    base.forEach(e => {
+        const meta = metaByEmp.get(e);
+        const raw = col.raw(e, meta);
+        const key = (raw === null || raw === undefined || raw === "") ? "__blank__" : String(raw);
+        if (!seen.has(key)) seen.set(key, col.display ? col.display(e, meta) : key);
+    });
+    const entries = [...seen.entries()].sort((a, b) => String(a[1]).localeCompare(String(b[1]), "id"));
+    const activeSet = employeeColumnFilters[col.id];
+    const allChecked = entries.every(([key]) => !activeSet || activeSet.has(key));
+
+    const checkboxes = entries.length
+        ? entries.map(([key, label]) => {
+            const checked = !activeSet || activeSet.has(key);
+            return `<label class="flex items-center gap-2 px-2 py-1 rounded-lg hover:bg-slate-50 cursor-pointer text-[11px] normal-case font-medium text-slate-600">
+                <input type="checkbox" data-emp-filter-value="${window.escapeHtml(key)}" ${checked ? "checked" : ""} class="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 w-3.5 h-3.5 shrink-0">
+                <span class="truncate">${window.escapeHtml(String(label))}</span>
+            </label>`;
+        }).join("")
+        : `<p class="text-[11px] normal-case text-slate-400 px-2 py-2">Tidak ada data</p>`;
+
+    return `
+        <div id="emp-filter-pop-${col.id}" onclick="event.stopPropagation()" class="emp-filter-pop absolute z-20 top-full ${col.align === "right" ? "right-0" : "left-0"} mt-1 w-56 bg-white rounded-xl border border-slate-200 shadow-lg p-2 normal-case">
+            <label class="flex items-center gap-2 px-2 py-1 rounded-lg hover:bg-slate-50 cursor-pointer text-[11px] font-bold text-slate-700 border-b border-slate-100 mb-1 normal-case">
+                <input type="checkbox" ${allChecked ? "checked" : ""} onchange="window.empFilterToggleAll('${col.id}', this.checked)" class="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 w-3.5 h-3.5 shrink-0">
+                <span>(Pilih Semua)</span>
+            </label>
+            <div class="max-h-48 overflow-auto">${checkboxes}</div>
+            <div class="flex items-center justify-between gap-2 pt-2 mt-1 border-t border-slate-100">
+                <button type="button" onclick="window.empClearFilter('${col.id}')" class="text-[10px] font-bold text-slate-400 hover:text-slate-600">Reset</button>
+                <div class="flex items-center gap-1.5">
+                    <button type="button" onclick="window.empCloseFilterPopover()" class="text-[10px] font-bold px-2.5 py-1.5 rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50">Batal</button>
+                    <button type="button" onclick="window.empApplyFilter('${col.id}')" class="text-[10px] font-bold px-2.5 py-1.5 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700">Terapkan</button>
+                </div>
+            </div>
+        </div>`;
+}
+
+// Header <th> gaya "tabel gelap" (header dark, ikon sort gabungan ⇅ + ikon corong filter
+// kepisah di ujung kanan kolom) — kolom yang sortable:false/filterable:false (No, Aksi/Detail)
+// otomatis polos tanpa ikon apa-apa.
+function employeeHeaderCellHtml(col, columns, metaByEmp) {
+    const isSorted = employeeSortCol === col.id;
+    const sortGlyph = isSorted ? (employeeSortDir === "asc" ? "&uarr;" : "&darr;") : "&#8645;";
+    const sortBtn = col.sortable === false ? "" : `
+        <button type="button" onclick="event.stopPropagation(); window.empToggleSort('${col.id}')" title="Urutkan" class="text-[11px] leading-none font-black ${isSorted ? "text-indigo-400" : "text-slate-500 hover:text-slate-300"}">${sortGlyph}</button>`;
+    const hasFilter = !!employeeColumnFilters[col.id];
+    const filterBtn = col.filterable === false ? "" : `
+        <button type="button" onclick="event.stopPropagation(); window.empToggleFilterPopover('${col.id}')" title="Filter" class="text-[10px] leading-none ${hasFilter ? "text-indigo-400" : "text-slate-500 hover:text-slate-300"}"><i class="fas fa-filter"></i></button>`;
+
+    const labelGroup = `<span class="inline-flex items-center gap-1">${col.label}${sortBtn}</span>`;
+    const isCentered = col.align === "center" || col.align === "right";
+    // Kolom rata-kiri (mayoritas): label+sort nempel kiri, ikon filter didorong ke ujung kanan
+    // sel (justify-between) — persis kayak contoh foto. Kolom rata-tengah/kanan (KPI, Akun,
+    // Detail) dikumpulin jadi satu grup biar gak aneh di kolom yang sempit.
+    const inner = isCentered ? `<span class="inline-flex items-center gap-1.5">${labelGroup}${filterBtn}</span>` : `${labelGroup}${filterBtn}`;
+    const rowAlign = col.align === "center" ? "justify-center" : col.align === "right" ? "justify-end" : "justify-between";
+
+    return `<th class="sticky top-0 z-10 bg-slate-900 px-2 py-2 border-b border-slate-700 relative ${col.align === "right" ? "text-right" : col.align === "center" ? "text-center" : ""}">
+        <div class="flex items-center ${rowAlign} gap-2 whitespace-nowrap">${inner}</div>
+        ${employeeFilterPopoverHtml(col, columns, metaByEmp)}
+    </th>`;
+}
+
+// Satu ikon sort (⇅) yang di-klik gantian: belum aktif -> asc -> desc -> asc -> ...
+// (beda sama versi sebelumnya yang pakai 2 tombol panah kepisah).
+window.empToggleSort = function (colId) {
+    if (employeeSortCol === colId) {
+        employeeSortDir = employeeSortDir === "asc" ? "desc" : "asc";
+    } else {
+        employeeSortCol = colId;
+        employeeSortDir = "asc";
+    }
+    employeeOpenFilterCol = null;
+    renderEmployeeAdminList();
+};
+window.empToggleFilterPopover = function (colId) {
+    employeeOpenFilterCol = employeeOpenFilterCol === colId ? null : colId;
+    renderEmployeeAdminList();
+};
+window.empCloseFilterPopover = function () {
+    employeeOpenFilterCol = null;
+    renderEmployeeAdminList();
+};
+window.empFilterToggleAll = function (colId, checked) {
+    const pop = document.getElementById(`emp-filter-pop-${colId}`);
+    if (!pop) return;
+    pop.querySelectorAll("input[data-emp-filter-value]").forEach(cb => { cb.checked = checked; });
+};
+window.empClearFilter = function (colId) {
+    delete employeeColumnFilters[colId];
+    employeeOpenFilterCol = null;
+    renderEmployeeAdminList();
+};
+window.empApplyFilter = function (colId) {
+    const pop = document.getElementById(`emp-filter-pop-${colId}`);
+    if (!pop) return;
+    const boxes = [...pop.querySelectorAll("input[data-emp-filter-value]")];
+    const checked = boxes.filter(cb => cb.checked).map(cb => cb.getAttribute("data-emp-filter-value"));
+    if (checked.length === boxes.length) {
+        delete employeeColumnFilters[colId]; // semua dicentang = sama aja kayak tanpa filter
+    } else {
+        employeeColumnFilters[colId] = new Set(checked); // termasuk Set kosong kalau semua di-uncheck
+    }
+    employeeOpenFilterCol = null;
+    renderEmployeeAdminList();
+};
+window.empResetAllFilters = function () {
+    employeeColumnFilters = {};
+    employeeOpenFilterCol = null;
+    renderEmployeeAdminList();
+};
+
+// Klik di luar popover filter (tombol corong & isi popovernya sendiri sudah stopPropagation)
+// otomatis nutup popover yang lagi kebuka. Dipasang sekali aja (guard di window.__empFilterOutsideBound).
+if (!window.__empFilterOutsideBound) {
+    window.__empFilterOutsideBound = true;
+    document.addEventListener("click", function () {
+        if (employeeOpenFilterCol !== null && document.getElementById("employee-search-input")) {
+            employeeOpenFilterCol = null;
+            renderEmployeeAdminList();
+        }
+    });
+}
+
 function renderEmployeeAdminList() {
-    const depts = [...new Set(window.STATE.employees.map(e => e.dept).filter(Boolean))].sort((a, b) => a.localeCompare(b));
     const usersByUsername = {};
     window.STATE.users.forEach(u => { usersByUsername[normalizeUsername(u.username)] = u; });
     const onboardingStats = computeEmployeeOnboardingStats();
     const tnaStats = computeEmployeeTnaStats();
 
-    const term = employeeSearch.trim().toLowerCase();
-    const list = [...window.STATE.employees]
-        .filter(e => !employeeDeptFilter || e.dept === employeeDeptFilter)
-        .filter(e => !term || (e.nama||"").toLowerCase().includes(term) || (e.username||"").toLowerCase().includes(term))
-        .sort((a, b) => (a.nama || "").localeCompare(b.nama || ""));
+    // meta per karyawan (dihitung sekali, dipakai bareng buat cell/sort/filter kolom "Akun")
+    const metaByEmp = new Map();
+    window.STATE.employees.forEach(e => {
+        metaByEmp.set(e, { acc: usersByUsername[e.username], isResigned: !!e.tglResign });
+    });
 
-    const rows = list.map(e => {
-        const acc = usersByUsername[e.username];
-        const isResigned = !!e.tglResign;
-        return `
-        <tr class="border-b border-slate-50 hover:bg-slate-50/60 ${isResigned ? 'opacity-60' : ''}">
-            <td class="px-3 py-3">
-                <p class="font-bold text-slate-700 text-sm">${window.escapeHtml(e.nama)}</p>
-                <p class="text-[11px] text-slate-400">@${window.escapeHtml(e.username)} • ${window.escapeHtml(e.designation||'-')}</p>
-            </td>
-            <td class="px-3 py-3 text-xs text-slate-500">${window.escapeHtml(e.dept||'-')}</td>
-            <td class="px-3 py-3 text-xs text-slate-500">${window.escapeHtml(e.kontak||'-')}</td>
-            <td class="px-3 py-3 text-xs text-slate-500">${window.fmtDate(e.tglBergabung)} <span class="block text-[10px] text-slate-400">${fmtMasaKerja(e.masaKerja)}</span></td>
-            <td class="px-3 py-3 text-center">
-                ${isResigned
-                    ? `<span title="${window.escapeHtml(e.alasanResign||'-')}" class="text-[10px] font-black px-2 py-1 rounded-full bg-rose-50 text-rose-500"><i class="fas fa-user-slash mr-1"></i>Non-aktif</span><p class="text-[10px] text-slate-400 mt-1">Resign ${window.fmtDate(e.tglResign)}</p>`
-                    : (acc ? `<span class="text-[10px] font-black px-2 py-1 rounded-full bg-emerald-50 text-emerald-600">Aktif</span>` : `<span class="text-[10px] font-black px-2 py-1 rounded-full bg-rose-50 text-rose-500">Belum ada akun</span>`)}
-            </td>
-            <td class="px-3 py-3 text-right">
-                <button onclick="window.showEmployeeDetail('${e.id}')" class="text-indigo-500 hover:text-indigo-700"><i class="fas fa-circle-info"></i></button>
-            </td>
-        </tr>`;
+    // Kolom tabel SENGAJA dibuat lengkap mengikuti semua kolom di template Excel upload
+    // (Data Karyawan → Upload Data Karyawan), termasuk 12 kolom KPI bulanan, supaya admin bisa
+    // ngecek langsung dari tabel ini persis kayak yang ada di file yang diupload — tanpa harus
+    // buka detail satu-satu. Tiap kolom bisa di-sort (panah atas/bawah di header) & difilter
+    // (ikon corong, gaya AutoFilter Excel) lewat konfigurasi di buildEmployeeColumns().
+    const columns = buildEmployeeColumns();
+
+    let list = employeeRowsMatchingFilters(columns, metaByEmp, null);
+
+    const sortCol = columns.find(c => c.id === employeeSortCol && c.sortable !== false) || columns.find(c => c.id === "nama");
+    list = [...list].sort((a, b) => {
+        const ra = sortCol.raw(a, metaByEmp.get(a));
+        const rb = sortCol.raw(b, metaByEmp.get(b));
+        const aBlank = ra === null || ra === undefined || ra === "";
+        const bBlank = rb === null || rb === undefined || rb === "";
+        if (aBlank && bBlank) return 0;
+        if (aBlank) return 1; // baris kosong selalu di bawah, apapun arah sortnya
+        if (bBlank) return -1;
+        const cmp = (typeof ra === "number" && typeof rb === "number") ? ra - rb : String(ra).localeCompare(String(rb), "id");
+        return employeeSortDir === "desc" ? -cmp : cmp;
+    });
+
+    // Tabelnya jadi lebar (30 kolom), makanya wrapper-nya overflow-auto & tiap sel dibuat
+    // whitespace-nowrap biar rapi pas di-scroll horizontal. Tinggi kontainer dibatasi ~15 baris
+    // (max-h) dengan header freeze (sticky top-0) biar tetap kebaca pas scroll vertikal.
+    const rows = list.map((e, idx) => {
+        const meta = metaByEmp.get(e);
+        const cells = columns.map(col => {
+            const alignCls = col.align === "center" ? "text-center" : col.align === "right" ? "text-right" : "";
+            return `<td class="px-2 py-1.5 text-[10px] text-slate-500 whitespace-nowrap ${alignCls}">${col.cell(e, meta, idx)}</td>`;
+        }).join("");
+        return `<tr class="border-b border-slate-50 hover:bg-slate-50/60 ${meta.isResigned ? "opacity-60" : ""}">${cells}</tr>`;
     }).join("");
+
+    const headerCells = columns.map(col => employeeHeaderCellHtml(col, columns, metaByEmp)).join("");
+    const activeFilterCount = Object.keys(employeeColumnFilters).length;
 
     window.setPage(`
         <div class="flex items-center justify-between flex-wrap gap-3 mb-3">
@@ -11705,18 +11982,17 @@ function renderEmployeeAdminList() {
         </div>
         <div class="flex items-center gap-2 mb-4 flex-wrap">
             <input id="employee-search-input" value="${window.escapeHtml(employeeSearch)}" oninput="employeeSearch=this.value; window.reRenderEmployeeList()" placeholder="Cari nama / username..." class="border border-slate-200 rounded-xl px-3 py-2 text-sm flex-1 min-w-[180px]">
-            <select onchange="employeeDeptFilter=this.value; renderEmployeeAdminList()" class="border border-slate-200 rounded-xl px-3 py-2 text-sm">
-                <option value="">Semua Departemen</option>
-                ${depts.map(d => `<option value="${window.escapeHtml(d)}" ${employeeDeptFilter===d?'selected':''}>${window.escapeHtml(d)}</option>`).join("")}
-            </select>
+            ${activeFilterCount ? `<button onclick="window.empResetAllFilters()" class="bg-indigo-50 text-indigo-600 hover:bg-indigo-100 text-xs font-bold px-3 py-2 rounded-xl"><i class="fas fa-filter-circle-xmark mr-1"></i> Reset Filter (${activeFilterCount})</button>` : ""}
         </div>
-        <div class="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-x-auto">
-            <table class="w-full text-left">
-                <thead class="bg-slate-50 text-[10px] font-black uppercase text-slate-400">
-                    <tr><th class="px-3 py-3">Karyawan</th><th class="px-3 py-3">Departemen</th><th class="px-3 py-3">No Kontak</th><th class="px-3 py-3">Tgl Bergabung</th><th class="px-3 py-3 text-center">Akun</th><th class="px-3 py-3 text-right">Detail</th></tr>
-                </thead>
-                <tbody>${rows || `<tr><td colspan="6" class="text-center py-12 text-slate-400">Belum ada data karyawan. Klik "Upload Data Karyawan" untuk mengimpor dari Excel.</td></tr>`}</tbody>
-            </table>
+        <div class="bg-white rounded-3xl border border-slate-100 shadow-sm">
+            <div class="overflow-auto max-h-[480px] rounded-3xl">
+                <table class="w-full text-left border-collapse">
+                    <thead class="bg-slate-900 text-slate-100 text-[9px] font-black uppercase">
+                        <tr>${headerCells}</tr>
+                    </thead>
+                    <tbody>${rows || `<tr><td colspan="${columns.length}" class="text-center py-12 text-slate-400 text-sm">Belum ada data karyawan yang cocok. Klik "Upload Data Karyawan" untuk mengimpor dari Excel, atau reset filter di atas.</td></tr>`}</tbody>
+                </table>
+            </div>
         </div>
     `);
 }
