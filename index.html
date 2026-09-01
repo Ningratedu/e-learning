@@ -6447,9 +6447,9 @@ function renderAdminSectionTabs(active) {
         { key: "admin/onboarding-feedback", icon: "fa-star", label: "Rekap Rating & Feedback" },
     ];
     return `
-    <div class="flex items-center gap-1 flex-wrap mb-3 bg-slate-100/70 p-1.5 rounded-2xl w-fit max-w-full">
+    <div class="flex items-center gap-1 flex-wrap mb-3 bg-indigo-50/80 border border-indigo-100 p-1.5 rounded-2xl w-fit max-w-full">
         ${tabs.map(t => `
-            <a href="#/${t.key}" class="flex items-center gap-1.5 text-xs font-bold px-3 py-2 rounded-xl transition ${active === t.key ? "bg-white shadow text-indigo-600" : "text-slate-500 hover:text-slate-700"}">
+            <a href="#/${t.key}" class="flex items-center gap-1.5 text-xs font-bold px-3 py-2 rounded-xl transition ${active === t.key ? "bg-indigo-600 shadow text-white" : "text-indigo-400 hover:text-indigo-600 hover:bg-white/60"}">
                 <i class="fas ${t.icon}"></i> ${t.label}
             </a>`).join("")}
     </div>`;
