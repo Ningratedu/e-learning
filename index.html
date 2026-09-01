@@ -76,6 +76,35 @@ window.__chartJsLoadFailed = false;
 @keyframes bootGridDrift { to { background-position: 34px 34px; } }
 #boot-loader.boot-loader-hide { opacity: 0; pointer-events: none; }
 
+#boot-error-screen {
+    position: fixed; inset: 0; z-index: 99999;
+    display: none; flex-direction: column; align-items: center; justify-content: center; gap: 14px;
+    background: radial-gradient(circle at 50% 40%, #16213e 0%, #0b0f1e 65%, #060810 100%);
+    padding: 24px; text-align: center;
+    font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+#boot-error-screen.show { display: flex; }
+#boot-error-screen .boot-error-icon {
+    width: 56px; height: 56px; border-radius: 16px;
+    background: linear-gradient(135deg,#312e81,#1e1b4b);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 22px; color: #fca5a5;
+    box-shadow: 0 0 22px -4px rgba(248,113,113,.45);
+}
+#boot-error-screen h2 {
+    color: #e2e8f0; font-size: 15px; font-weight: 800; letter-spacing: .02em; margin: 0;
+}
+#boot-error-screen p {
+    color: #64748b; font-size: 12.5px; font-weight: 500; max-width: 300px; margin: 0; line-height: 1.5;
+}
+#boot-error-screen button {
+    margin-top: 6px; padding: 10px 22px; border-radius: 12px; border: none;
+    background: linear-gradient(90deg,#4338ca,#6366f1); color: #fff;
+    font-size: 12.5px; font-weight: 700; letter-spacing: .02em; cursor: pointer;
+    box-shadow: 0 4px 16px -4px rgba(99,102,241,.6);
+}
+#boot-error-screen button:active { transform: scale(.97); }
+
 @property --boot-angle { syntax: '<angle>'; inherits: false; initial-value: 0deg; }
 .boot-orbit { position: relative; width: 64px; height: 64px; z-index: 1; }
 .boot-orbit-ring {
@@ -489,6 +518,16 @@ html.dark .corevalue-wire { background: rgba(96, 165, 250, .2); }
     </div>
     <div class="boot-bars"><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span></div>
     <div class="boot-label">Memuat <span class="boot-brand">NingratEdu</span><span class="boot-cursor">_</span></div>
+</div>
+
+<!-- ================= LAYAR GAGAL TERHUBUNG ================= -->
+<!-- Muncul kalau SDK Firebase gagal dimuat (mis. sinyal jelek pas pertama buka web),
+     supaya user gak kejebak di layar putih kosong dan tahu harus ngapain. -->
+<div id="boot-error-screen">
+    <div class="boot-error-icon"><i class="fas fa-triangle-exclamation"></i></div>
+    <h2>Gagal Terhubung ke Server</h2>
+    <p>Koneksi internet kamu kurang stabil. Periksa sinyal/WiFi kamu, lalu coba lagi.</p>
+    <button onclick="window.location.reload()"><i class="fas fa-rotate-right mr-1.5"></i>Coba Lagi</button>
 </div>
 
 <!-- ================= TOAST ================= -->
@@ -1029,36 +1068,27 @@ html.dark .corevalue-wire { background: rgba(96, 165, 250, .2); }
 // LMS ditaruh di namespace terpisah: artifacts/{appId}/lms/data/{collection}
 // (punya lama pakai namespace 'public': artifacts/{appId}/public/data/{collection}).
 
-import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-import {
-    initializeFirestore, persistentLocalCache, persistentMultipleTabManager,
-    collection, doc, addDoc, getDoc, getDocs, setDoc, updateDoc,
-    deleteDoc, onSnapshot, query, where, orderBy, serverTimestamp, writeBatch
-} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
-
-const firebaseConfig = {
-    apiKey: "AIzaSyAdNlDuqIbpoZvb1f1_u6SC2zcFcXbB8DM",
-    authDomain: "booking-ruang-training.firebaseapp.com",
-    projectId: "booking-ruang-training",
-    storageBucket: "booking-ruang-training.firebasestorage.app",
-    messagingSenderId: "627204181280",
-    appId: "1:627204181280:web:df6653f289326d65135b45"
-};
-
-const appFb = initializeApp(firebaseConfig);
-// CATATAN PERFORMA FIRESTORE: pakai initializeFirestore() dengan persistentLocalCache
-// (bukan getFirestore() biasa) supaya Firestore nyimpen data di IndexedDB browser.
-// Efeknya: reload/refresh berikutnya di device yang SAMA dibaca dari cache lokal dulu,
-// listener onSnapshot cuma narik PERUBAHAN (delta) dari server, bukan re-fetch seluruh
-// collection dari awal tiap kali app dibuka. Ini yang paling motong "reads" harian,
-// karena sebelumnya tiap reload = full collection reads lagi buat 8 collection yang
-// di-subscribe realtime tanpa filter (lihat startLiveListeners()).
-// persistentMultipleTabManager supaya tetap jalan normal kalau user buka >1 tab.
-const db = initializeFirestore(appFb, {
-    localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() })
-});
-const appId = "booking-ruang-training";
-const NS = "lms"; // namespace khusus data LMS
+// 🌐 FIX KONEKSI LEMOT/GAGAL SAAT BOOT: sebelumnya pakai static "import" langsung dari
+// gstatic.com — kalau sinyal jelek pas pertama buka web, import ini gagal total & TIDAK
+// BISA di-retry (module script langsung berhenti), akibatnya event "lms-firebase-ready"
+// gak pernah nembak dan user kejebak di layar putih kosong. Sekarang pakai dynamic
+// import() yang dibungkus fungsi retry (3x percobaan, delay makin lama tiap gagal) supaya
+// koneksi yang cuma "putus sebentar" otomatis pulih sendiri tanpa user harus ngapa-ngapain.
+async function loadFirebaseSdk(maxAttempts = 3) {
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+        try {
+            const [appMod, firestoreMod] = await Promise.all([
+                import("https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js"),
+                import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js")
+            ]);
+            return { ...appMod, ...firestoreMod };
+        } catch (err) {
+            console.error(`❌ Gagal load Firebase SDK (percobaan ${attempt}/${maxAttempts}):`, err);
+            if (attempt === maxAttempts) throw err;
+            await new Promise(r => setTimeout(r, 1200 * attempt)); // backoff: 1.2s, 2.4s, ...
+        }
+    }
+}
 
 // ================= CLOUDINARY (pengganti Firebase Storage) =================
 // Firebase Storage butuh plan Blaze (kartu kredit) sejak Feb 2026, jadi upload
@@ -1068,13 +1098,6 @@ const NS = "lms"; // namespace khusus data LMS
 const CLOUDINARY_CLOUD_NAME = "tmxumxfb";
 const CLOUDINARY_UPLOAD_PRESET = "ningratedu_unsigned";
 const CLOUDINARY_FOLDER_BASE = "ningratedu";
-
-function col(name) {
-    return collection(db, "artifacts", appId, NS, "data", name);
-}
-function ref(name, id) {
-    return doc(db, "artifacts", appId, NS, "data", name, id);
-}
 
 // Resource type Cloudinary ditentukan dari ekstensi file: gambar → "image",
 // selain itu (pptx, pdf, docx, dll) → "raw". Ini nentuin endpoint upload yang dipakai.
@@ -1142,14 +1165,73 @@ function uploadFileWithProgress(file, folder, onProgress) {
     });
 }
 
-window.LMS_DB = {
-    db, col, ref, addDoc, getDoc, getDocs, setDoc, updateDoc, deleteDoc,
-    onSnapshot, query, where, orderBy, serverTimestamp, writeBatch,
-    uploadFile, uploadFileWithProgress
-};
+// ================= INIT (dibungkus try/catch supaya kalau SDK gagal dimuat gara-gara
+// koneksi jelek, app gak nyangkut diam-diam — langsung kasih tau lewat event khusus
+// yang ditangkap di skrip bawah buat nampilin layar "Gagal Terhubung" + tombol retry) =================
+(async () => {
+    let fb;
+    try {
+        fb = await loadFirebaseSdk();
+    } catch (err) {
+        console.error("❌ Firebase SDK gagal dimuat setelah beberapa percobaan:", err);
+        window.dispatchEvent(new CustomEvent("lms-firebase-failed", { detail: err }));
+        return;
+    }
 
-// Beritahu main.js bahwa firebase siap
-window.dispatchEvent(new Event("lms-firebase-ready"));
+    const {
+        initializeApp, initializeFirestore, persistentLocalCache, persistentMultipleTabManager,
+        collection, doc, addDoc, getDoc, getDocs, setDoc, updateDoc,
+        deleteDoc, onSnapshot, query, where, orderBy, serverTimestamp, writeBatch
+    } = fb;
+
+    const firebaseConfig = {
+        apiKey: "AIzaSyAdNlDuqIbpoZvb1f1_u6SC2zcFcXbB8DM",
+        authDomain: "booking-ruang-training.firebaseapp.com",
+        projectId: "booking-ruang-training",
+        storageBucket: "booking-ruang-training.firebasestorage.app",
+        messagingSenderId: "627204181280",
+        appId: "1:627204181280:web:df6653f289326d65135b45"
+    };
+
+    let appFb, db;
+    try {
+        appFb = initializeApp(firebaseConfig);
+        // CATATAN PERFORMA FIRESTORE: pakai initializeFirestore() dengan persistentLocalCache
+        // (bukan getFirestore() biasa) supaya Firestore nyimpen data di IndexedDB browser.
+        // Efeknya: reload/refresh berikutnya di device yang SAMA dibaca dari cache lokal dulu,
+        // listener onSnapshot cuma narik PERUBAHAN (delta) dari server, bukan re-fetch seluruh
+        // collection dari awal tiap kali app dibuka. Ini yang paling motong "reads" harian,
+        // karena sebelumnya tiap reload = full collection reads lagi buat 8 collection yang
+        // di-subscribe realtime tanpa filter (lihat startLiveListeners()).
+        // persistentMultipleTabManager supaya tetap jalan normal kalau user buka >1 tab.
+        db = initializeFirestore(appFb, {
+            localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() })
+        });
+    } catch (err) {
+        console.error("❌ Firebase gagal diinisialisasi:", err);
+        window.dispatchEvent(new CustomEvent("lms-firebase-failed", { detail: err }));
+        return;
+    }
+
+    const appId = "booking-ruang-training";
+    const NS = "lms"; // namespace khusus data LMS
+
+    function col(name) {
+        return collection(db, "artifacts", appId, NS, "data", name);
+    }
+    function ref(name, id) {
+        return doc(db, "artifacts", appId, NS, "data", name, id);
+    }
+
+    window.LMS_DB = {
+        db, col, ref, addDoc, getDoc, getDocs, setDoc, updateDoc, deleteDoc,
+        onSnapshot, query, where, orderBy, serverTimestamp, writeBatch,
+        uploadFile, uploadFileWithProgress
+    };
+
+    // Beritahu main.js bahwa firebase siap
+    window.dispatchEvent(new Event("lms-firebase-ready"));
+})();
 
 </script>
 <script>
@@ -13422,14 +13504,36 @@ function hideBootLoader() {
     setTimeout(() => el.remove(), 400);
 }
 
-// Safety: kalau firebase gagal load dalam 8 detik, tetap sembunyikan boot loader & kasih pesan
+// Tampilkan layar "Gagal Terhubung" (bukan cuma toast yang numpang lewat) supaya user
+// gak kejebak di layar putih kosong pas sinyal jelek — ada tombol jelas buat coba lagi.
+window._bootErrorShown = false;
+function showBootErrorScreen() {
+    if (window._bootErrorShown) return;
+    window._bootErrorShown = true;
+    hideBootLoader();
+    const el = document.getElementById("boot-error-screen");
+    if (el) el.classList.add("show");
+}
+
+// Kalau firebase gagal dimuat (setelah retry otomatis di dalam script module) → langsung
+// tampilkan layar gagal terhubung, gak usah nunggu timeout 8 detik habis dulu.
+window.addEventListener("lms-firebase-failed", showBootErrorScreen);
+
+// Safety net: kalau karena alasan lain boot loader masih nyangkut setelah 8 detik
+// (mis. koneksi Firestore-nya sendiri yang lambat, bukan gagal load SDK-nya), tetap
+// tampilkan layar gagal terhubung yang sama biar user gak diam-diam ngeliat blank putih.
 setTimeout(() => {
     const el = document.getElementById("boot-loader");
     if (el && !el.classList.contains("boot-loader-hide")) {
-        hideBootLoader();
-        window.toast && window.toast("Gagal terhubung ke server, cek koneksi internet kamu", "error");
+        showBootErrorScreen();
     }
 }, 8000);
+
+// Kalau user lagi di layar "Gagal Terhubung" dan sinyalnya balik lagi, otomatis reload
+// sendiri — gak perlu mikir mesti pencet apa.
+window.addEventListener("online", () => {
+    if (window._bootErrorShown) window.location.reload();
+});
 
 </script>
 
