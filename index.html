@@ -349,6 +349,14 @@ html.dark input, html.dark select, html.dark textarea { background-color: #0f162
 html.dark input::placeholder, html.dark textarea::placeholder { color: #64708a; }
 html.dark ::-webkit-scrollbar-thumb { background: #2a3550; }
 
+/* Pita level training (ribbon "Pemula/Menengah/..." di pojok card Onboarding Training)
+   pakai drop-shadow HITAM buat kesan lipatan/ngambang. Di light mode itu kontras jelas
+   karena background terang, tapi di dark mode semuanya udah gelap jadi shadow hitam
+   nyaris invisible -> efek lipatannya ilang. Fix: tambah rim-light tipis putih transparan
+   di sekeliling pita (biar ada garis pemisah dari cover/card yang gelap) + shadow gelapnya
+   digedein blur & opacity-nya. */
+html.dark .course-ribbon { filter: drop-shadow(0 0 1px rgba(255,255,255,0.35)) drop-shadow(0 5px 7px rgba(0,0,0,0.75)) drop-shadow(0 1px 3px rgba(0,0,0,0.6)) !important; }
+
 /* FIX: kelas hover:bg-slate-* (dipakai buat efek hover baris tabel & item list/dropdown)
    kelewat pas remapping dark mode di atas, jadi pas di-hover background-nya balik ke
    abu-abu/putih terang bawaan Tailwind sementara teksnya udah kadung diubah jadi terang
@@ -673,7 +681,7 @@ html.dark .corevalue-wire { background: rgba(96, 165, 250, .2); }
 
     <!-- Main -->
     <div id="main-wrapper" class="flex-1 min-w-0 flex flex-col">
-        <header class="bg-white border-b border-slate-100 px-4 lg:px-5 py-3 flex items-center justify-between sticky top-0 z-20">
+        <header class="bg-white border-b border-slate-100 px-4 lg:px-5 py-3 flex items-center justify-between sticky top-0 z-40">
             <button id="sidebar-toggle-btn" class="text-slate-500 hover:text-indigo-600 transition flex items-center gap-1.5" onclick="window.toggleSidebar()" title="Buka/tutup menu">
                 <i class="fas fa-bars text-lg"></i>
                 <i id="sidebar-toggle-arrow" class="fas fa-chevron-left text-[10px] text-slate-300"></i>
@@ -714,21 +722,33 @@ html.dark .corevalue-wire { background: rgba(96, 165, 250, .2); }
             <div class="relative" id="profile-hover-area" onmouseenter="window.openProfileMenuHover()" onmouseleave="window.closeProfileMenuHover()">
                 <button id="profile-menu-btn" onclick="window.toggleProfileMenu()" class="flex items-center gap-3">
                     <div class="text-right hidden sm:block">
-                        <p id="topbar-username" class="text-sm font-bold text-slate-700 leading-none"></p>
+                        <p id="topbar-username" class="text-xs font-bold text-slate-700 leading-none"></p>
                         <p id="topbar-role" class="text-[10px] text-indigo-500 font-bold mt-0.5"></p>
                     </div>
                     <div id="topbar-avatar" class="w-9 h-9 rounded-full bg-indigo-600 text-white flex items-center justify-center font-black text-sm overflow-hidden shrink-0"></div>
                 </button>
                 <!-- pt-2 (bukan mt-2) supaya area hover-nya nyambung tanpa celah dari tombol/avatar ke menu ini,
                      jadi kursor yang digeser turun dari avatar/nama tidak melewati "zona mati" yang bikin menu ke-hide duluan. -->
-                <div id="profile-menu" class="hide absolute right-0 top-full pt-2 w-56 z-50">
+                <div id="profile-menu" class="hide absolute right-0 top-full pt-2 w-56 z-[60]">
                 <div class="bg-white rounded-2xl shadow-xl border border-slate-100 overflow-hidden">
                     <div class="p-4 border-b border-slate-100">
-                        <p id="profile-menu-name" class="text-sm font-black text-slate-800"></p>
-                        <p id="profile-menu-role" class="text-[11px] text-indigo-500 font-bold mt-0.5"></p>
+                        <p id="profile-menu-name" class="text-xs font-black text-slate-800"></p>
+                        <p id="profile-menu-role" class="text-[10px] text-indigo-500 font-bold mt-0.5"></p>
                     </div>
-                    <button onclick="window.closeProfileMenu(); window.openEditProfile()" class="w-full text-left px-4 py-3 text-sm font-bold text-slate-600 hover:bg-slate-50 flex items-center gap-2"><i class="fas fa-user-pen text-indigo-500 w-4 text-center"></i> Edit Profil</button>
-                    <button onclick="window.doLogout()" class="w-full text-left px-4 py-3 text-sm font-bold text-rose-500 hover:bg-rose-50 flex items-center gap-2 border-t border-slate-100"><i class="fas fa-right-from-bracket w-4 text-center"></i> Keluar</button>
+                    <!-- Toggle tema terang/gelap: dipindah ke sini (popup hover avatar), diposisikan
+                         center horizontal, di ATAS baris tombol Edit Profil & Keluar di bawahnya. -->
+                    <div class="flex flex-col items-center gap-1.5 px-4 py-3 border-b border-slate-100">
+                        <p class="text-[10px] font-black text-slate-700">Tema Tampilan</p>
+                        <button id="theme-toggle-btn" onclick="window.toggleTheme()" class="w-14 h-8 rounded-full bg-slate-200 relative transition-colors shrink-0">
+                            <span id="theme-toggle-knob" class="absolute top-1 left-1 w-6 h-6 rounded-full bg-white shadow flex items-center justify-center text-[10px] transition-transform"><i class="fas fa-sun text-amber-400"></i></span>
+                        </button>
+                        <p id="theme-toggle-desc" class="text-[10px] text-slate-400">Terang</p>
+                    </div>
+                    <!-- Edit Profil & Keluar: kanan-kiri (side by side), ukuran teks sama dengan bagian lain di popup ini -->
+                    <div class="grid grid-cols-2 divide-x divide-slate-100">
+                        <button onclick="window.closeProfileMenu(); window.openEditProfile()" class="flex flex-col items-center gap-1 px-2 py-3 text-[10px] font-bold text-slate-600 hover:bg-slate-50"><i class="fas fa-user-pen text-indigo-500"></i> Edit Profil</button>
+                        <button onclick="window.doLogout()" class="flex flex-col items-center gap-1 px-2 py-3 text-[10px] font-bold text-rose-500 hover:bg-rose-50"><i class="fas fa-right-from-bracket"></i> Keluar</button>
+                    </div>
                 </div>
                 </div>
             </div>
@@ -778,15 +798,6 @@ html.dark .corevalue-wire { background: rgba(96, 165, 250, .2); }
                     </div>
                     <button onclick="window.guardedClick(this, () => window.changePassword())" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2.5 rounded-2xl transition text-sm"><i class="fas fa-key mr-1"></i> Simpan Password Baru</button>
                 </div>
-            </div>
-            <div class="flex items-center justify-between border-t border-slate-100 pt-4">
-                <div>
-                    <p class="text-xs font-black text-slate-700">Tema Tampilan</p>
-                    <p id="theme-toggle-desc" class="text-[11px] text-slate-400">Terang</p>
-                </div>
-                <button id="theme-toggle-btn" onclick="window.toggleTheme()" class="w-14 h-8 rounded-full bg-slate-200 relative transition-colors shrink-0">
-                    <span id="theme-toggle-knob" class="absolute top-1 left-1 w-6 h-6 rounded-full bg-white shadow flex items-center justify-center text-[10px] transition-transform"><i class="fas fa-sun text-amber-400"></i></span>
-                </button>
             </div>
         </div>
     </div>
@@ -2615,8 +2626,12 @@ window.renderTopbar = function () {
 };
 
 // ================= PROFILE MENU (dropdown di avatar/nama) =================
+// Sengaja BUKAN toggle: kalau klik ikut toggle, klik pas popup lagi kebuka gara-gara
+// hover malah langsung nutup lagi (kerasa kayak "ngeblokir" padahal niatnya mau buka).
+// Jadi klik selalu MEMBUKA; nutupnya tetap lewat hover keluar (closeProfileMenuHover)
+// atau klik di luar area popup (listener document click di bawah).
 window.toggleProfileMenu = function () {
-    document.getElementById("profile-menu")?.classList.toggle("hide");
+    document.getElementById("profile-menu")?.classList.remove("hide");
 };
 window.closeProfileMenu = function () {
     document.getElementById("profile-menu")?.classList.add("hide");
@@ -4714,6 +4729,19 @@ function courseCoverStyle(c) {
     if (c.coverImage) return `background-image:url('${c.coverImage}')`;
     return `background:linear-gradient(135deg,${c.accent1 || "#4f46e5"},${c.accent2 || "#818cf8"})`;
 }
+// Palet warna ribbon level, dipetakan ke warna yang sudah dipakai di tempat lain pada
+// aplikasi ini (slate/emerald/amber-orange/rose) biar tetap senada dengan skema warna
+// yang ada, sekaligus bikin tiap level (Umum/Pemula/Menengah/Lanjutan) gampang dibedakan
+// sekilas dari warna pita di pojok cover training.
+function levelRibbonTheme(level) {
+    const THEMES = {
+        "Pemula": { grad: "from-emerald-400 via-emerald-500 to-emerald-700", fold: "border-t-emerald-950/70" },
+        "Menengah": { grad: "from-amber-400 via-orange-500 to-orange-700", fold: "border-t-orange-950/70" },
+        "Lanjutan": { grad: "from-rose-400 via-rose-500 to-rose-700", fold: "border-t-rose-950/70" },
+        "Umum": { grad: "from-sky-400 via-blue-500 to-blue-700", fold: "border-t-blue-950/70" },
+    };
+    return THEMES[level] || THEMES["Umum"];
+}
 // Sama seperti courseCoverStyle, tapi buat Training By TNA — default gradiennya oranye/amber
 // biar konsisten sama warna tema Training TNA di seluruh aplikasi.
 function trainingCoverStyle(t) {
@@ -4799,14 +4827,35 @@ function renderCourseCatalog() {
                     : `<span class="text-[8px] font-black px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-400">Belum Mulai</span>`));
 
         const searchBlob = [c.title, c.category, c.instructor, c.level].filter(Boolean).join(" ").toLowerCase();
+        const ribbonTheme = levelRibbonTheme(c.level);
+        // Pita level sengaja dipisah dari konten card yang di-clip (overflow-hidden), dan
+        // ditaruh sebagai elemen tersendiri yang sedikit "nongol" melewati sudut kiri-atas
+        // card (-top-1.5 -left-1.5).
+        // Struktur dibuat 2 lapis:
+        //  1) Div LUAR (tanpa overflow-hidden) yang pegang `filter: drop-shadow(...)`.
+        //     Drop-shadow di CSS itu ngikutin BENTUK ASLI elemen setelah di-clip/rotate,
+        //     bukan cuma kotak persegi biasa kayak box-shadow. Jadi bayangannya bakal
+        //     ngikutin garis potongan diagonal pitanya persis — itu yang bikin mata baca
+        //     "oh ini pita fisik yang nongol lalu lipet masuk ke bawah sudut card", bukan
+        //     cuma gambar rata nempel di card.
+        //  2) Div DALAM yang overflow-hidden (buat motong pita jadi bentuk sudut), isinya
+        //     span pita yang di-rotate -45deg. Segitiga fold di ujung-ujung pita digedein
+        //     dari 4px jadi 6px biar lipatannya kerasa nongol, bukan ilang kepotong sama
+        //     container kecilnya.
+        const ribbonHtml = `
+            <div class="course-ribbon absolute -top-1.5 -left-1.5 w-20 h-20 z-20 pointer-events-none" style="filter:drop-shadow(0 4px 5px rgba(0,0,0,0.45)) drop-shadow(0 1px 2px rgba(0,0,0,0.35));">
+                <div class="relative w-full h-full overflow-hidden">
+                    <span class="absolute top-[18px] left-[-24px] w-[100px] -rotate-45 bg-gradient-to-b ${ribbonTheme.grad} text-white text-[7px] font-black text-center py-[3px] uppercase tracking-wide shadow-[inset_0_1px_0_rgba(255,255,255,0.6),inset_0_-2px_2px_rgba(0,0,0,0.4)] ring-1 ring-black/10">
+                        ${window.escapeHtml(c.level || "Umum")}
+                        <span class="absolute -bottom-[6px] left-0 w-0 h-0 border-t-[6px] ${ribbonTheme.fold} border-l-[6px] border-l-transparent border-r-[6px] border-r-transparent"></span>
+                        <span class="absolute -bottom-[6px] right-0 w-0 h-0 border-t-[6px] ${ribbonTheme.fold} border-l-[6px] border-l-transparent border-r-[6px] border-r-transparent"></span>
+                    </span>
+                </div>
+            </div>`;
         const cardInner = `
             <div class="h-20 bg-cover bg-center relative" style="${courseCoverStyle(c)}">
                 <div class="absolute inset-0 ${lock.locked ? "bg-black/50" : "bg-black/10"}"></div>
                 ${!c.published ? '<span class="absolute top-1.5 left-1.5 bg-slate-900/80 text-white text-[8px] font-bold px-1.5 py-0.5 rounded-full">Draft</span>' : ""}
-                <div class="absolute -top-1 -left-1 w-16 h-16 overflow-hidden pointer-events-none z-10">
-                    <span class="absolute top-[9px] left-[-20px] w-[76px] -rotate-45 bg-gradient-to-b from-amber-400 via-orange-500 to-orange-700 text-white text-[7px] font-black text-center py-[3px] uppercase tracking-wide shadow-[inset_0_1px_0_rgba(255,255,255,0.55),inset_0_-1px_1px_rgba(0,0,0,0.35),0_4px_8px_rgba(0,0,0,0.55)] ring-1 ring-black/10">${window.escapeHtml(c.level || "Umum")}</span>
-                    <span class="absolute top-0 left-0 w-0 h-0 border-t-[9px] border-t-orange-950/70 border-r-[9px] border-r-transparent drop-shadow-[1px_1px_1px_rgba(0,0,0,0.4)]"></span>
-                </div>
                 ${lock.locked ? `<div class="absolute inset-0 flex items-center justify-center"><span class="bg-white/95 text-slate-600 text-[9px] font-black px-2 py-1 rounded-full"><i class="fas fa-lock mr-1"></i> Terkunci</span></div>` : ""}
             </div>
             <div class="p-2.5 flex flex-col gap-1 flex-1">
@@ -4833,8 +4882,8 @@ function renderCourseCatalog() {
                 </div>`}
             </div>`;
         return lock.locked
-            ? `<button data-tsearch="${window.escapeHtml(searchBlob)}" onclick="window.toast('Selesaikan training \\'${window.escapeHtml(lock.blockingTitle).replace(/'/g, "\\'")}\\' terlebih dahulu sebelum bisa memulai training ini.','warn')" class="group bg-white rounded-2xl overflow-hidden shadow-sm border border-slate-100 flex flex-col text-left opacity-70 cursor-not-allowed h-full">${cardInner}</button>`
-            : `<a data-tsearch="${window.escapeHtml(searchBlob)}" href="#/courses/${c.id}" class="group bg-white rounded-2xl overflow-hidden shadow-sm border border-slate-100 hover:shadow-xl transition flex flex-col h-full">${cardInner}</a>`;
+            ? `<button data-tsearch="${window.escapeHtml(searchBlob)}" onclick="window.toast('Selesaikan training \\'${window.escapeHtml(lock.blockingTitle).replace(/'/g, "\\'")}\\' terlebih dahulu sebelum bisa memulai training ini.','warn')" class="group relative bg-white rounded-2xl shadow-sm border border-slate-100 flex flex-col text-left opacity-70 cursor-not-allowed h-full">${ribbonHtml}<div class="rounded-2xl overflow-hidden flex flex-col flex-1 h-full">${cardInner}</div></button>`
+            : `<a data-tsearch="${window.escapeHtml(searchBlob)}" href="#/courses/${c.id}" class="group relative bg-white rounded-2xl shadow-sm border border-slate-100 hover:shadow-xl transition flex flex-col h-full">${ribbonHtml}<div class="rounded-2xl overflow-hidden flex flex-col flex-1 h-full">${cardInner}</div></a>`;
     }).join("");
 
     window.setPage(`
