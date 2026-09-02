@@ -6561,8 +6561,9 @@ function renderCourseAdminList() {
         // tampil "100%" — padahal senyatanya belum semua kelar. Math.floor memastikan
         // label 100% cuma muncul kalau BENERAN completedCount == targetCount.
         const completedPct = targetCount ? Math.floor((completedCount / targetCount) * 100) : 0;
+        const searchBlob = [c.title, c.category].map(v => String(v || "").toLowerCase()).join(" | ");
         return `
-        <tr class="border-b border-slate-50 hover:bg-slate-50/60">
+        <tr class="border-b border-slate-50 hover:bg-slate-50/60" data-tsearch="${window.escapeHtml(searchBlob)}">
             <td class="px-2 py-2">
                 <div class="flex flex-col items-center gap-0.5">
                     <button ${i===0?'disabled':''} onclick="window.guardedClick(this, () => window.moveCourseOrder('${c.id}', -1))" class="text-slate-300 hover:text-indigo-600 leading-none text-[10px]"><i class="fas fa-chevron-up"></i></button>
@@ -6603,6 +6604,10 @@ function renderCourseAdminList() {
             <a href="#/admin/courses/new" class="bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold px-4 py-2.5 rounded-2xl"><i class="fas fa-plus mr-1"></i> Training Baru</a>
         </div>
         <p class="text-xs text-slate-400 mb-3">Pakai panah naik/turun buat atur urutan pengerjaan. Training dikunci berurutan sesuai urutan ini, dihitung terpisah untuk tiap departemen (lihat kolom target peserta).</p>
+        <div class="relative w-full sm:w-72 mb-3">
+            <i class="fas fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-slate-300 text-xs"></i>
+            <input type="text" oninput="window.filterCourseAdminList(this.value)" placeholder="Cari nama training atau kategori..." class="w-full pl-8 pr-3 py-2 text-xs rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-200">
+        </div>
         <div class="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-auto max-h-[75vh]">
             <table class="w-full text-left border-separate border-spacing-0">
                 <thead class="text-[9px] font-black uppercase text-slate-400">
@@ -6616,11 +6621,29 @@ function renderCourseAdminList() {
                         <th class="sticky top-0 z-10 bg-slate-50 px-2 py-2 border-b border-slate-100 text-right">Aksi</th>
                     </tr>
                 </thead>
-                <tbody>${rows || `<tr><td colspan="7" class="text-center py-10 text-slate-400">Belum ada training</td></tr>`}</tbody>
+                <tbody id="course-admin-tbody">${rows || `<tr><td colspan="7" class="text-center py-10 text-slate-400">Belum ada training</td></tr>`}</tbody>
             </table>
+            <p id="course-admin-search-empty" class="hide text-center text-xs text-slate-400 py-4">Tidak ada training yang cocok dengan pencarian.</p>
         </div>
     `);
 }
+// Search nama/kategori training di tabel "Daftar Training" (Kelola Onboarding) — murni
+// manipulasi DOM (tanpa render ulang seluruh halaman) supaya fokus & posisi kursor di kotak
+// pencarian gak ke-reset tiap admin ngetik satu huruf.
+window.filterCourseAdminList = function (query) {
+    const tbody = document.getElementById("course-admin-tbody");
+    if (!tbody) return;
+    const q = String(query || "").toLowerCase().trim();
+    const rows = [...tbody.querySelectorAll("tr[data-tsearch]")];
+    let visibleCount = 0;
+    rows.forEach(tr => {
+        const match = !q || tr.getAttribute("data-tsearch").includes(q);
+        tr.style.display = match ? "" : "none";
+        if (match) visibleCount++;
+    });
+    const emptyMsg = document.getElementById("course-admin-search-empty");
+    if (emptyMsg) emptyMsg.classList.toggle("hide", !(rows.length > 0 && visibleCount === 0));
+};
 
 // ================= ADMIN: REKAP RATING & FEEDBACK ONBOARDING =================
 // Tab baru di halaman "Kelola Onboarding": rekap SEMUA evaluasi (rating bintang + feedback
@@ -7625,10 +7648,11 @@ function renderTrainingAdminList() {
             : status === "ongoing"
             ? `<button onclick="window.guardedClick(this, () => window.setTrainingSessionStatus('${t.id}','finished'))" class="text-[10px] font-black px-2.5 py-1 rounded-lg bg-emerald-500 hover:bg-emerald-600 text-white transition whitespace-nowrap"><i class="fas fa-flag-checkered mr-1"></i>Selesaikan</button>`
             : `<button onclick="window.guardedClick(this, () => window.setTrainingSessionStatus('${t.id}','ongoing'))" class="text-[10px] font-black px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-500 transition whitespace-nowrap"><i class="fas fa-rotate-left mr-1"></i>Buka Lagi</button>`;
+        const searchBlob = [t.title, t.trainer, t.location, t.attendanceCode].map(v => String(v || "").toLowerCase()).join(" | ");
         return `
-        <tr class="border-b border-slate-50 hover:bg-slate-50/60">
+        <tr class="border-b border-slate-50 hover:bg-slate-50/60" data-tsearch="${window.escapeHtml(searchBlob)}">
             <td class="px-2 py-2 text-center">
-                <p class="text-[10px] font-bold text-slate-400">${idx + 1}</p>
+                <p class="text-[10px] font-bold text-slate-400 training-admin-row-num">${idx + 1}</p>
             </td>
             <td class="px-2 py-2 min-w-[150px]">
                 <p class="font-bold text-slate-700 text-[11px] truncate max-w-[200px]">${window.escapeHtml(t.title)}</p>
@@ -7676,6 +7700,10 @@ function renderTrainingAdminList() {
             <a href="#/admin/trainings/new" class="bg-amber-500 hover:bg-amber-600 text-white text-sm font-bold px-4 py-2.5 rounded-2xl"><i class="fas fa-plus mr-1"></i> Jadwal Baru</a>
         </div>
         <p class="text-xs text-slate-400 -mt-3 mb-4"><i class="fas fa-circle-info mr-1"></i> Training baru default-nya berstatus "Belum Dimulai" — peserta baru bisa daftar & mengikuti setelah kamu tekan "Mulai Training".</p>
+        <div class="relative w-full sm:w-72 mb-3">
+            <i class="fas fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-slate-300 text-xs"></i>
+            <input type="text" oninput="window.filterTrainingAdminList(this.value)" placeholder="Cari nama training, trainer, atau lokasi..." class="w-full pl-8 pr-3 py-2 text-xs rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-amber-200">
+        </div>
         <div class="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-auto max-h-[75vh]">
             <table class="w-full text-left border-separate border-spacing-0">
                 <thead class="text-[9px] font-black uppercase text-slate-400">
@@ -7692,11 +7720,33 @@ function renderTrainingAdminList() {
                         <th class="sticky top-0 z-10 bg-slate-50 px-2 py-2 border-b border-slate-100 text-right">Aksi</th>
                     </tr>
                 </thead>
-                <tbody>${rows || `<tr><td colspan="10" class="text-center py-10 text-slate-400">Belum ada jadwal training</td></tr>`}</tbody>
+                <tbody id="training-admin-tbody">${rows || `<tr><td colspan="10" class="text-center py-10 text-slate-400">Belum ada jadwal training</td></tr>`}</tbody>
             </table>
+            <p id="training-admin-search-empty" class="hide text-center text-xs text-slate-400 py-4">Tidak ada training yang cocok dengan pencarian.</p>
         </div>
     `);
 }
+// Search nama/trainer/lokasi training di tabel "Kelola Training TNA" — murni manipulasi DOM
+// (tanpa render ulang seluruh halaman) supaya fokus & posisi kursor di kotak pencarian gak
+// ke-reset tiap admin ngetik satu huruf. Nomor urut baris ikut di-update biar tetap rapi.
+window.filterTrainingAdminList = function (query) {
+    const tbody = document.getElementById("training-admin-tbody");
+    if (!tbody) return;
+    const q = String(query || "").toLowerCase().trim();
+    const rows = [...tbody.querySelectorAll("tr[data-tsearch]")];
+    let visibleCount = 0;
+    rows.forEach(tr => {
+        const match = !q || tr.getAttribute("data-tsearch").includes(q);
+        tr.style.display = match ? "" : "none";
+        if (match) {
+            visibleCount++;
+            const numEl = tr.querySelector(".training-admin-row-num");
+            if (numEl) numEl.textContent = visibleCount;
+        }
+    });
+    const emptyMsg = document.getElementById("training-admin-search-empty");
+    if (emptyMsg) emptyMsg.classList.toggle("hide", !(rows.length > 0 && visibleCount === 0));
+};
 function genCode() { return Math.random().toString(36).slice(2, 7).toUpperCase(); }
 
 window.deleteTraining = function (id) {
