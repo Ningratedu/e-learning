@@ -4776,6 +4776,8 @@ function renderCourseCatalog() {
         const progress = window.sel.courseProgress(c.id);
         const enr = window.sel.myEnrollment(c.id);
         const lock = courseLockInfo(c.id);
+        const displayProgress = enr ? progress : 0;
+        const progressActive = enr && enr.status === 'completed';
 
         // Info nilai pre-test/post-test & status Lulus/Belum Lulus, ditampilkan langsung di card
         // katalog biar peserta (dan admin yang preview) langsung lihat pencapaiannya tanpa perlu
@@ -4785,51 +4787,54 @@ function renderCourseCatalog() {
         const postTestAttempts = hasQuiz ? window.sel.myPostTestAttempts("course", c.id) : [];
         const latestPost = postTestAttempts[0] || null;
         const quizPassed = hasQuiz && !!(latestPost && latestPost.passed);
-        const statusBadge = !hasQuiz ? "" : (
-            latestPost
-                ? (quizPassed
-                    ? `<span class="text-[9px] font-black px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-600"><i class="fas fa-check mr-0.5"></i>Lulus</span>`
-                    : `<span class="text-[9px] font-black px-2 py-0.5 rounded-full bg-rose-50 text-rose-500"><i class="fas fa-xmark mr-0.5"></i>Belum Lulus</span>`)
+        // Badge status SELALU tampil (bukan cuma kalau ada kuis) — training yang belum
+        // dimulai tetap tampilkan badge "Belum Mulai" & progress 0%, biar peserta langsung
+        // lihat mana training yang belum disentuh sama sekali tanpa perlu buka detailnya.
+        const statusBadge = quizPassed
+            ? `<span class="text-[8px] font-black px-1.5 py-0.5 rounded-full bg-emerald-50 text-emerald-600"><i class="fas fa-check mr-0.5"></i>Lulus</span>`
+            : (latestPost
+                ? `<span class="text-[8px] font-black px-1.5 py-0.5 rounded-full bg-rose-50 text-rose-500"><i class="fas fa-xmark mr-0.5"></i>Belum Lulus</span>`
                 : (enr
-                    ? `<span class="text-[9px] font-black px-2 py-0.5 rounded-full bg-amber-50 text-amber-600"><i class="fas fa-spinner mr-0.5"></i>On Progress</span>`
-                    : `<span class="text-[9px] font-black px-2 py-0.5 rounded-full bg-slate-100 text-slate-400">Belum Mulai</span>`)
-        );
+                    ? `<span class="text-[8px] font-black px-1.5 py-0.5 rounded-full bg-amber-50 text-amber-600"><i class="fas fa-spinner mr-0.5"></i>On Progress</span>`
+                    : `<span class="text-[8px] font-black px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-400">Belum Mulai</span>`));
 
+        const searchBlob = [c.title, c.category, c.instructor, c.level].filter(Boolean).join(" ").toLowerCase();
         const cardInner = `
-            <div class="h-36 bg-cover bg-center relative" style="${courseCoverStyle(c)}">
+            <div class="h-20 bg-cover bg-center relative" style="${courseCoverStyle(c)}">
                 <div class="absolute inset-0 ${lock.locked ? "bg-black/50" : "bg-black/10"}"></div>
-                ${!c.published ? '<span class="absolute top-3 left-3 bg-slate-900/80 text-white text-[10px] font-bold px-2 py-1 rounded-full">Draft</span>' : ""}
-                <span class="absolute top-3 right-3 bg-white/90 text-indigo-600 text-[10px] font-black px-2 py-1 rounded-full uppercase">${window.escapeHtml(c.level || "Umum")}</span>
-                ${lock.locked ? `<div class="absolute inset-0 flex items-center justify-center"><span class="bg-white/95 text-slate-600 text-xs font-black px-3 py-1.5 rounded-full"><i class="fas fa-lock mr-1.5"></i> Terkunci</span></div>` : ""}
-            </div>
-            <div class="p-4 flex flex-col gap-2 flex-1">
-                <div class="flex items-center justify-between gap-2">
-                    <p class="text-[11px] font-bold text-indigo-500 uppercase tracking-wide">${window.escapeHtml(c.category || "Training")}</p>
+                ${!c.published ? '<span class="absolute top-1.5 left-1.5 bg-slate-900/80 text-white text-[8px] font-bold px-1.5 py-0.5 rounded-full">Draft</span>' : ""}
+                <div class="absolute -top-1 -left-1 w-16 h-16 overflow-hidden pointer-events-none z-10">
+                    <span class="absolute top-[9px] left-[-20px] w-[76px] -rotate-45 bg-gradient-to-b from-amber-400 via-orange-500 to-orange-700 text-white text-[7px] font-black text-center py-[3px] uppercase tracking-wide shadow-[inset_0_1px_0_rgba(255,255,255,0.55),inset_0_-1px_1px_rgba(0,0,0,0.35),0_4px_8px_rgba(0,0,0,0.55)] ring-1 ring-black/10">${window.escapeHtml(c.level || "Umum")}</span>
+                    <span class="absolute top-0 left-0 w-0 h-0 border-t-[9px] border-t-orange-950/70 border-r-[9px] border-r-transparent drop-shadow-[1px_1px_1px_rgba(0,0,0,0.4)]"></span>
                 </div>
-                <h3 class="font-black text-slate-800 leading-snug ${lock.locked ? "" : "group-hover:text-indigo-600"} transition">${window.escapeHtml(c.title)}</h3>
-                <p class="text-xs text-slate-500 line-clamp-2 flex-1">${window.escapeHtml(c.description || "")}</p>
-                <div class="flex items-center justify-between text-[11px] text-slate-400 pt-2 border-t border-slate-50 mt-1">
-                    <span><i class="fas fa-layer-group mr-1"></i>${(c.modules||[]).length} modul</span>
-                    <span><i class="fas fa-user-tie mr-1"></i>${window.escapeHtml(c.instructor || "-")}</span>
+                ${lock.locked ? `<div class="absolute inset-0 flex items-center justify-center"><span class="bg-white/95 text-slate-600 text-[9px] font-black px-2 py-1 rounded-full"><i class="fas fa-lock mr-1"></i> Terkunci</span></div>` : ""}
+            </div>
+            <div class="p-2.5 flex flex-col gap-1 flex-1">
+                <p class="text-[8px] font-bold text-indigo-500 uppercase tracking-wide truncate">${window.escapeHtml(c.category || "Training")}</p>
+                <h3 class="text-[11px] font-black text-slate-800 leading-snug line-clamp-2 ${lock.locked ? "" : "group-hover:text-indigo-600"} transition">${window.escapeHtml(c.title)}</h3>
+                <p class="text-[9px] text-slate-500 line-clamp-2 flex-1">${window.escapeHtml(c.description || "")}</p>
+                <div class="flex items-center justify-between text-[8px] text-slate-400 pt-1 border-t border-slate-50 mt-1 gap-1">
+                    <span class="truncate"><i class="fas fa-layer-group mr-0.5"></i>${(c.modules||[]).length} modul</span>
+                    <span class="truncate"><i class="fas fa-user-tie mr-0.5"></i>${window.escapeHtml(c.instructor || "-")}</span>
                 </div>
                 ${lock.locked
-                    ? `<p class="text-[11px] text-rose-400 font-semibold mt-1"><i class="fas fa-triangle-exclamation mr-1"></i> Selesaikan "${window.escapeHtml(lock.blockingTitle)}" dulu untuk buka training ini.</p>`
-                    : (enr ? `
+                    ? `<p class="text-[8px] text-rose-400 font-semibold mt-1 line-clamp-2"><i class="fas fa-triangle-exclamation mr-0.5"></i> Selesaikan "${window.escapeHtml(lock.blockingTitle)}" dulu.</p>`
+                    : `
                 <div class="mt-1">
-                    <div class="relative pt-3">
-                        <span class="absolute top-0 text-[9px] font-black ${enr.status === 'completed' ? 'text-emerald-600' : 'text-indigo-600'} transition-all" style="left:${Math.min(94, Math.max(6, progress))}%; transform:translateX(-50%)">${progress}%</span>
-                        <div class="h-1.5 bg-slate-100 rounded-full overflow-hidden"><div class="h-full ${enr.status === 'completed' ? 'bg-emerald-500' : 'bg-indigo-500'}" style="width:${progress}%"></div></div>
+                    <div class="relative pt-2.5">
+                        <span class="absolute top-0 text-[7px] font-black ${progressActive ? 'text-emerald-600' : 'text-indigo-600'} transition-all" style="left:${Math.min(94, Math.max(6, displayProgress))}%; transform:translateX(-50%)">${displayProgress}%</span>
+                        <div class="h-1 bg-slate-100 rounded-full overflow-hidden"><div class="h-full ${progressActive ? 'bg-emerald-500' : 'bg-indigo-500'}" style="width:${displayProgress}%"></div></div>
                     </div>
-                    <div class="flex items-center justify-between gap-2 mt-1.5">
-                        <span class="text-[11px] font-semibold text-slate-500 shrink-0"><i class="fas fa-list-check text-sky-400 mr-0.5"></i>Pre-test: ${pretestAttempt ? pretestAttempt.score : '-'}</span>
-                        <span class="text-[11px] font-semibold text-slate-500 shrink-0"><i class="fas fa-clipboard-question text-violet-400 mr-0.5"></i>Post-test: ${latestPost ? latestPost.score : '-'}</span>
+                    <div class="flex items-center justify-between gap-1 mt-1.5 flex-wrap">
+                        ${hasQuiz ? `<span class="text-[8px] font-semibold text-slate-500 shrink-0"><i class="fas fa-list-check text-sky-400 mr-0.5"></i>${pretestAttempt ? pretestAttempt.score : '-'}</span>
+                        <span class="text-[8px] font-semibold text-slate-500 shrink-0"><i class="fas fa-clipboard-question text-violet-400 mr-0.5"></i>${latestPost ? latestPost.score : '-'}</span>` : ""}
                         ${statusBadge}
                     </div>
-                </div>` : "")}
+                </div>`}
             </div>`;
         return lock.locked
-            ? `<button onclick="window.toast('Selesaikan training \\'${window.escapeHtml(lock.blockingTitle).replace(/'/g, "\\'")}\\' terlebih dahulu sebelum bisa memulai training ini.','warn')" class="group bg-white rounded-3xl overflow-hidden shadow-sm border border-slate-100 flex flex-col text-left opacity-70 cursor-not-allowed">${cardInner}</button>`
-            : `<a href="#/courses/${c.id}" class="group bg-white rounded-3xl overflow-hidden shadow-sm border border-slate-100 hover:shadow-xl transition flex flex-col">${cardInner}</a>`;
+            ? `<button data-tsearch="${window.escapeHtml(searchBlob)}" onclick="window.toast('Selesaikan training \\'${window.escapeHtml(lock.blockingTitle).replace(/'/g, "\\'")}\\' terlebih dahulu sebelum bisa memulai training ini.','warn')" class="group bg-white rounded-2xl overflow-hidden shadow-sm border border-slate-100 flex flex-col text-left opacity-70 cursor-not-allowed h-full">${cardInner}</button>`
+            : `<a data-tsearch="${window.escapeHtml(searchBlob)}" href="#/courses/${c.id}" class="group bg-white rounded-2xl overflow-hidden shadow-sm border border-slate-100 hover:shadow-xl transition flex flex-col h-full">${cardInner}</a>`;
     }).join("");
 
     window.setPage(`
@@ -4839,11 +4844,30 @@ function renderCourseCatalog() {
                 <p class="text-sm text-slate-500">Belajar mandiri lewat modul, video, dan kuis. Training harus diselesaikan berurutan sesuai urutan di bawah.</p>
             </div>
         </div>
-        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+        <div class="relative w-full sm:w-72 mb-3">
+            <i class="fas fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-slate-300 text-xs"></i>
+            <input type="text" oninput="window.filterCourseCatalog(this.value)" placeholder="Cari nama training, kategori, atau instruktur..." class="w-full pl-8 pr-3 py-2 text-xs rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-200">
+        </div>
+        <div id="course-catalog-grid" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2.5 items-stretch">
             ${cards || `<div class="col-span-full text-center py-16 text-slate-400"><i class="fas fa-book-open text-3xl mb-2"></i><p class="font-bold">Belum ada training tersedia</p></div>`}
         </div>
+        <p id="course-catalog-search-empty" class="hide text-center text-xs text-slate-400 py-10">Tidak ada training yang cocok dengan pencarian.</p>
     `);
 }
+window.filterCourseCatalog = function (query) {
+    const grid = document.getElementById("course-catalog-grid");
+    if (!grid) return;
+    const q = String(query || "").toLowerCase().trim();
+    const cardsEls = [...grid.querySelectorAll("[data-tsearch]")];
+    let visibleCount = 0;
+    cardsEls.forEach(el => {
+        const match = !q || el.getAttribute("data-tsearch").includes(q);
+        el.style.display = match ? "" : "none";
+        if (match) visibleCount++;
+    });
+    const emptyMsg = document.getElementById("course-catalog-search-empty");
+    if (emptyMsg) emptyMsg.classList.toggle("hide", !(cardsEls.length > 0 && visibleCount === 0));
+};
 
 
 function renderCourseDetail(id) {
@@ -5769,8 +5793,9 @@ function renderTrainingCatalog() {
         const isPast = new Date(t.date).getTime() < now - 86400000;
         const count = regCount(t.id);
         const full = t.quota && count >= t.quota;
+        const searchBlob = [t.title, t.category, t.trainer, t.location].filter(Boolean).join(" ").toLowerCase();
         return `
-        <a href="#/trainings/${t.id}" class="bg-white rounded-3xl border border-slate-100 shadow-sm hover:shadow-xl transition p-4 flex gap-3">
+        <a data-tsearch="${window.escapeHtml(searchBlob)}" href="#/trainings/${t.id}" class="bg-white rounded-3xl border border-slate-100 shadow-sm hover:shadow-xl transition p-4 flex gap-3">
             <div class="w-20 shrink-0 rounded-2xl bg-cover bg-center relative overflow-hidden" style="${trainingCoverStyleSafe(t)}">
                 <div class="absolute inset-0 bg-black/25 flex flex-col items-center justify-center text-white gap-0.5">
                     <span class="text-lg font-black leading-none">${new Date(t.date).getDate()}</span>
@@ -5798,11 +5823,33 @@ function renderTrainingCatalog() {
             <h1 class="text-xl font-black text-slate-800">Training By TNA</h1>
             <p class="text-sm text-slate-500">Daftar, hadir, dan isi evaluasi untuk training tatap muka / online.</p>
         </div>
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+        <div class="relative w-full sm:w-72 mb-3">
+            <i class="fas fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-slate-300 text-xs"></i>
+            <input type="text" oninput="window.filterTrainingCatalog(this.value)" placeholder="Cari nama training, trainer, atau lokasi..." class="w-full pl-8 pr-3 py-2 text-xs rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-amber-200">
+        </div>
+        <div id="training-catalog-grid" class="grid grid-cols-1 md:grid-cols-2 gap-3">
             ${cards || `<div class="col-span-full text-center py-16 text-slate-400"><i class="fas fa-chalkboard-user text-3xl mb-2"></i><p class="font-bold">Belum ada jadwal training</p></div>`}
         </div>
+        <p id="training-catalog-search-empty" class="hide text-center text-xs text-slate-400 py-10">Tidak ada jadwal training yang cocok dengan pencarian.</p>
     `);
 }
+// Search nama/trainer/lokasi training di katalog "Training By TNA" milik user — murni
+// manipulasi DOM (tanpa render ulang seluruh halaman) supaya fokus & posisi kursor di kotak
+// pencarian gak ke-reset tiap user ngetik satu huruf.
+window.filterTrainingCatalog = function (query) {
+    const grid = document.getElementById("training-catalog-grid");
+    if (!grid) return;
+    const q = String(query || "").toLowerCase().trim();
+    const cardsEls = [...grid.querySelectorAll("[data-tsearch]")];
+    let visibleCount = 0;
+    cardsEls.forEach(el => {
+        const match = !q || el.getAttribute("data-tsearch").includes(q);
+        el.style.display = match ? "" : "none";
+        if (match) visibleCount++;
+    });
+    const emptyMsg = document.getElementById("training-catalog-search-empty");
+    if (emptyMsg) emptyMsg.classList.toggle("hide", !(cardsEls.length > 0 && visibleCount === 0));
+};
 
 function renderTrainingDetail(id) {
     const t = window.STATE.trainings.find(x => x.id === id);
@@ -13986,6 +14033,39 @@ function buildEmployeeTrainingSummary(emp, user) {
 
 // Blok ringkasan nilai KPI di modal Detail Karyawan: reuse computeUserKpiStatsFor yang sama
 // persis dipakai buat chart KPI di dashboard user, jadi angkanya otomatis konsisten.
+// Ringkasan data induction hasil SYNC OTOMATIS dari app kandidat (HR Onboarding Dashboard) --
+// field "induksi" ditulis langsung ke dokumen karyawan ini dari sana (lihat
+// syncCandidateToNingratEdu di app kandidat), bukan dihitung/di-generate di NingratEdu.
+// Kalau field-nya belum ada (karyawan ini belum pernah tersinkron, mis. karyawan lama sebelum
+// fitur sync ini ada), section-nya gak ditampilkan sama sekali.
+function buildEmployeeInductionSummary(emp) {
+    const ind = emp.induksi;
+    if (!ind) return "";
+    const row = (label, val) => `<div class="flex justify-between text-[11px] py-1 border-b border-slate-50"><span class="text-slate-400">${label}</span><span class="font-bold text-slate-700">${window.escapeHtml(val || "-")}</span></div>`;
+    const pct = ind.checklistTotal ? Math.round(((ind.checklistDone || 0) / ind.checklistTotal) * 100) : 0;
+    const kehadiranBadge = ind.kehadiran === "Hadir"
+        ? `<span class="text-[10px] font-black px-2 py-1 rounded-full bg-emerald-50 text-emerald-600"><i class="fas fa-circle-check mr-1"></i>Hadir</span>`
+        : ind.kehadiran === "Tidak Hadir"
+        ? `<span class="text-[10px] font-black px-2 py-1 rounded-full bg-rose-50 text-rose-500"><i class="fas fa-circle-xmark mr-1"></i>Tidak Hadir</span>`
+        : `<span class="text-[10px] font-black px-2 py-1 rounded-full bg-slate-100 text-slate-500">Belum diverifikasi</span>`;
+    return `
+    <div class="mt-4 pt-4 border-t border-slate-100">
+        <h4 class="font-black text-xs text-slate-700 mb-2 uppercase tracking-wide"><i class="fas fa-clipboard-check mr-1.5 text-violet-400"></i> Status Induction <span class="normal-case font-semibold text-slate-300">(dari HR Onboarding Dashboard)</span></h4>
+        <div class="bg-violet-50 rounded-2xl p-4 mb-2">
+            <div class="flex items-center justify-between gap-2 flex-wrap mb-2">
+                <p class="text-[11px] font-bold text-violet-700">Progress Checklist Journey</p>
+                ${kehadiranBadge}
+            </div>
+            <div class="h-2 rounded-full bg-white overflow-hidden mb-1"><div class="h-full bg-violet-500" style="width:${pct}%"></div></div>
+            <p class="text-[10px] font-bold text-violet-500">${ind.checklistDone || 0}/${ind.checklistTotal || 0} modul selesai (${pct}%)</p>
+        </div>
+        ${row("PIC", ind.pic)}
+        ${row("Atasan", ind.atasan)}
+        ${row("Tgl Induction", ind.tglOnboarding ? window.fmtDate(ind.tglOnboarding) : "-")}
+        ${row("Status Aktivasi", ind.statusAktivasi)}
+        ${ind.tglAktivasi ? row("Tgl Aktivasi", window.fmtDate(ind.tglAktivasi)) : ""}
+    </div>`;
+}
 function buildEmployeeKpiSummary(emp) {
     const stats = computeUserKpiStatsFor(emp);
     if (!stats.hasData) {
@@ -14243,6 +14323,7 @@ window.showEmployeeDetail = async function (empId) {
         ${row("Tanggal Lahir", window.fmtDate(e.tglLahir))}
         ${e.tglResign ? row("Tanggal Resign", window.fmtDate(e.tglResign)) : ""}
         ${e.tglResign ? row("Alasan Resign", e.alasanResign) : ""}
+        ${buildEmployeeInductionSummary(e)}
         ${buildEmployeeKpiSummary(e)}
         ${buildEmployeeTrainingSummary(e, linkedUser)}
     `;
