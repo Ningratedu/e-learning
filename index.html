@@ -1327,6 +1327,7 @@ window.STATE = {
     settings: [],
     competencies: [],
     tnaResults: [],
+    trainingImportMappings: [],
     ready: false
 };
 
@@ -1367,6 +1368,10 @@ function startLiveListeners() {
     bind("certificates", "certificates");
     bind("trainingRegistrations", "trainingRegs");
     bind("tnaResults", "tnaResults");
+    // Mapping "nama training di LMS lama" -> "course/modul/materi di sistem baru" (dipakai
+    // fitur Import Training Lama), datanya kecil & jarang berubah tapi enak kalau realtime
+    // biar kalau superadmin edit mapping di tab lain langsung sinkron.
+    bind("trainingImportMappings", "trainingImportMappings");
 
     // settings & competencies: fetch sekali saja (bukan real-time), datanya jarang berubah.
     const fetchOnce = async (name, key) => {
@@ -2568,6 +2573,7 @@ window.renderSidebar = function () {
         { key: "admin/onboarding-schedule", icon: "fa-layer-group", label: "Kelola Onboarding" },
         { key: "admin/trainings", icon: "fa-calendar-days", label: "Kelola Training TNA" },
         { key: "admin/employees", icon: "fa-id-card-clip", label: "Data Karyawan" },
+        { key: "admin/training-import", icon: "fa-file-import", label: "Import Training Lama" },
         { key: "admin/users", icon: "fa-users-gear", label: "Kelola Akun" },
     ];
     const item = (n) => `
@@ -11994,6 +12000,535 @@ function renderEmployeeAdminList() {
                 </table>
             </div>
         </div>
+    `);
+}
+
+// ================= IMPORT TRAINING LAMA: MAPPING NAMA TRAINING -> COURSE/MODUL/MATERI =================
+// Tujuannya: data export dari LMS lama sering nyatet 1 baris = 1 "training" (misal
+// "Company Profile RSP", "Peraturan Perusahaan RSP", dst), padahal di sistem baru ini
+// beberapa training lama itu digabung jadi beberapa MATERI di dalam 1 COURSE (misal course
+// "Onboarding"). Halaman ini biarin admin nentuin pemetaannya SEKALI, tersimpan permanen
+// (collection "trainingImportMappings"), jadi upload file berikutnya otomatis kepakai lagi
+// buat nama training yang persis sama — cuma nama training BARU yang belum pernah dipetakan
+// yang perlu dipetain manual lagi. (Catatan: halaman ini baru mapping-nya aja; logic nulis
+// data hasil training ke enrollments/certificates berdasarkan mapping ini nyusul terpisah.)
+//
+// Training yang di-mapping-nya dicentang "terpisah" (gak masuk ke MATERI course Onboarding
+// manapun) SENGAJA dibuat sebagai Training By TNA baru (collection "trainings"), BUKAN course
+// Onboarding baru — karena training lama yang berdiri sendiri gitu secara konsep lebih pas
+// masuk ke alur Training By TNA daripada dipaksa jadi course Onboarding.
+let tmUploadedFileName = "";
+let tmDetected = [];      // [{name, rowCount}] — nama training unik hasil parse file + jumlah barisnya
+let tmSelections = {};    // name -> {courseId, moduleId, lessonId, separate}
+let tmParsedRows = [];    // baris mentah hasil parse (dipakai pas "Proses Import Data", bukan cuma buat deteksi nama)
+
+function normalizeTrainingKey(name) {
+    return (name || "").toString().trim().toLowerCase().replace(/\s+/g, " ");
+}
+function tmDocId(name) {
+    const slug = normalizeTrainingKey(name).replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+    return "tm_" + (slug || "x");
+}
+function tmBlankSel() { return { courseId: "", moduleId: "", lessonId: "", separate: false }; }
+
+// Parser toleran: file export LMS lama sering punya baris judul/banner sebelum baris header
+// asli (contoh: baris 1 = "Dashboard Administrator", baris 2 baru header "Username, Nama,
+// Training, ..."), jadi gak bisa asal pakai baris pertama sebagai header kayak
+// XLSX.utils.sheet_to_json() default. Fungsi ini nyari baris header yang beneran (baris yang
+// selnya ada "Username" DAN sesuatu yang mengandung "Training") di antara 10 baris pertama,
+// baru convert baris-baris sesudahnya jadi object pakai kolom yang relevan aja.
+function parseTrainingHistoryWorkbook(workbook) {
+    const sheet = workbook.Sheets[workbook.SheetNames[0]];
+    const grid = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "", raw: true });
+    let headerRowIdx = -1, headerRow = null;
+    for (let i = 0; i < Math.min(grid.length, 10); i++) {
+        const cells = (grid[i] || []).map(c => (c || "").toString().trim().toLowerCase());
+        if (cells.includes("username") && cells.some(c => c.includes("training"))) { headerRowIdx = i; headerRow = grid[i]; break; }
+    }
+    if (headerRowIdx === -1) return { rows: [], error: "Baris header (kolom Username & Training) tidak ditemukan di file ini." };
+
+    const colIndex = (matchers) => headerRow.findIndex(h => {
+        const v = (h || "").toString().trim().toLowerCase();
+        return matchers.some(m => (m instanceof RegExp) ? m.test(v) : v === m);
+    });
+    const idx = {
+        username: colIndex(["username"]),
+        nama: colIndex(["nama"]),
+        training: colIndex([/training/]),
+        pretest: colIndex(["pretest"]),
+        posttest: colIndex(["posttest"]),
+        status: colIndex(["status"]),
+        tglTraining: colIndex([/tgl\.?\s*training/]),
+    };
+    if (idx.username === -1 || idx.training === -1) return { rows: [], error: 'Kolom "Username" atau "Training" tidak ditemukan di file ini.' };
+
+    const rows = [];
+    for (let i = headerRowIdx + 1; i < grid.length; i++) {
+        const r = grid[i] || [];
+        const username = (r[idx.username] ?? "").toString().trim();
+        const training = (r[idx.training] ?? "").toString().trim();
+        if (!username || !training) continue; // baris kosong / bukan data
+        rows.push({
+            username, nama: (idx.nama >= 0 ? r[idx.nama] : "").toString().trim(), training,
+            pretest: idx.pretest >= 0 && r[idx.pretest] !== "" ? Number(r[idx.pretest]) : null,
+            posttest: idx.posttest >= 0 && r[idx.posttest] !== "" ? Number(r[idx.posttest]) : null,
+            status: idx.status >= 0 ? (r[idx.status] || "").toString().trim() : "",
+            tglTraining: idx.tglTraining >= 0 ? r[idx.tglTraining] : null,
+        });
+    }
+    return { rows, error: null };
+}
+
+window.ROUTES["admin/training-import"] = requireAdmin(function () { renderTrainingImportMappingPage(); });
+
+window.uploadTrainingMappingExcel = function () {
+    if (typeof XLSX === "undefined") { window.toast("Modul Excel belum siap, coba lagi sesaat.", "warn"); return; }
+    let input = document.getElementById("training-map-excel-input");
+    if (!input) {
+        input = document.createElement("input");
+        input.type = "file";
+        input.accept = ".xlsx,.xls";
+        input.id = "training-map-excel-input";
+        input.className = "hide";
+        document.body.appendChild(input);
+    }
+    input.value = "";
+    input.onchange = () => {
+        const file = input.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = (ev) => {
+            try {
+                const data = new Uint8Array(ev.target.result);
+                const wb = XLSX.read(data, { type: "array", cellDates: true });
+                const { rows, error } = parseTrainingHistoryWorkbook(wb);
+                if (error) { window.toast(error, "error"); return; }
+                if (!rows.length) { window.toast("Tidak ada baris data yang kebaca dari file ini.", "warn"); return; }
+
+                tmParsedRows = rows;
+                const counts = new Map();
+                rows.forEach(r => { counts.set(r.training, (counts.get(r.training) || 0) + 1); });
+                tmDetected = [...counts.entries()]
+                    .map(([name, rowCount]) => ({ name, rowCount }))
+                    .sort((a, b) => a.name.localeCompare(b.name, "id"));
+                tmUploadedFileName = file.name;
+
+                // Pre-fill dari mapping yang sudah pernah disimpan sebelumnya (kalau nama training-nya cocok)
+                const saved = {};
+                (window.STATE.trainingImportMappings || []).forEach(m => { saved[normalizeTrainingKey(m.sourceName)] = m; });
+                tmSelections = {};
+                tmDetected.forEach(d => {
+                    const m = saved[normalizeTrainingKey(d.name)];
+                    tmSelections[d.name] = m
+                        ? { courseId: m.targetCourseId || "", moduleId: m.targetModuleId || "", lessonId: m.targetLessonId || "", separate: !!m.separate }
+                        : tmBlankSel();
+                });
+
+                renderTrainingImportMappingPage();
+                window.toast(`${tmDetected.length} nama training unik terdeteksi dari ${rows.length} baris.`, "success");
+            } catch (err) {
+                console.error(err);
+                window.toast("Gagal membaca file: " + (err.message || err), "error");
+            }
+        };
+        reader.readAsArrayBuffer(file);
+    };
+    input.click();
+};
+
+// ================= BERSIHKAN COURSE ONBOARDING SALAH GENERATE (BUG IMPORT LAMA) =================
+// Sebelum diperbaiki, training yang di-mapping "terpisah" salah kebuat sebagai course
+// Onboarding baru (harusnya Training By TNA). Course hasil bug itu selalu punya description
+// persis sama (lihat TM_AUTO_COURSE_MARKER di bawah), jadi bisa dideteksi & dibersihkan di
+// sini — sekalian enrollment & sertifikat terkaitnya (menghapus course lewat Kelola Course
+// biasa TIDAK ikut menghapus enrollment/sertifikatnya, jadi bakal nyisain data nyampah kalau
+// dihapus manual dari sana).
+const TM_AUTO_COURSE_MARKER = "Dibuat otomatis dari import history training LMS lama.";
+let tmCleanupSelected = {}; // courseId -> boolean (default: true / tercentang)
+
+function tmAutoGeneratedCourses() {
+    return (window.STATE.courses || []).filter(c => (c.description || "") === TM_AUTO_COURSE_MARKER);
+}
+
+window.tmToggleCleanup = function (id, checked) {
+    tmCleanupSelected[id] = checked;
+    renderTrainingImportMappingPage();
+};
+
+window.tmDeleteAutoGeneratedCourses = async function () {
+    const all = tmAutoGeneratedCourses();
+    const list = all.filter(c => tmCleanupSelected[c.id] !== false);
+    if (!list.length) { window.toast("Tidak ada course yang dipilih untuk dihapus.", "warn"); return; }
+    const ids = new Set(list.map(c => c.id));
+    const enrs = (window.STATE.enrollments || []).filter(e => ids.has(e.courseId));
+    const certs = (window.STATE.certificates || []).filter(cert => cert.type === "course" && ids.has(cert.courseId));
+    if (!confirm(`Hapus ${list.length} course Onboarding hasil generate otomatis (salah generate)?\n\nIni juga akan menghapus ${enrs.length} enrollment & ${certs.length} sertifikat yang terkait course tersebut.\n\nAksi ini TIDAK BISA dibatalkan. Lanjutkan?`)) return;
+
+    window.toast("Menghapus data, mohon tunggu...", "info");
+    try {
+        const { deleteDoc, ref } = window.LMS_DB;
+        for (const e of enrs) await deleteDoc(ref("enrollments", e.id));
+        for (const cert of certs) await deleteDoc(ref("certificates", cert.id));
+        for (const c of list) await deleteDoc(ref("courses", c.id));
+        list.forEach(c => { delete tmCleanupSelected[c.id]; });
+        window.toast(`${list.length} course, ${enrs.length} enrollment & ${certs.length} sertifikat berhasil dihapus.`, "success");
+        renderTrainingImportMappingPage();
+    } catch (err) {
+        console.error(err);
+        window.toast("Gagal menghapus: " + (err.message || err), "error");
+    }
+};
+
+function tmRenderCleanupSection() {
+    const list = tmAutoGeneratedCourses();
+    if (!list.length) return "";
+    const selectedCount = list.filter(c => tmCleanupSelected[c.id] !== false).length;
+    const rows = list.map(c => {
+        const checked = tmCleanupSelected[c.id] !== false;
+        const enrCount = (window.STATE.enrollments || []).filter(e => e.courseId === c.id).length;
+        const certCount = (window.STATE.certificates || []).filter(cert => cert.type === "course" && cert.courseId === c.id).length;
+        return `
+        <label class="flex items-center gap-3 py-2 px-3 rounded-xl hover:bg-rose-50/40 cursor-pointer">
+            <input type="checkbox" ${checked ? "checked" : ""} onchange="window.tmToggleCleanup('${c.id}', this.checked)" class="rounded border-slate-300 text-rose-600 focus:ring-rose-500 w-3.5 h-3.5 shrink-0">
+            <span class="flex-1 text-sm font-bold text-slate-700">${window.escapeHtml(c.title || "(tanpa judul)")}</span>
+            <span class="text-[11px] text-slate-400 shrink-0">${enrCount} enrollment &middot; ${certCount} sertifikat</span>
+        </label>`;
+    }).join("");
+    return `
+    <div class="bg-rose-50/60 border border-rose-100 rounded-3xl p-4 mb-4">
+        <div class="flex items-center gap-2 mb-1">
+            <i class="fas fa-triangle-exclamation text-rose-500"></i>
+            <h2 class="text-sm font-black text-rose-700">Course Onboarding Salah Generate (${list.length})</h2>
+        </div>
+        <p class="text-xs text-rose-600/80 mb-3">Course di bawah ini kebuat otomatis dari import training lama yang seharusnya jadi Training By TNA, bukan course Onboarding. Centang yang mau dihapus (default semua tercentang), lalu klik "Hapus Terpilih" — enrollment & sertifikat terkait ikut terhapus.</p>
+        <div class="bg-white rounded-2xl border border-rose-100 divide-y divide-rose-50 max-h-64 overflow-auto mb-3">${rows}</div>
+        <button onclick="window.guardedClick(this, () => window.tmDeleteAutoGeneratedCourses())" ${selectedCount ? "" : "disabled"} class="text-xs font-bold px-3.5 py-2.5 rounded-2xl ${selectedCount ? "bg-rose-600 hover:bg-rose-700 text-white" : "bg-slate-100 text-slate-400 cursor-not-allowed"}"><i class="fas fa-trash mr-1"></i> Hapus Terpilih (${selectedCount})</button>
+    </div>`;
+}
+
+window.tmSetSeparate = function (name, checked) {
+    tmSelections[name] = tmSelections[name] || tmBlankSel();
+    tmSelections[name].separate = checked;
+    if (checked) { tmSelections[name].courseId = ""; tmSelections[name].moduleId = ""; tmSelections[name].lessonId = ""; }
+    renderTrainingImportMappingPage();
+};
+window.tmSetCourse = function (name, courseId) {
+    tmSelections[name] = tmSelections[name] || tmBlankSel();
+    tmSelections[name].courseId = courseId;
+    tmSelections[name].moduleId = "";
+    tmSelections[name].lessonId = "";
+    renderTrainingImportMappingPage();
+};
+window.tmSetModule = function (name, moduleId) {
+    tmSelections[name] = tmSelections[name] || tmBlankSel();
+    tmSelections[name].moduleId = moduleId;
+    tmSelections[name].lessonId = "";
+    renderTrainingImportMappingPage();
+};
+window.tmSetLesson = function (name, lessonId) {
+    tmSelections[name] = tmSelections[name] || tmBlankSel();
+    tmSelections[name].lessonId = lessonId;
+    renderTrainingImportMappingPage();
+};
+
+window.saveTrainingMappings = async function () {
+    const { ref, writeBatch, db, serverTimestamp } = window.LMS_DB;
+    const entries = tmDetected.filter(d => { const s = tmSelections[d.name]; return s && (s.separate || s.courseId); });
+    if (!entries.length) { window.toast("Belum ada training yang dipetakan — pilih course atau centang \"course terpisah\" dulu.", "warn"); return; }
+    const skipped = tmDetected.length - entries.length;
+    if (!confirm(`Simpan ${entries.length} mapping training?` + (skipped ? `\n${skipped} nama training belum dipetakan dan akan dilewati (masih bisa dipetakan nanti).` : ""))) return;
+    try {
+        const batch = writeBatch(db);
+        entries.forEach(d => {
+            const sel = tmSelections[d.name];
+            batch.set(ref("trainingImportMappings", tmDocId(d.name)), {
+                sourceName: d.name,
+                separate: !!sel.separate,
+                targetCourseId: sel.separate ? "" : (sel.courseId || ""),
+                targetModuleId: sel.separate ? "" : (sel.moduleId || ""),
+                targetLessonId: sel.separate ? "" : (sel.lessonId || ""),
+                updatedAt: serverTimestamp(),
+            }, { merge: true });
+        });
+        await batch.commit();
+        window.toast(`${entries.length} mapping tersimpan.`, "success");
+        renderTrainingImportMappingPage();
+    } catch (err) {
+        console.error(err);
+        window.toast("Gagal menyimpan mapping: " + (err.message || err), "error");
+    }
+};
+
+window.deleteTrainingMapping = async function (name) {
+    const saved = (window.STATE.trainingImportMappings || []).find(m => normalizeTrainingKey(m.sourceName) === normalizeTrainingKey(name));
+    if (!saved) { tmSelections[name] = tmBlankSel(); renderTrainingImportMappingPage(); return; }
+    if (!confirm(`Hapus mapping tersimpan untuk "${name}"?`)) return;
+    try {
+        const { ref, deleteDoc } = window.LMS_DB;
+        await deleteDoc(ref("trainingImportMappings", tmDocId(name)));
+        tmSelections[name] = tmBlankSel();
+        window.toast("Mapping dihapus.", "success");
+        renderTrainingImportMappingPage();
+    } catch (err) {
+        console.error(err);
+        window.toast("Gagal menghapus mapping: " + (err.message || err), "error");
+    }
+};
+
+// ================= PROSES IMPOR: TULIS DATA HASIL TRAINING KE enrollments/trainingRegistrations/certificates =================
+// Jalan setelah mapping (di atas) beres. Logikanya:
+// 1) Baris yang usernya gak ketemu di "Kelola Akun" (users) dilewati.
+// 2) Baris yang nama training-nya belum dipetakan (mapping kosong) dilewati.
+// 3) Untuk mapping "terpisah": training-nya dicari dulu di collection "trainings" berdasarkan
+//    judul (biar gak dobel kalau sebelumnya udah pernah dibuat), baru dibikin Training By TNA
+//    baru kalau belum ada — otomatis dikasih 1 modul + 1 materi (wadah progress-nya).
+// 4) Beberapa baris Excel yang mapping-nya nunjuk ke MODUL/MATERI BEDA di COURSE YANG SAMA,
+//    milik karyawan yang sama, digabung jadi SATU enrollment (bukan bikin enrollment dobel) —
+//    completedLessonIds numpuk dari semua baris yang statusnya "Lulus".
+// 5) Course dianggap selesai (& sertifikat diterbitin otomatis, kalau belum ada) HANYA kalau
+//    SEMUA materi di course itu (dari semua modul) sudah ketutup completedLessonIds-nya.
+// 6) Skor pretest/posttest/status ASLI dari tiap baris Excel TETAP disimpan apa adanya per baris
+//    (field "legacyImport" di dokumen enrollment) buat jejak audit / ditampilin di Detail
+//    Karyawan — TIDAK dipaksa masuk ke koleksi quizAttempts, karena satu course di sistem baru
+//    cuma punya SATU pretest & SATU posttest (soal kuis beneran), sedangkan data lama ini
+//    pretest/posttest-nya per training/materi lama — kalau dipaksa gabung malah nyesatin.
+window.commitTrainingHistoryImport = async function () {
+    if (!tmParsedRows.length) { window.toast("Belum ada file yang diupload.", "warn"); return; }
+
+    // Mapping efektif = mapping tersimpan digabung sama form yang lagi diisi (form yang lagi
+    // diisi menang, biar konsisten sama apa yang keliatan di layar admin saat ini).
+    const mapByName = {};
+    (window.STATE.trainingImportMappings || []).forEach(m => { mapByName[normalizeTrainingKey(m.sourceName)] = m; });
+    Object.keys(tmSelections).forEach(name => {
+        const s = tmSelections[name];
+        if (s.separate || s.courseId) mapByName[normalizeTrainingKey(name)] = { sourceName: name, separate: s.separate, targetCourseId: s.courseId, targetModuleId: s.moduleId, targetLessonId: s.lessonId };
+    });
+
+    const userByUsername = {};
+    window.STATE.users.forEach(u => { userByUsername[normalizeUsername(u.username)] = u; });
+
+    const { col, addDoc, updateDoc, ref, serverTimestamp } = window.LMS_DB;
+
+    // Training By TNA "terpisah" (nama training yang gak dipetakan ke course Onboarding
+    // manapun) yang namanya sama bisa muncul di banyak baris — pastikan cuma dibuat SEKALI
+    // (cari dulu yang udah ada by judul di collection "trainings", baru bikin baru kalau
+    // memang belum ada). SENGAJA dibuat sebagai Training By TNA (bukan course Onboarding),
+    // karena training lama yang gak nyambung ke course Onboarding manapun secara konsep
+    // lebih pas masuk ke alur Training By TNA.
+    const separateTrainingCache = {};
+    const namesNeeded = new Set();
+    tmParsedRows.forEach(r => { const m = mapByName[normalizeTrainingKey(r.training)]; if (m && m.separate) namesNeeded.add(r.training); });
+    for (const name of namesNeeded) {
+        const existing = window.STATE.trainings.find(t => (t.title || "").trim().toLowerCase() === name.trim().toLowerCase());
+        if (existing) { separateTrainingCache[normalizeTrainingKey(name)] = existing; continue; }
+        const lessonId = "l" + Date.now() + Math.random().toString(36).slice(2, 6);
+        const newTrainingData = {
+            title: name, description: "Dibuat otomatis dari import history training LMS lama.",
+            category: "Training", trainer: "-", location: "-",
+            date: "", startTime: "", endTime: "", quota: "", attendanceCode: (typeof genCode === "function" ? genCode() : ""), coverImage: "",
+            modules: [{ id: "m" + Date.now() + Math.random().toString(36).slice(2, 6), title: name, lessons: [{ id: lessonId, title: name, type: "text", content: "Materi diimpor dari LMS lama." }] }],
+            quiz: { passingScore: 70, questions: [] },
+            assignment: { enabled: false, title: "", description: "", deadline: "" },
+            participants: { excludedDepartments: [], excludedPositions: [], excludedDesignations: [], excludedEmployeeUsernames: [] },
+            linkedTnaResultId: "",
+            createdAt: serverTimestamp(),
+        };
+        const newDoc = await addDoc(col("trainings"), newTrainingData);
+        separateTrainingCache[normalizeTrainingKey(name)] = { id: newDoc.id, ...newTrainingData };
+    }
+
+    // Kumpulin per (kind + refId + userId) biar baris-baris beda materi punya karyawan yang
+    // sama ke-gabung jadi 1 progress, bukan numpuk dobel. kind menentukan mau ditulis ke
+    // "enrollments" (course Onboarding) atau "trainingRegistrations" (Training By TNA).
+    const courseProgress = new Map(); // key -> {kind, userId, refId, completedLessonIds:Set, legacyImport:[]}
+    let skippedNoUser = 0, skippedNoMapping = 0, processedRows = 0;
+
+    tmParsedRows.forEach(row => {
+        const user = userByUsername[normalizeUsername(row.username)];
+        if (!user) { skippedNoUser++; return; }
+        const m = mapByName[normalizeTrainingKey(row.training)];
+        if (!m) { skippedNoMapping++; return; }
+
+        let kind, refId, lessonId;
+        if (m.separate) {
+            const training = separateTrainingCache[normalizeTrainingKey(row.training)];
+            if (!training) { skippedNoMapping++; return; }
+            kind = "training";
+            refId = training.id;
+            lessonId = training.modules?.[0]?.lessons?.[0]?.id || null;
+        } else {
+            kind = "course";
+            refId = m.targetCourseId;
+            lessonId = m.targetLessonId || null;
+        }
+        if (!refId) { skippedNoMapping++; return; }
+
+        const key = kind + "__" + refId + "__" + user.id;
+        if (!courseProgress.has(key)) {
+            const refField = kind === "training" ? "trainingId" : "courseId";
+            const existingList = kind === "training" ? window.STATE.trainingRegs : window.STATE.enrollments;
+            const existingEnr = (existingList || []).find(e => e[refField] === refId && e.userId === user.id);
+            courseProgress.set(key, {
+                kind, userId: user.id, refId,
+                completedLessonIds: new Set(existingEnr ? (existingEnr.completedLessonIds || []) : []),
+                enrollmentId: existingEnr ? existingEnr.id : null,
+                legacyImport: (existingEnr && Array.isArray(existingEnr.legacyImport)) ? [...existingEnr.legacyImport] : [],
+            });
+        }
+        const bucket = courseProgress.get(key);
+        const lulus = (row.status || "").toLowerCase().includes("lulus");
+        if (lessonId && lulus) bucket.completedLessonIds.add(lessonId);
+        bucket.legacyImport.push({ sourceName: row.training, pretest: row.pretest, posttest: row.posttest, status: row.status || "", tglTraining: row.tglTraining ? String(row.tglTraining) : null });
+        processedRows++;
+    });
+
+    if (!processedRows) { window.toast("Tidak ada baris yang bisa diproses — cek username (harus cocok sama Kelola Akun) & mapping training-nya.", "warn"); return; }
+
+    const trainingBucketCount = [...courseProgress.values()].filter(b => b.kind === "training").length;
+    const courseBucketCount = courseProgress.size - trainingBucketCount;
+    const confirmMsg = `${processedRows} baris siap diproses untuk ${courseProgress.size} kombinasi karyawan + item ` +
+        `(${courseBucketCount} ke course Onboarding, ${trainingBucketCount} ke Training By TNA).` +
+        (skippedNoUser ? `\n${skippedNoUser} baris dilewati (username tidak ditemukan di Kelola Akun).` : "") +
+        (skippedNoMapping ? `\n${skippedNoMapping} baris dilewati (training belum dipetakan — lengkapi dulu di tabel mapping).` : "") +
+        `\n\nEnrollment/registrasi akan dibuat/diupdate, dan sertifikat baru diterbitkan otomatis untuk item yang jadi lengkap. Lanjutkan?`;
+    if (!confirm(confirmMsg)) return;
+
+    window.toast("Memproses import, mohon tunggu...", "info");
+    try {
+        let created = 0, updated = 0, certsIssued = 0;
+        for (const bucket of courseProgress.values()) {
+            const isTraining = bucket.kind === "training";
+            const item = isTraining
+                ? (window.STATE.trainings.find(t => t.id === bucket.refId) || Object.values(separateTrainingCache).find(t => t.id === bucket.refId))
+                : window.STATE.courses.find(c => c.id === bucket.refId);
+            const allLessonIds = item ? (item.modules || []).flatMap(m => (m.lessons || []).map(l => l.id)) : [];
+            const completedArr = [...bucket.completedLessonIds];
+            const isComplete = allLessonIds.length > 0 && allLessonIds.every(id => bucket.completedLessonIds.has(id));
+            const status = isComplete ? "completed" : "in-progress";
+
+            const progressCollection = isTraining ? "trainingRegistrations" : "enrollments";
+            const refField = isTraining ? "trainingId" : "courseId";
+
+            if (bucket.enrollmentId) {
+                await updateDoc(ref(progressCollection, bucket.enrollmentId), { completedLessonIds: completedArr, status, legacyImport: bucket.legacyImport });
+                updated++;
+            } else {
+                const payload = { [refField]: bucket.refId, userId: bucket.userId, completedLessonIds: completedArr, status, legacyImport: bucket.legacyImport };
+                payload[isTraining ? "registeredAt" : "enrolledAt"] = serverTimestamp();
+                await addDoc(col(progressCollection), payload);
+                created++;
+            }
+
+            if (isComplete) {
+                const certType = isTraining ? "training" : "course";
+                const already = window.STATE.certificates.find(c => c[refField] === bucket.refId && c.userId === bucket.userId && c.type === certType);
+                if (!already) {
+                    const user = window.STATE.users.find(u => u.id === bucket.userId);
+                    const certId = "CERT-" + Date.now().toString(36).toUpperCase() + Math.random().toString(36).slice(2, 5).toUpperCase();
+                    const certPayload = {
+                        userId: bucket.userId, userName: user ? (user.name || user.username) : "",
+                        title: item ? item.title : "", certId, issuedAt: serverTimestamp(), type: certType,
+                    };
+                    certPayload[refField] = bucket.refId;
+                    await addDoc(col("certificates"), certPayload);
+                    certsIssued++;
+                }
+            }
+        }
+        window.toast(`Import selesai: ${created} enrollment/registrasi baru, ${updated} diupdate, ${certsIssued} sertifikat baru diterbitkan.`, "success");
+    } catch (err) {
+        console.error(err);
+        window.toast("Import gagal di tengah jalan: " + (err.message || err), "error");
+    }
+};
+
+function renderTrainingImportMappingPage() {
+    const courses = window.STATE.courses || [];
+    const savedByKey = {};
+    (window.STATE.trainingImportMappings || []).forEach(m => { savedByKey[normalizeTrainingKey(m.sourceName)] = m; });
+    const mappedCount = tmDetected.filter(d => { const s = tmSelections[d.name]; return s && (s.separate || s.courseId); }).length;
+
+    const rowsHtml = tmDetected.map(d => {
+        const sel = tmSelections[d.name] || tmBlankSel();
+        const course = courses.find(c => c.id === sel.courseId);
+        const modules = course ? (course.modules || []) : [];
+        const module = modules.find(m => m.id === sel.moduleId);
+        const lessons = module ? (module.lessons || []) : [];
+        const isMapped = sel.separate || !!sel.courseId;
+        const isSaved = !!savedByKey[normalizeTrainingKey(d.name)];
+        const safeName = window.escapeHtml(d.name).replace(/'/g, "&#39;");
+        return `
+        <tr class="border-b border-slate-50 align-top">
+            <td class="px-3 py-3 w-64">
+                <p class="font-bold text-slate-700 text-sm">${window.escapeHtml(d.name)}</p>
+                <p class="text-[11px] text-slate-400">${d.rowCount} baris di file${isSaved ? ' &middot; <span class="text-emerald-500 font-bold">mapping tersimpan</span>' : ""}</p>
+            </td>
+            <td class="px-3 py-3">
+                <label class="flex items-center gap-2 text-[11px] font-bold text-slate-500 mb-2 cursor-pointer">
+                    <input type="checkbox" ${sel.separate ? "checked" : ""} onchange="window.tmSetSeparate('${safeName}', this.checked)" class="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 w-3.5 h-3.5">
+                    Jadikan Training By TNA terpisah (bukan bagian dari course Onboarding manapun)
+                </label>
+                ${sel.separate
+                    ? `<p class="text-[11px] text-slate-400">Training By TNA baru bakal otomatis dibuat pakai nama training ini saat data diimpor (bukan course Onboarding).</p>`
+                    : `<div class="flex flex-wrap gap-2">
+                        <select onchange="window.tmSetCourse('${safeName}', this.value)" class="border border-slate-200 rounded-xl px-2.5 py-2 text-xs flex-1 min-w-[160px]">
+                            <option value="">— Pilih Course Onboarding —</option>
+                            ${courses.map(c => `<option value="${c.id}" ${sel.courseId === c.id ? "selected" : ""}>${window.escapeHtml(c.title || "(tanpa judul)")}</option>`).join("")}
+                        </select>
+                        <select onchange="window.tmSetModule('${safeName}', this.value)" ${!course ? "disabled" : ""} class="border border-slate-200 rounded-xl px-2.5 py-2 text-xs flex-1 min-w-[140px] ${!course ? "bg-slate-50 text-slate-300" : ""}">
+                            <option value="">— Pilih Modul —</option>
+                            ${modules.map(m => `<option value="${m.id}" ${sel.moduleId === m.id ? "selected" : ""}>${window.escapeHtml(m.title || "(tanpa judul)")}</option>`).join("")}
+                        </select>
+                        <select onchange="window.tmSetLesson('${safeName}', this.value)" ${!module ? "disabled" : ""} class="border border-slate-200 rounded-xl px-2.5 py-2 text-xs flex-1 min-w-[140px] ${!module ? "bg-slate-50 text-slate-300" : ""}">
+                            <option value="">— Pilih Materi —</option>
+                            ${lessons.map(l => `<option value="${l.id}" ${sel.lessonId === l.id ? "selected" : ""}>${window.escapeHtml(l.title || "(tanpa judul)")}</option>`).join("")}
+                        </select>
+                    </div>`}
+            </td>
+            <td class="px-3 py-3 text-center w-32">
+                ${isMapped ? `<span class="text-[10px] font-black px-2 py-1 rounded-full bg-emerald-50 text-emerald-600">Sudah dipetakan</span>` : `<span class="text-[10px] font-black px-2 py-1 rounded-full bg-amber-50 text-amber-600">Belum dipetakan</span>`}
+            </td>
+            <td class="px-3 py-3 text-center w-12">
+                ${isSaved ? `<button onclick="window.deleteTrainingMapping('${safeName}')" title="Hapus mapping tersimpan" class="text-slate-300 hover:text-rose-500"><i class="fas fa-trash"></i></button>` : ""}
+            </td>
+        </tr>`;
+    }).join("");
+
+    window.setPage(`
+        <div class="mb-4">
+            <h1 class="text-xl font-black text-slate-800">Import Training Lama (Mapping)</h1>
+            <p class="text-sm text-slate-500 max-w-2xl">Upload file export riwayat training dari LMS lama, lalu tentukan tiap nama training di file itu mau dipetakan ke course/modul/materi mana di sistem ini — misalnya beberapa training onboarding lama digabung jadi beberapa materi di course "Onboarding". Training yang tidak dipetakan ke course Onboarding manapun (dicentang "terpisah") akan dibuat sebagai Training By TNA baru, bukan course Onboarding. Mapping yang disimpan otomatis kepakai lagi di upload berikutnya untuk nama training yang sama persis.</p>
+        </div>
+        ${tmRenderCleanupSection()}
+        <div class="flex items-center gap-2 mb-4 flex-wrap">
+            <button onclick="window.guardedClick(this, () => window.uploadTrainingMappingExcel())" class="bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold px-3.5 py-2.5 rounded-2xl"><i class="fas fa-file-excel mr-1"></i> Upload File Excel</button>
+            ${tmUploadedFileName ? `<span class="text-xs text-slate-400"><i class="fas fa-file mr-1"></i>${window.escapeHtml(tmUploadedFileName)} — ${tmDetected.length} training unik, ${mappedCount} sudah dipetakan</span>` : ""}
+            ${tmDetected.length ? `<button onclick="window.saveTrainingMappings()" class="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-3.5 py-2.5 rounded-2xl"><i class="fas fa-floppy-disk mr-1"></i> Simpan Mapping</button>` : ""}
+            ${tmDetected.length ? `<button onclick="window.guardedClick(this, () => window.commitTrainingHistoryImport())" ${mappedCount < tmDetected.length ? "disabled title='Lengkapi dulu mapping yang masih Belum Dipetakan'" : ""} class="ml-auto text-xs font-bold px-3.5 py-2.5 rounded-2xl ${mappedCount < tmDetected.length ? "bg-slate-100 text-slate-400 cursor-not-allowed" : "bg-indigo-600 hover:bg-indigo-700 text-white"}"><i class="fas fa-bolt mr-1"></i> Proses Import Data</button>` : ""}
+        </div>
+        ${tmDetected.length ? `
+        <div class="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden">
+            <div class="overflow-auto max-h-[560px]">
+                <table class="w-full text-left border-collapse">
+                    <thead class="sticky top-0 z-10 bg-slate-50 text-[10px] font-black uppercase text-slate-400">
+                        <tr>
+                            <th class="px-3 py-3 bg-slate-50">Nama Training (di file lama)</th>
+                            <th class="px-3 py-3 bg-slate-50">Dipetakan ke</th>
+                            <th class="px-3 py-3 text-center bg-slate-50">Status</th>
+                            <th class="px-3 py-3 bg-slate-50"></th>
+                        </tr>
+                    </thead>
+                    <tbody>${rowsHtml}</tbody>
+                </table>
+            </div>
+        </div>
+        ` : `
+        <div class="bg-white rounded-3xl border border-slate-100 shadow-sm p-12 text-center text-slate-400">
+            <i class="fas fa-file-excel text-4xl mb-3"></i>
+            <p class="text-sm">Belum ada file yang diupload. Klik "Upload File Excel" untuk mulai memetakan nama training dari LMS lama.</p>
+            ${Object.keys(savedByKey).length ? `<p class="text-xs mt-2">${Object.keys(savedByKey).length} mapping sudah pernah tersimpan dari upload sebelumnya.</p>` : ""}
+        </div>
+        `}
     `);
 }
 
