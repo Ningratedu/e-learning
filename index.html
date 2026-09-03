@@ -969,7 +969,7 @@ html.dark .corevalue-wire { background: rgba(96, 165, 250, .2); }
 <div id="modal-confirm-delete" class="fixed inset-0 z-[10001] hide modal-overlay flex items-center justify-center p-4">
     <div class="bg-white w-full max-w-sm rounded-3xl shadow-2xl overflow-hidden flex flex-col">
         <div class="p-5 flex flex-col items-center text-center gap-2">
-            <div class="w-12 h-12 rounded-full bg-rose-50 flex items-center justify-center text-rose-500 text-xl"><i class="fas fa-trash"></i></div>
+            <div class="w-12 h-12 rounded-full bg-rose-50 flex items-center justify-center text-rose-500 text-base"><i class="fas fa-trash"></i></div>
             <h3 class="text-base font-black text-slate-800">Hapus Data Ini?</h3>
             <p id="confirm-delete-message" class="text-sm text-slate-500">Tindakan ini tidak bisa dibatalkan.</p>
         </div>
@@ -2887,7 +2887,7 @@ function renderUserDashboard() {
 
     window.setPage(`
         <div class="mb-3">
-            <h1 class="text-xl font-black text-slate-800">Halo, ${window.escapeHtml(u.name || u.username)} 👋</h1>
+            <h1 class="text-base font-black text-slate-800">Halo, ${window.escapeHtml(u.name || u.username)} 👋</h1>
             <p class="text-sm text-slate-500">Ini ringkasan progres belajar kamu.</p>
         </div>
         <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
@@ -4238,7 +4238,7 @@ function statCard(icon, color, value, label) {
     return `
     <div class="bg-white rounded-3xl border border-slate-100 shadow-sm p-4 flex items-center gap-3">
         <div class="w-12 h-12 rounded-2xl ${map[color]} flex items-center justify-center text-lg"><i class="fas ${icon}"></i></div>
-        <div><p class="text-xl font-black text-slate-800 leading-none">${value}</p><p class="text-[11px] text-slate-400 font-semibold mt-1">${label}</p></div>
+        <div><p class="text-base font-black text-slate-800 leading-none">${value}</p><p class="text-[11px] text-slate-400 font-semibold mt-1">${label}</p></div>
     </div>`;
 }
 function courseCoverStyleSafe(c) {
@@ -4258,7 +4258,7 @@ function clickableStatCard(icon, color, value, label, onclick, big) {
     return `
     <${tag}${attrs} class="text-left w-full bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden flex items-stretch${onclick ? " hover:shadow-md hover:border-indigo-200 hover:-translate-y-0.5 active:translate-y-0 transition-all cursor-pointer" : ""}">
         <div class="shrink-0 w-14 sm:w-[72px] bg-slate-900 flex items-center justify-center py-2 sm:py-3">
-            <span class="${big ? 'text-xl sm:text-2xl' : 'text-lg sm:text-xl'} font-black leading-none" style="color:${c.hex}">${value}</span>
+            <span class="${big ? 'text-base sm:text-2xl' : 'text-lg sm:text-base'} font-black leading-none" style="color:${c.hex}">${value}</span>
         </div>
         <div class="flex-1 min-w-0 p-3.5 flex items-center justify-between gap-2">
             <div class="min-w-0 flex items-center gap-2">
@@ -4281,7 +4281,7 @@ function clickableStatCardProgress(icon, color, doneCount, totalCount, label, on
     <button type="button" onclick="${onclick}" class="text-left w-full bg-white rounded-3xl border border-slate-100 shadow-sm p-4 flex items-center gap-3 hover:shadow-md hover:border-indigo-200 hover:-translate-y-0.5 active:translate-y-0 transition-all cursor-pointer">
         <div class="w-12 h-12 rounded-2xl ${map[color]} flex items-center justify-center shrink-0 text-lg"><i class="fas ${icon}"></i></div>
         <div class="flex-1 min-w-0">
-            <p class="text-xl font-black text-slate-800 leading-none">${pct}%</p>
+            <p class="text-base font-black text-slate-800 leading-none">${pct}%</p>
             <p class="text-[11px] text-slate-400 font-semibold mt-1">${label}</p>
             <p class="text-[10px] text-slate-400 font-bold mt-0.5">${doneCount}/${totalCount} selesai</p>
         </div>
@@ -4482,10 +4482,10 @@ window.openDashboardDetail = function (type) {
         const pct = stats.avgPre > 0 ? Math.round(((stats.avgPost - stats.avgPre) / stats.avgPre) * 100) : (stats.avgPost > 0 ? 100 : 0);
         const summaryHtml = stats.n ? `
             <div class="flex items-center justify-around bg-sky-50 rounded-2xl p-4 mb-3">
-                <div class="text-center"><p class="text-[10px] text-slate-400 font-black uppercase">Rata² Pre-test</p><p class="text-xl font-black text-slate-600">${stats.avgPre}</p></div>
+                <div class="text-center"><p class="text-[10px] text-slate-400 font-black uppercase">Rata² Pre-test</p><p class="text-base font-black text-slate-600">${stats.avgPre}</p></div>
                 <i class="fas fa-arrow-right-long text-sky-300"></i>
-                <div class="text-center"><p class="text-[10px] text-slate-400 font-black uppercase">Rata² Post-test</p><p class="text-xl font-black text-sky-600">${stats.avgPost}</p></div>
-                <div class="text-center"><p class="text-[10px] text-slate-400 font-black uppercase">Kenaikan</p><p class="text-xl font-black ${pct >= 0 ? 'text-emerald-500' : 'text-rose-500'}">${pct >= 0 ? '+' : ''}${pct}%</p></div>
+                <div class="text-center"><p class="text-[10px] text-slate-400 font-black uppercase">Rata² Post-test</p><p class="text-base font-black text-sky-600">${stats.avgPost}</p></div>
+                <div class="text-center"><p class="text-[10px] text-slate-400 font-black uppercase">Kenaikan</p><p class="text-base font-black ${pct >= 0 ? 'text-emerald-500' : 'text-rose-500'}">${pct >= 0 ? '+' : ''}${pct}%</p></div>
             </div>` : "";
         const rowsHtml = stats.pairs.map(p => {
             const delta = p.pre > 0 ? Math.round(((p.post - p.pre) / p.pre) * 100) : (p.post > 0 ? 100 : 0);
@@ -4574,7 +4574,7 @@ window.ROUTES["certificates"] = function () {
 
     window.setPage(`
         <div class="mb-3">
-            <h1 class="text-xl font-black text-slate-800">Sertifikat Saya</h1>
+            <h1 class="text-base font-black text-slate-800">Sertifikat Saya</h1>
             <p class="text-sm text-slate-500">Semua sertifikat dari Training & training yang sudah kamu selesaikan.</p>
         </div>
         <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2.5 items-stretch">
@@ -4852,8 +4852,8 @@ function renderCourseCatalog() {
     window.setPage(`
         <div class="flex items-center justify-between mb-3">
             <div>
-                <h1 class="text-xl font-black text-slate-800">Onboarding Training</h1>
-                <p class="text-sm text-slate-500">Belajar mandiri lewat modul, video, dan kuis. Training harus diselesaikan berurutan sesuai urutan di bawah.</p>
+                <h1 class="text-base font-black text-slate-800">Onboarding Training</h1>
+                <p class="text-xs text-slate-500">Belajar mandiri lewat modul, video, dan kuis. Training harus diselesaikan berurutan sesuai urutan di bawah.</p>
             </div>
         </div>
         <div class="relative w-full sm:w-72 mb-3">
@@ -5477,7 +5477,7 @@ window.openLesson = function (kind, refId, lessonId) {
         <div id="ppt-viewer">
             <div class="aspect-video rounded-2xl overflow-hidden bg-slate-900 relative">
                 <div id="ppt-loading" class="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-slate-900 text-slate-300 z-10">
-                    <i class="fas fa-spinner fa-spin text-xl"></i>
+                    <i class="fas fa-spinner fa-spin text-base"></i>
                     <span class="text-xs font-semibold">Memuat materi PPT...</span>
                 </div>
                 <iframe class="w-full h-full relative z-0" src="${officeEmbedSrc}" allowfullscreen onload="const el=document.getElementById('ppt-loading'); if(el) el.style.display='none';"></iframe>
@@ -5832,8 +5832,8 @@ function renderTrainingCatalog() {
 
     window.setPage(`
         <div class="mb-3">
-            <h1 class="text-xl font-black text-slate-800">Training By TNA</h1>
-            <p class="text-sm text-slate-500">Daftar, hadir, dan isi evaluasi untuk training tatap muka / online.</p>
+            <h1 class="text-base font-black text-slate-800">Training By TNA</h1>
+            <p class="text-xs text-slate-500">Daftar, hadir, dan isi evaluasi untuk training tatap muka / online.</p>
         </div>
         <div class="relative w-full sm:w-72 mb-3">
             <i class="fas fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-slate-300 text-xs"></i>
@@ -6662,7 +6662,7 @@ function renderCourseAdminList() {
     window.setPage(`
         ${renderAdminSectionTabs("admin/courses")}
         <div class="flex items-center justify-between mb-3">
-            <h1 class="text-xl font-black text-slate-800">Kelola Onboarding</h1>
+            <h1 class="text-base font-black text-slate-800">Kelola Onboarding</h1>
             <a href="#/admin/courses/new" class="bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold px-4 py-2.5 rounded-2xl"><i class="fas fa-plus mr-1"></i> Training Baru</a>
         </div>
         <p class="text-xs text-slate-400 mb-3">Pakai panah naik/turun buat atur urutan pengerjaan. Training dikunci berurutan sesuai urutan ini, dihitung terpisah untuk tiap departemen (lihat kolom target peserta).</p>
@@ -6801,7 +6801,7 @@ function renderOnboardingFeedbackRecap() {
     window.setPage(`
         ${renderAdminSectionTabs("admin/onboarding-feedback")}
         <div class="flex items-center justify-between flex-wrap gap-2 mb-3">
-            <h1 class="text-xl font-black text-slate-800">Rekap Rating & Feedback</h1>
+            <h1 class="text-base font-black text-slate-800">Rekap Rating & Feedback</h1>
             <select onchange="onboardingFeedbackCourseFilter=this.value; renderOnboardingFeedbackRecap()" class="text-xs font-bold border border-slate-200 rounded-xl px-3 py-2 outline-none focus:ring-2 focus:ring-indigo-400">
                 <option value="all" ${onboardingFeedbackCourseFilter === "all" ? "selected" : ""}>Semua Training Onboarding</option>
                 ${courseOptions.map(c => `<option value="${c.id}" ${onboardingFeedbackCourseFilter === c.id ? "selected" : ""}>${window.escapeHtml(c.title)}</option>`).join("")}
@@ -6950,7 +6950,7 @@ function renderTnaFeedbackRecap() {
     window.setPage(`
         ${renderAdminSectionTabs("admin/tna-feedback")}
         <div class="flex items-center justify-between flex-wrap gap-2 mb-3">
-            <h1 class="text-xl font-black text-slate-800">Rekap Rating & Feedback</h1>
+            <h1 class="text-base font-black text-slate-800">Rekap Rating & Feedback</h1>
             <select onchange="tnaFeedbackTrainingFilter=this.value; renderTnaFeedbackRecap()" class="text-xs font-bold border border-slate-200 rounded-xl px-3 py-2 outline-none focus:ring-2 focus:ring-amber-400">
                 <option value="all" ${tnaFeedbackTrainingFilter === "all" ? "selected" : ""}>Semua Training TNA</option>
                 ${trainingOptions.map(t => `<option value="${t.id}" ${tnaFeedbackTrainingFilter === t.id ? "selected" : ""}>${window.escapeHtml(t.title)} — ${window.fmtDate(t.date)}</option>`).join("")}
@@ -7758,7 +7758,7 @@ function renderTrainingAdminList() {
     window.setPage(`
         ${renderAdminSectionTabs("admin/trainings")}
         <div class="flex items-center justify-between mb-3">
-            <h1 class="text-xl font-black text-slate-800">Kelola Training TNA</h1>
+            <h1 class="text-base font-black text-slate-800">Kelola Training TNA</h1>
             <a href="#/admin/trainings/new" class="bg-amber-500 hover:bg-amber-600 text-white text-sm font-bold px-4 py-2.5 rounded-2xl"><i class="fas fa-plus mr-1"></i> Jadwal Baru</a>
         </div>
         <p class="text-xs text-slate-400 -mt-3 mb-4"><i class="fas fa-circle-info mr-1"></i> Training baru default-nya berstatus "Belum Dimulai" — peserta baru bisa daftar & mengikuti setelah kamu tekan "Mulai Training".</p>
@@ -7864,10 +7864,10 @@ function renderMaterialBankAdminList() {
     window.setPage(`
         ${renderAdminSectionTabs("admin/material-bank")}
         <div class="flex items-center justify-between mb-3">
-            <h1 class="text-xl font-black text-slate-800">Bank Materi</h1>
+            <h1 class="text-base font-black text-slate-800">Bank Materi</h1>
             <a href="#/admin/material-bank/new" class="bg-indigo-500 hover:bg-indigo-600 text-white text-sm font-bold px-4 py-2.5 rounded-2xl"><i class="fas fa-plus mr-1"></i> Materi Baru</a>
         </div>
-        <p class="text-xs text-slate-400 -mt-3 mb-4"><i class="fas fa-circle-info mr-1"></i> Simpan modul, kuis & tugas di sini supaya bisa dipakai ulang buat jadwal Training TNA yang berbeda-beda (mis. training refreshment bulanan) tanpa input ulang dari nol. Pilih "Pakai dari Bank Materi" saat bikin jadwal training baru.</p>
+        <p class="text-xs text-slate-400 -mt-3 mb-4"><i class="fas fa-circle-info mr-1"></i> Simpan modul, kuis & tugas di sini supaya bisa dipakai ulang buat jadwal Training TNA yang berbeda-beda.</p>
         <div class="relative w-full sm:w-72 mb-3">
             <i class="fas fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-slate-300 text-xs"></i>
             <input type="text" oninput="window.filterMaterialBankAdminList(this.value)" placeholder="Cari judul materi, kategori, atau deskripsi..." class="w-full pl-8 pr-3 py-2 text-xs rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-200">
@@ -8552,7 +8552,7 @@ function renderTnaResultAdminList() {
         ${renderAdminSectionTabs("admin/tna-results")}
         <div class="flex items-center justify-between flex-wrap gap-3 mb-1">
             <div>
-                <h1 class="text-xl font-black text-slate-800">Hasil TNA</h1>
+                <h1 class="text-base font-black text-slate-800">Hasil TNA</h1>
                 <p class="text-sm text-slate-500">Rekap gap/problem hasil Training Need Analysis per departemen & level jabatan, lengkap dengan corrective action dan rencana training.</p>
             </div>
             <a href="#/admin/tna-results/new" class="bg-amber-500 hover:bg-amber-600 text-white text-sm font-bold px-4 py-2.5 rounded-2xl whitespace-nowrap"><i class="fas fa-plus mr-1"></i> Entri Baru</a>
@@ -9088,7 +9088,7 @@ function renderTnaInputList() {
     window.setPage(`
         <div class="flex items-center justify-between flex-wrap gap-3 mb-1">
             <div>
-                <h1 class="text-xl font-black text-slate-800">Input Hasil TNA</h1>
+                <h1 class="text-base font-black text-slate-800">Input Hasil TNA</h1>
                 <p class="text-sm text-slate-500">Ajukan hasil analisa Training Need Analysis (TNA) &amp; permintaan training untuk tim/departemen kamu — masalah, akar penyebab, tindakan perbaikan, dan rekomendasi training. Penyiapan modul, progress, sampai pelaksanaan trainingnya akan dikerjakan oleh Admin/Tim Training.</p>
             </div>
             <a href="#/tna-input/new" class="bg-amber-500 hover:bg-amber-600 text-white text-sm font-bold px-4 py-2.5 rounded-2xl whitespace-nowrap"><i class="fas fa-plus mr-1"></i> Tambah Data</a>
@@ -10082,7 +10082,7 @@ function renderCompetencyAdminList() {
         ${renderAdminSectionTabs("admin/competencies")}
         <div class="flex items-center justify-between flex-wrap gap-3 mb-3">
             <div>
-                <h1 class="text-xl font-black text-slate-800">Mapping Kompetensi</h1>
+                <h1 class="text-base font-black text-slate-800">Mapping Kompetensi</h1>
                 <p class="text-sm text-slate-500">Master data kompetensi &amp; peta kompetensi terhadap jabatan/posisi — dasar identifikasi kebutuhan training (TNA).</p>
             </div>
             <div class="flex items-center gap-2">
@@ -10960,7 +10960,7 @@ function renderTrainingReportContent(id, t) {
         <a href="${isAdminViewer ? '#/admin/trainings' : '#/tna-input'}" class="text-xs font-bold text-slate-400 hover:text-amber-600"><i class="fas fa-arrow-left mr-1"></i> Kembali</a>
         <div class="flex items-start justify-between flex-wrap gap-2 mt-2 mb-3">
             <div>
-                <h1 class="text-xl font-black text-slate-800">Laporan Keterlaksanaan Training</h1>
+                <h1 class="text-base font-black text-slate-800">Laporan Keterlaksanaan Training</h1>
                 <p class="text-sm text-slate-500">${window.escapeHtml(t.title)} • ${window.fmtDate(t.date)}</p>
             </div>
             <div class="flex items-center gap-2 flex-wrap">
@@ -11429,7 +11429,7 @@ function renderCourseReportContent(id, c) {
         <a href="${isAdminViewer ? '#/admin/courses' : '#/courses/' + c.id}" class="text-xs font-bold text-slate-400 hover:text-indigo-600"><i class="fas fa-arrow-left mr-1"></i> Kembali</a>
         <div class="flex items-start justify-between flex-wrap gap-2 mt-2 mb-3">
             <div>
-                <h1 class="text-xl font-black text-slate-800">Laporan Keterlaksanaan Onboarding</h1>
+                <h1 class="text-base font-black text-slate-800">Laporan Keterlaksanaan Onboarding</h1>
                 <p class="text-sm text-slate-500">${window.escapeHtml(c.title)}</p>
             </div>
             <div class="flex items-center gap-2 flex-wrap">
@@ -11545,7 +11545,7 @@ function renderAdminAssignments() {
     window.setPage(`
         ${renderAdminSectionTabs("admin/assignments")}
         <div class="flex items-center justify-between flex-wrap gap-2 mb-3">
-            <h1 class="text-xl font-black text-slate-800">Penilaian Tugas <span class="text-slate-400 font-bold">— ${ctxKind === "training" ? "Training TNA" : "Onboarding"}</span></h1>
+            <h1 class="text-base font-black text-slate-800">Penilaian Tugas <span class="text-slate-400 font-bold">— ${ctxKind === "training" ? "Training TNA" : "Onboarding"}</span></h1>
             <div class="flex gap-2">
                 ${[["pending","Menunggu"],["graded","Sudah Dinilai"],["all","Semua"]].map(([k,l]) => `
                     <button onclick="adminAssignmentFilter='${k}'; renderAdminAssignments()" class="text-xs font-bold px-3 py-1.5 rounded-xl transition ${adminAssignmentFilter===k ? 'bg-violet-600 text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}">${l}</button>
@@ -11650,7 +11650,7 @@ function renderAdminQuizAttempts() {
     window.setPage(`
         ${renderAdminSectionTabs("admin/quiz-attempts")}
         <div class="flex items-center justify-between flex-wrap gap-2 mb-3">
-            <h1 class="text-xl font-black text-slate-800">Percobaan Kuis <span class="text-slate-400 font-bold">— ${ctxKind === "training" ? "Training TNA" : "Onboarding"}</span></h1>
+            <h1 class="text-base font-black text-slate-800">Percobaan Kuis <span class="text-slate-400 font-bold">— ${ctxKind === "training" ? "Training TNA" : "Onboarding"}</span></h1>
             <div class="flex gap-2 flex-wrap">
                 <div class="flex gap-1 bg-slate-100 rounded-xl p-1">
                     <button onclick="adminAttemptTypeFilter='posttest'; renderAdminQuizAttempts()" class="text-xs font-bold px-3 py-1.5 rounded-lg transition ${adminAttemptTypeFilter === 'posttest' ? 'bg-white shadow text-amber-600' : 'text-slate-500'}">Post-test</button>
@@ -12533,8 +12533,8 @@ function renderEmployeeAdminList() {
     window.setPage(`
         <div class="flex items-center justify-between flex-wrap gap-3 mb-3">
             <div>
-                <h1 class="text-xl font-black text-slate-800">Data Karyawan</h1>
-                <p class="text-sm text-slate-500">Master data karyawan &amp; sumber pembuatan akun otomatis. Upload ulang file Excel yang sama buat sinkronisasi data terbaru.</p>
+                <h1 class="text-base font-black text-slate-800">Data Karyawan</h1>
+                <p class="text-xs text-slate-500">Master data karyawan &amp; sumber pembuatan akun otomatis. Upload ulang file Excel yang sama buat sinkronisasi data terbaru.</p>
             </div>
             <div class="flex items-center gap-2 flex-wrap justify-end">
                 ${window.sel.isSuperAdmin() ? `<button onclick="window.openResetEmployeeDataModal()" class="bg-white border border-rose-200 hover:border-rose-400 text-rose-500 text-xs font-bold px-3.5 py-2.5 rounded-2xl"><i class="fas fa-triangle-exclamation mr-1"></i> Reset Data Karyawan</button>` : ""}
@@ -13209,8 +13209,8 @@ function renderTrainingImportMappingPage() {
 
     window.setPage(`
         <div class="mb-4">
-            <h1 class="text-xl font-black text-slate-800">Import Training Lama (Mapping)</h1>
-            <p class="text-sm text-slate-500 max-w-2xl">Upload file export riwayat training LMS lama, lalu petakan tiap nama training ke course/modul/materi yang sesuai. Training yang dicentang "terpisah" akan dibuat sebagai Training By TNA baru. Mapping tersimpan otomatis kepakai lagi di upload berikutnya.</p>
+            <h1 class="text-base font-black text-slate-800">Import Training Lama (Mapping)</h1>
+            <p class="text-xs text-slate-500 max-w-2xl">Upload file export riwayat training LMS lama, lalu petakan tiap nama training ke course/modul/materi yang sesuai. Training yang dicentang "terpisah" akan dibuat sebagai Training By TNA baru. Mapping tersimpan otomatis kepakai lagi di upload berikutnya.</p>
         </div>
         ${tmRenderCleanupSection()}
         <div class="flex items-center gap-2 mb-4 flex-wrap">
@@ -14080,8 +14080,8 @@ function renderOnboardingSchedule() {
 
     window.setPage(`
         ${renderAdminSectionTabs("admin/onboarding-schedule")}
-        <h1 class="text-xl font-black text-slate-800 mb-1 select-none cursor-default" onclick="window.onboardingScheduleTitleClick()">Penjadwalan Onboarding</h1>
-        <p class="text-sm text-slate-500 mb-3">Target &amp; progres peserta training onboarding, dikelompokkan per minggu. Klik satu minggu untuk lihat rincian nama peserta.</p>
+        <h1 class="text-base font-black text-slate-800 mb-1 select-none cursor-default" onclick="window.onboardingScheduleTitleClick()">Penjadwalan Onboarding</h1>
+        <p class="text-xs text-slate-500 mb-3">Target &amp; progres peserta training onboarding, dikelompokkan per minggu. Klik satu minggu untuk lihat rincian nama peserta.</p>
         ${configHtml}
         ${bulkCompleteHtml}
         ${filterBarHtml}
@@ -14702,7 +14702,7 @@ window.ROUTES["admin/users"] = requireAdmin(function () {
         </tr>`).join("");
 
     window.setPage(`
-        <h1 class="text-xl font-black text-slate-800 mb-3">Kelola Akun</h1>
+        <h1 class="text-base font-black text-slate-800 mb-3">Kelola Akun</h1>
         <div class="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-x-auto">
             <table class="w-full text-left">
                 <thead class="bg-slate-50 text-[10px] font-black uppercase text-slate-400">
@@ -14818,7 +14818,7 @@ window.ROUTES["admin/reports"] = requireAdmin(function () {
         </div>`).join("") || '<p class="text-sm text-slate-400 text-center py-5">Belum ada aktivitas</p>';
 
     window.setPage(`
-        <h1 class="text-xl font-black text-slate-800 mb-1">Dashboard Admin</h1>
+        <h1 class="text-base font-black text-slate-800 mb-1">Dashboard Admin</h1>
         <p class="text-xs text-slate-400 mb-3">Klik kartu di bawah untuk lihat rincian lengkapnya, termasuk laporan keterlaksanaan & kelulusan per training.</p>
         <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
             ${donutStatCard("fa-user-check", "emerald", onboardingStats.done, onboardingStats.total, "Selesai Onboarding", "window.openEmployeeStatDetail('onboarding-done')")}
@@ -15176,7 +15176,7 @@ window.ROUTES["admin/training-growth"] = requireAdmin(function () {
     window.setPage(`
         <a href="#/admin/reports" class="text-xs font-bold text-slate-400 hover:text-indigo-600"><i class="fas fa-arrow-left mr-1"></i> Kembali ke Laporan</a>
         <div class="flex items-center justify-between gap-2 mt-2 mb-1">
-            <h1 class="text-xl font-black text-slate-800">Efektivitas Training TNA per Training</h1>
+            <h1 class="text-base font-black text-slate-800">Efektivitas Training TNA per Training</h1>
         </div>
         <div class="flex flex-wrap items-center gap-2 mb-3">
             <select onchange="window.setTrainingGrowthYear(this.value)" class="text-xs font-bold px-3 py-2 rounded-xl border border-slate-200 bg-white text-slate-600 hover:border-slate-300 focus:outline-none">${yearOptionsHtml}</select>
@@ -15351,7 +15351,7 @@ window.ROUTES["admin/training-growth-detail"] = requireAdmin(function (id) {
     window.setPage(`
         <a href="#/admin/training-growth" class="text-xs font-bold text-slate-400 hover:text-indigo-600"><i class="fas fa-arrow-left mr-1"></i> Kembali</a>
         <div class="mt-2 mb-4">
-            <h1 class="text-xl font-black text-slate-800">${window.escapeHtml(t.title)}</h1>
+            <h1 class="text-base font-black text-slate-800">${window.escapeHtml(t.title)}</h1>
             <p class="text-xs text-slate-400">${dateStr}</p>
         </div>
         ${summaryHtml}
