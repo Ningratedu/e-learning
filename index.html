@@ -4575,7 +4575,7 @@ window.ROUTES["certificates"] = function () {
     window.setPage(`
         <div class="mb-3">
             <h1 class="text-base font-black text-slate-800">Sertifikat Saya</h1>
-            <p class="text-sm text-slate-500">Semua sertifikat dari Training & training yang sudah kamu selesaikan.</p>
+            <p class="text-[10] text-slate-500">Semua sertifikat dari Training & training yang sudah kamu selesaikan.</p>
         </div>
         <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2.5 items-stretch">
             ${cards || `<div class="col-span-full text-center py-16 text-slate-400"><i class="fas fa-award text-3xl mb-2"></i><p class="font-bold">Belum ada sertifikat. Selesaikan training dulu ya!</p></div>`}
@@ -4853,7 +4853,7 @@ function renderCourseCatalog() {
         <div class="flex items-center justify-between mb-3">
             <div>
                 <h1 class="text-base font-black text-slate-800">Onboarding Training</h1>
-                <p class="text-xs text-slate-500">Belajar mandiri lewat modul, video, dan kuis. Training harus diselesaikan berurutan sesuai urutan di bawah.</p>
+                <p class="text-[10] text-slate-500">Belajar mandiri lewat modul, video, dan kuis. Training harus diselesaikan berurutan sesuai urutan di bawah.</p>
             </div>
         </div>
         <div class="relative w-full sm:w-72 mb-3">
@@ -5833,7 +5833,7 @@ function renderTrainingCatalog() {
     window.setPage(`
         <div class="mb-3">
             <h1 class="text-base font-black text-slate-800">Training By TNA</h1>
-            <p class="text-xs text-slate-500">Daftar, hadir, dan isi evaluasi untuk training tatap muka / online.</p>
+            <p class="text-[10] text-slate-500">Daftar, hadir, dan isi evaluasi untuk training tatap muka / online.</p>
         </div>
         <div class="relative w-full sm:w-72 mb-3">
             <i class="fas fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-slate-300 text-xs"></i>
@@ -7761,7 +7761,7 @@ function renderTrainingAdminList() {
             <h1 class="text-base font-black text-slate-800">Kelola Training TNA</h1>
             <a href="#/admin/trainings/new" class="bg-amber-500 hover:bg-amber-600 text-white text-sm font-bold px-4 py-2.5 rounded-2xl"><i class="fas fa-plus mr-1"></i> Jadwal Baru</a>
         </div>
-        <p class="text-xs text-slate-400 -mt-3 mb-4"><i class="fas fa-circle-info mr-1"></i> Training baru default-nya berstatus "Belum Dimulai" — peserta baru bisa daftar & mengikuti setelah kamu tekan "Mulai Training".</p>
+        <p class="text-[10] text-slate-400 -mt-3 mb-4"><i class="fas fa-circle-info mr-1"></i> Training baru default-nya berstatus "Belum Dimulai" — peserta baru bisa daftar & mengikuti setelah kamu tekan "Mulai Training".</p>
         <div class="relative w-full sm:w-72 mb-3">
             <i class="fas fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-slate-300 text-xs"></i>
             <input type="text" oninput="window.filterTrainingAdminList(this.value)" placeholder="Cari nama training, trainer, atau lokasi..." class="w-full pl-8 pr-3 py-2 text-xs rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-amber-200">
@@ -12534,7 +12534,7 @@ function renderEmployeeAdminList() {
         <div class="flex items-center justify-between flex-wrap gap-3 mb-3">
             <div>
                 <h1 class="text-base font-black text-slate-800">Data Karyawan</h1>
-                <p class="text-xs text-slate-500">Master data karyawan &amp; sumber pembuatan akun otomatis. Upload ulang file Excel yang sama buat sinkronisasi data terbaru.</p>
+                <p class="text-[10] text-slate-500">Master data karyawan &amp; sumber pembuatan akun otomatis. Upload ulang file Excel yang sama buat sinkronisasi data terbaru.</p>
             </div>
             <div class="flex items-center gap-2 flex-wrap justify-end">
                 ${window.sel.isSuperAdmin() ? `<button onclick="window.openResetEmployeeDataModal()" class="bg-white border border-rose-200 hover:border-rose-400 text-rose-500 text-xs font-bold px-3.5 py-2.5 rounded-2xl"><i class="fas fa-triangle-exclamation mr-1"></i> Reset Data Karyawan</button>` : ""}
@@ -13210,7 +13210,7 @@ function renderTrainingImportMappingPage() {
     window.setPage(`
         <div class="mb-4">
             <h1 class="text-base font-black text-slate-800">Import Training Lama (Mapping)</h1>
-            <p class="text-xs text-slate-500 max-w-2xl">Upload file export riwayat training LMS lama, lalu petakan tiap nama training ke course/modul/materi yang sesuai. Training yang dicentang "terpisah" akan dibuat sebagai Training By TNA baru. Mapping tersimpan otomatis kepakai lagi di upload berikutnya.</p>
+            <p class="text-[10] text-slate-500 max-w-2xl">Upload file export riwayat training LMS lama, lalu petakan tiap nama training ke course/modul/materi yang sesuai. Training yang dicentang "terpisah" akan dibuat sebagai Training By TNA baru. Mapping tersimpan otomatis kepakai lagi di upload berikutnya.</p>
         </div>
         ${tmRenderCleanupSection()}
         <div class="flex items-center gap-2 mb-4 flex-wrap">
@@ -14081,12 +14081,12 @@ function renderOnboardingSchedule() {
     window.setPage(`
         ${renderAdminSectionTabs("admin/onboarding-schedule")}
         <h1 class="text-base font-black text-slate-800 mb-1 select-none cursor-default" onclick="window.onboardingScheduleTitleClick()">Penjadwalan Onboarding</h1>
-        <p class="text-xs text-slate-500 mb-3">Target &amp; progres peserta training onboarding, dikelompokkan per minggu. Klik satu minggu untuk lihat rincian nama peserta.</p>
+        <p class="text-[10] text-slate-500 mb-3">Target &amp; progres peserta training onboarding, dikelompokkan per minggu. Klik satu minggu untuk lihat rincian nama peserta.</p>
         ${configHtml}
         ${bulkCompleteHtml}
         ${filterBarHtml}
         ${globalSummaryHtml}
-        <div class="text-xs text-slate-400 mb-3"><i class="fas fa-circle-info mr-1"></i> Sales &amp; Marketing: siklus Selasa-Sabtu (join setelah Selasa masuk batch minggu depan). Departemen lain: 2 siklus/minggu — Rabu-Jumat &amp; Sabtu-Selasa.</div>
+        <div class="text-[10] text-slate-400 mb-3"><i class="fas fa-circle-info mr-1"></i> Sales &amp; Marketing: siklus Selasa-Sabtu (join setelah Selasa masuk batch minggu depan). Departemen lain: 2 siklus/minggu — Rabu-Jumat &amp; Sabtu-Selasa.</div>
         ${weekCards || '<div class="bg-white rounded-3xl border border-slate-100 shadow-sm p-10 text-center text-slate-400 text-sm">Tidak ada data yang cocok dengan filter saat ini.</div>'}
     `);
 }
@@ -14819,7 +14819,7 @@ window.ROUTES["admin/reports"] = requireAdmin(function () {
 
     window.setPage(`
         <h1 class="text-base font-black text-slate-800 mb-1">Dashboard Admin</h1>
-        <p class="text-xs text-slate-400 mb-3">Klik kartu di bawah untuk lihat rincian lengkapnya, termasuk laporan keterlaksanaan & kelulusan per training.</p>
+        <p class="text-[10] text-slate-400 mb-3">Klik kartu di bawah untuk lihat rincian lengkapnya, termasuk laporan keterlaksanaan & kelulusan per training.</p>
         <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
             ${donutStatCard("fa-user-check", "emerald", onboardingStats.done, onboardingStats.total, "Selesai Onboarding", "window.openEmployeeStatDetail('onboarding-done')")}
             ${donutStatCard("fa-chalkboard-user", "amber", tnaStats.attended, tnaStats.targeted, "Sudah Ikut Training TNA", "window.openEmployeeStatDetail('tna-attended')")}
