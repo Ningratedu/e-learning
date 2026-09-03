@@ -251,7 +251,7 @@ button:disabled, input[type="submit"]:disabled {
 .nav-item.nav-active { background: #4f46e5; color: #fff; box-shadow: 0 4px 14px rgba(79,70,229,.4); }
 
 #sidebar {
-    position: fixed; top: 0; left: 0; bottom: 0; height: 100dvh; z-index: 40;
+    position: fixed; top: 0; left: 0; bottom: 0; height: 100dvh; z-index: 50;
     display: flex; flex-direction: column;
     box-shadow: 2px 0 20px rgba(0,0,0,.25);
     transition: width .2s ease, transform .2s ease, box-shadow .2s ease;
@@ -659,7 +659,7 @@ html.dark .corevalue-wire { background: rgba(96, 165, 250, .2); }
 <div id="app-shell" class="hide min-h-screen lg:flex">
 
     <!-- Sidebar overlay (mobile, only shown when the drawer is fully expanded) -->
-    <div id="sidebar-overlay" class="hide fixed inset-0 bg-black/40 z-30 lg:hidden" onclick="window.closeMobileSidebar()"></div>
+    <div id="sidebar-overlay" class="hide fixed inset-0 bg-black/40 z-40 lg:hidden" onclick="window.closeMobileSidebar()"></div>
 
     <!-- Sidebar: fixed & pinned to the left edge (never scrolls away on tall pages).
          Desktop: full menu by default, can collapse into a slim icon rail.
@@ -4294,8 +4294,8 @@ function clickableStatCard(icon, color, value, label, onclick, big) {
     const attrs = onclick ? ` type="button" onclick="${onclick}"` : "";
     return `
     <${tag}${attrs} class="text-left w-full bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden flex items-stretch${onclick ? " hover:shadow-md hover:border-indigo-200 hover:-translate-y-0.5 active:translate-y-0 transition-all cursor-pointer" : ""}">
-        <div class="shrink-0 w-[72px] bg-slate-900 flex items-center justify-center py-3">
-            <span class="${big ? 'text-2xl' : 'text-xl'} font-black leading-none" style="color:${c.hex}">${value}</span>
+        <div class="shrink-0 w-14 sm:w-[72px] bg-slate-900 flex items-center justify-center py-2 sm:py-3">
+            <span class="${big ? 'text-xl sm:text-2xl' : 'text-lg sm:text-xl'} font-black leading-none" style="color:${c.hex}">${value}</span>
         </div>
         <div class="flex-1 min-w-0 p-3.5 flex items-center justify-between gap-2">
             <div class="min-w-0 flex items-center gap-2">
@@ -4359,7 +4359,7 @@ function donutDiagramSvg(pct, hex, big) {
             <circle class="text-white/10" stroke="currentColor" stroke-width="4" fill="none" cx="18" cy="18" r="15.9155"></circle>
             <circle stroke="${hex}" stroke-width="4" fill="none" stroke-linecap="round" stroke-dasharray="${dash} ${100 - dash}" stroke-dashoffset="25" cx="18" cy="18" r="15.9155"></circle>
         </svg>
-        <div class="absolute inset-0 flex items-center justify-center"><span class="${big ? 'text-sm' : 'text-[11px]'} font-black text-white">${pct}%</span></div>
+        <div class="absolute inset-0 flex items-center justify-center"><span class="${big ? 'text-xs' : 'text-[10px]'} font-black text-white">${pct}%</span></div>
     </div>`;
 }
 // Diagram donut versi "terang" (dipakai di atas panel berwarna muda seperti bg-indigo-50 /
