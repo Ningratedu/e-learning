@@ -1210,7 +1210,7 @@ function uploadFileWithProgress(file, folder, onProgress) {
     }
 
     const {
-        initializeApp, initializeFirestore, persistentLocalCache, persistentMultipleTabManager,
+        initializeApp, initializeFirestore, persistentLocalCache, persistentMultipleTabManager, getFirestore,
         collection, doc, addDoc, getDoc, getDocs, setDoc, updateDoc,
         deleteDoc, onSnapshot, query, where, orderBy, serverTimestamp, writeBatch
     } = fb;
@@ -1235,9 +1235,24 @@ function uploadFileWithProgress(file, folder, onProgress) {
         // karena sebelumnya tiap reload = full collection reads lagi buat 8 collection yang
         // di-subscribe realtime tanpa filter (lihat startLiveListeners()).
         // persistentMultipleTabManager supaya tetap jalan normal kalau user buka >1 tab.
-        db = initializeFirestore(appFb, {
-            localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() })
-        });
+        //
+        // 📱 FIX "GAGAL TERHUBUNG" DI HP: initializeFirestore() dengan persistentLocalCache
+        // butuh IndexedDB yang jalan normal di browser. Di banyak browser mobile (khususnya
+        // Safari/iOS, tapi kadang Chrome Android juga) IndexedDB ini bisa gagal dipakai —
+        // penyimpanan device penuh, mode private/incognito, pengaturan privasi browser, atau
+        // bug WebKit — dan itu SAMA SEKALI BUKAN soal koneksi internet. Sebelumnya kalau ini
+        // gagal, app langsung nganggep "gagal koneksi" padahal internetnya baik-baik saja.
+        // Sekarang kalau initializeFirestore dengan cache gagal, coba lagi pakai getFirestore()
+        // polos (tanpa cache offline) — app tetap jalan normal di device itu, cuma tanpa
+        // penghematan kuota baca dari cache lokal.
+        try {
+            db = initializeFirestore(appFb, {
+                localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() })
+            });
+        } catch (cacheErr) {
+            console.warn("⚠️ persistentLocalCache gagal (biasanya IndexedDB device ini bermasalah, bukan soal internet), fallback ke Firestore tanpa cache offline:", cacheErr);
+            db = getFirestore(appFb);
+        }
     } catch (err) {
         console.error("❌ Firebase gagal diinisialisasi:", err);
         window.dispatchEvent(new CustomEvent("lms-firebase-failed", { detail: err }));
