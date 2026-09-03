@@ -5797,17 +5797,26 @@ function regCount(trainingId) {
     return window.STATE.trainingRegs.filter(r => r.trainingId === trainingId && r.status !== "cancelled").length;
 }
 
+// Tab aktif katalog Training By TNA ("todo" = belum diikuti, "done" = sudah diikuti). Disimpan
+// di variabel modul (bukan cuma di DOM) supaya filterTrainingCatalog (dipanggil tiap ngetik di
+// kotak pencarian) tau tab mana yang lagi aktif tanpa perlu baca ulang class tombolnya.
+window.trainingCatalogTab = "todo";
+
 function renderTrainingCatalog() {
     const now = Date.now();
     const list = [...window.STATE.trainings].filter(t => window.trainingAllowedForUser(t)).sort((a, b) => new Date(a.date) - new Date(b.date));
     const cards = list.map(t => {
         const reg = window.sel.myRegForTraining(t.id);
+        const att = window.sel.myAttendance(t.id);
+        // "Sudah Diikuti" = peserta udah presensi/hadir di sesi ini. Selama belum presensi
+        // (baru daftar doang, atau malah belum daftar sama sekali) tetap masuk "Belum Diikuti".
+        const attended = !!(reg && att);
         const isPast = new Date(t.date).getTime() < now - 86400000;
         const count = regCount(t.id);
         const full = t.quota && count >= t.quota;
         const searchBlob = [t.title, t.category, t.trainer, t.location].filter(Boolean).join(" ").toLowerCase();
         return `
-        <a data-tsearch="${window.escapeHtml(searchBlob)}" href="#/trainings/${t.id}" class="bg-white rounded-3xl border border-slate-100 shadow-sm hover:shadow-xl transition p-4 flex gap-3">
+        <a data-tsearch="${window.escapeHtml(searchBlob)}" data-tstatus="${attended ? 'done' : 'todo'}" href="#/trainings/${t.id}" class="bg-white rounded-3xl border border-slate-100 shadow-sm hover:shadow-xl transition p-4 flex gap-3">
             <div class="w-20 shrink-0 rounded-2xl bg-cover bg-center relative overflow-hidden" style="${trainingCoverStyleSafe(t)}">
                 <div class="absolute inset-0 bg-black/25 flex flex-col items-center justify-center text-white gap-0.5">
                     <span class="text-lg font-black leading-none">${new Date(t.date).getDate()}</span>
@@ -5830,10 +5839,24 @@ function renderTrainingCatalog() {
         </a>`;
     }).join("");
 
+    const todoCount = list.filter(t => { const reg = window.sel.myRegForTraining(t.id); const att = window.sel.myAttendance(t.id); return !(reg && att); }).length;
+    const doneCount = list.length - todoCount;
+    // Reset ke tab "Belum Diikuti" tiap kali halaman katalog dibuka dari awal, biar user selalu
+    // ketemu training yang masih perlu diambil aksi duluan.
+    window.trainingCatalogTab = "todo";
+
     window.setPage(`
         <div class="mb-3">
             <h1 class="text-base font-black text-slate-800">Training By TNA</h1>
             <p class="text-[10px] text-slate-500">Daftar, hadir, dan isi evaluasi untuk training tatap muka / online.</p>
+        </div>
+        <div class="flex items-center gap-1 flex-wrap mb-3 bg-indigo-50/80 border border-indigo-100 p-1 rounded-xl w-fit max-w-full">
+            <button type="button" data-ttab="todo" onclick="window.switchTrainingCatalogTab('todo')" class="flex items-center gap-1 text-[10px] font-bold px-2 py-1 rounded-lg transition bg-indigo-500 shadow text-white">
+                <i class="fas fa-hourglass-half text-[9px]"></i> Belum Diikuti <span class="bg-white/25 rounded-full px-1">${todoCount}</span>
+            </button>
+            <button type="button" data-ttab="done" onclick="window.switchTrainingCatalogTab('done')" class="flex items-center gap-1 text-[10px] font-bold px-2 py-1 rounded-lg transition text-indigo-500 hover:text-indigo-600 hover:bg-white/60">
+                <i class="fas fa-circle-check text-[9px]"></i> Sudah Diikuti <span class="bg-indigo-100 rounded-full px-1">${doneCount}</span>
+            </button>
         </div>
         <div class="relative w-full sm:w-72 mb-3">
             <i class="fas fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-slate-300 text-xs"></i>
@@ -5844,18 +5867,39 @@ function renderTrainingCatalog() {
         </div>
         <p id="training-catalog-search-empty" class="hide text-center text-xs text-slate-400 py-10">Tidak ada jadwal training yang cocok dengan pencarian.</p>
     `);
+    window.filterTrainingCatalog("");
 }
-// Search nama/trainer/lokasi training di katalog "Training By TNA" milik user — murni
-// manipulasi DOM (tanpa render ulang seluruh halaman) supaya fokus & posisi kursor di kotak
-// pencarian gak ke-reset tiap user ngetik satu huruf.
+// Ganti tab "Belum Diikuti" / "Sudah Diikuti" — murni manipulasi DOM (gak render ulang halaman)
+// biar cepet & posisi scroll gak ke-reset. Style tombol aktif/nonaktif ditoggle manual di sini,
+// filter kartunya sendiri dipusatkan di filterTrainingCatalog biar konsisten sama kotak pencarian.
+window.switchTrainingCatalogTab = function (tab) {
+    window.trainingCatalogTab = tab === "done" ? "done" : "todo";
+    document.querySelectorAll("[data-ttab]").forEach(btn => {
+        const active = btn.getAttribute("data-ttab") === window.trainingCatalogTab;
+        btn.classList.toggle("bg-indigo-500", active);
+        btn.classList.toggle("shadow", active);
+        btn.classList.toggle("text-white", active);
+        btn.classList.toggle("text-indigo-500", !active);
+        btn.classList.toggle("hover:text-indigo-600", !active);
+        btn.classList.toggle("hover:bg-white/60", !active);
+    });
+    const searchInput = document.getElementById("training-catalog-grid")?.parentElement?.querySelector('input[type="text"]');
+    window.filterTrainingCatalog(searchInput ? searchInput.value : "");
+};
+// Search nama/trainer/lokasi training + filter tab "Belum Diikuti"/"Sudah Diikuti" di katalog
+// "Training By TNA" milik user — murni manipulasi DOM (tanpa render ulang seluruh halaman) supaya
+// fokus & posisi kursor di kotak pencarian gak ke-reset tiap user ngetik satu huruf.
 window.filterTrainingCatalog = function (query) {
     const grid = document.getElementById("training-catalog-grid");
     if (!grid) return;
     const q = String(query || "").toLowerCase().trim();
+    const tab = window.trainingCatalogTab === "done" ? "done" : "todo";
     const cardsEls = [...grid.querySelectorAll("[data-tsearch]")];
     let visibleCount = 0;
     cardsEls.forEach(el => {
-        const match = !q || el.getAttribute("data-tsearch").includes(q);
+        const matchSearch = !q || el.getAttribute("data-tsearch").includes(q);
+        const matchTab = el.getAttribute("data-tstatus") === tab;
+        const match = matchSearch && matchTab;
         el.style.display = match ? "" : "none";
         if (match) visibleCount++;
     });
