@@ -1048,11 +1048,40 @@ html.dark .corevalue-wire { background: rgba(96, 165, 250, .2); }
 <!-- ================= MODAL: FORM BUILD/EDIT TRAINING TNA (POPUP) ================= -->
 <div id="modal-training-builder" class="fixed inset-0 z-[10000] hide modal-overlay flex items-center justify-center p-4">
     <div class="bg-white w-full max-w-3xl rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh]">
-        <div class="p-4 border-b flex justify-between items-center bg-amber-50 shrink-0">
-            <h3 id="training-builder-title" class="text-sm font-black text-amber-600"><i class="fas fa-calendar-days mr-1"></i> Jadwal Training TNA</h3>
-            <button onclick="window.closeTrainingBuilder()" class="text-slate-400 hover:text-slate-700"><i class="fas fa-times"></i></button>
+        <div class="p-4 border-b flex justify-between items-center bg-amber-50 shrink-0 gap-2 flex-wrap">
+            <h3 id="training-builder-title" class="text-sm font-black text-amber-600 shrink-0"><i class="fas fa-calendar-days mr-1"></i> Jadwal Training TNA</h3>
+            <div class="flex items-center gap-2 ml-auto flex-wrap justify-end">
+                <button onclick="window.openMaterialPicker()" class="text-[11px] font-bold text-indigo-600 hover:text-indigo-800 bg-indigo-50 px-2.5 py-1.5 rounded-lg transition whitespace-nowrap"><i class="fas fa-box-archive mr-1"></i> Pakai dari Bank Materi</button>
+                <button onclick="window.guardedClick(this, () => window.saveTrainingAsMaterial())" class="text-[11px] font-bold text-indigo-600 hover:text-indigo-800 bg-indigo-50 px-2.5 py-1.5 rounded-lg transition whitespace-nowrap"><i class="fas fa-floppy-disk mr-1"></i> Simpan modul/kuis/tugas ini ke Bank Materi</button>
+                <button onclick="window.closeTrainingBuilder()" class="text-slate-400 hover:text-slate-700 shrink-0"><i class="fas fa-times"></i></button>
+            </div>
         </div>
         <div id="training-builder-body" class="p-4 overflow-y-auto space-y-2"></div>
+    </div>
+</div>
+
+<!-- ================= MODAL: FORM BUILD/EDIT BANK MATERI (POPUP) =================
+     "Bank Materi" = template modul/kuis/tugas yang tersimpan terpisah dari jadwal training,
+     supaya bisa dipakai berkali-kali oleh banyak jadwal Training TNA (mis. materi "Teknik
+     Closing" dipakai lagi tiap bulan buat kelas refreshment, pesertanya boleh sama/beda). -->
+<div id="modal-material-builder" class="fixed inset-0 z-[10000] hide modal-overlay flex items-center justify-center p-4">
+    <div class="bg-white w-full max-w-3xl rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh]">
+        <div class="p-4 border-b flex justify-between items-center bg-indigo-50 shrink-0">
+            <h3 id="material-builder-title" class="text-sm font-black text-indigo-600"><i class="fas fa-box-archive mr-1"></i> Materi Bank</h3>
+            <button onclick="window.closeMaterialBuilder()" class="text-slate-400 hover:text-slate-700"><i class="fas fa-times"></i></button>
+        </div>
+        <div id="material-builder-body" class="p-4 overflow-y-auto space-y-2"></div>
+    </div>
+</div>
+
+<!-- ================= MODAL: PILIH DARI BANK MATERI (dipanggil dari form Training TNA) ================= -->
+<div id="modal-material-picker" class="fixed inset-0 z-[10001] hide modal-overlay flex items-center justify-center p-4">
+    <div class="bg-white w-full max-w-lg rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[85vh]">
+        <div class="p-4 border-b flex justify-between items-center bg-indigo-50 shrink-0">
+            <h3 class="text-sm font-black text-indigo-600"><i class="fas fa-box-archive mr-1"></i> Pilih dari Bank Materi</h3>
+            <button onclick="window.closeModal('modal-material-picker')" class="text-slate-400 hover:text-slate-700"><i class="fas fa-times"></i></button>
+        </div>
+        <div id="material-picker-body" class="p-4 overflow-y-auto space-y-2"></div>
     </div>
 </div>
 
@@ -1360,6 +1389,7 @@ window.STATE = {
     competencies: [],
     tnaResults: [],
     trainingImportMappings: [],
+    materialBank: [],
     ready: false
 };
 
@@ -1400,6 +1430,11 @@ function startLiveListeners() {
     bind("certificates", "certificates");
     bind("trainingRegistrations", "trainingRegs");
     bind("tnaResults", "tnaResults");
+    // "Bank Materi": template modul/kuis/tugas yang bisa dipakai ulang buat bikin banyak jadwal
+    // Training TNA (mis. refreshment bulanan) tanpa perlu input ulang materi dari nol tiap kali.
+    // Datanya kecil & dikelola admin saja, tapi dipasang real-time biar konsisten kalau ada
+    // admin lain yang edit di tab/device lain.
+    bind("materialBank", "materialBank");
     // Mapping "nama training di LMS lama" -> "course/modul/materi di sistem baru" (dipakai
     // fitur Import Training Lama), datanya kecil & jarang berubah tapi enak kalau realtime
     // biar kalau superadmin edit mapping di tab lain langsung sinkron.
@@ -2383,7 +2418,7 @@ function resolveRoute() {
 function adminSidebarKeyFor(seg) {
     const key = "admin/" + seg;
     const onboardingSubTabs = ["admin/courses", "admin/onboarding-schedule", "admin/onboarding-feedback"];
-    const tnaSubTabs = ["admin/trainings", "admin/tna-results", "admin/competencies", "admin/tna-feedback"];
+    const tnaSubTabs = ["admin/trainings", "admin/material-bank", "admin/tna-results", "admin/competencies", "admin/tna-feedback"];
     const sharedSubTabs = ["admin/assignments", "admin/quiz-attempts"];
     if (onboardingSubTabs.includes(key) || (sharedSubTabs.includes(key) && window.adminNavContext !== "tna")) {
         return "admin/onboarding-schedule";
@@ -3641,239 +3676,6 @@ function renderCompanyKpiChart(stats, token) {
     });
 }
 
-// ================= TREN KETERLAKSANAAN & KELULUSAN TNA BULANAN (Dashboard Admin) =================
-// Bar (sumbu kiri) = jumlah SESI Training TNA yang sudah terlaksana per bulan (tahun berjalan).
-// Line (sumbu kanan) = jumlah PESERTA LULUS (sertifikat terbit) dari sesi-sesi di bulan itu.
-// Sesi & kelulusan dikelompokkan berdasarkan bulan TANGGAL TRAINING-nya (bukan tanggal sertifikat
-// terbit) — konsisten dengan cara Laporan Keterlaksanaan per-training menghitung target & hadir
-// (lihat renderTrainingReport / window.trainingTargetEmployees).
-function computeTnaMonthlyStats() {
-    const year = new Date().getFullYear();
-    const now = Date.now();
-    const S = window.STATE;
-    const trainingsThisYear = S.trainings.filter(t => t.date && new Date(t.date).getFullYear() === year);
-    // "Terlaksana" = sesi yang tanggalnya udah lewat/hari ini, bukan jadwal yang masih akan datang.
-    const doneTrainings = trainingsThisYear.filter(t => new Date(t.date).getTime() <= now);
-
-    const sessions = new Array(12).fill(0);
-    const targeted = new Array(12).fill(0);
-    const attended = new Array(12).fill(0);
-    const passed = new Array(12).fill(0);
-
-    doneTrainings.forEach(t => {
-        const m = new Date(t.date).getMonth();
-        sessions[m] += 1;
-        targeted[m] += window.trainingTargetEmployees(t).length;
-        attended[m] += S.attendance.filter(a => a.trainingId === t.id).length;
-        passed[m] += S.certificates.filter(c => c.trainingId === t.id).length;
-    });
-
-    const totalSessions = sessions.reduce((s, v) => s + v, 0);
-    if (!totalSessions) {
-        return { sessions, passed, attended, targeted, year, hasData: false, totalSessions: 0, totalPassed: 0, totalAttended: 0, totalTargeted: 0 };
-    }
-
-    const totalPassed = passed.reduce((s, v) => s + v, 0);
-    const totalAttended = attended.reduce((s, v) => s + v, 0);
-    const totalTargeted = targeted.reduce((s, v) => s + v, 0);
-    const attendancePct = totalTargeted ? Math.round((totalAttended / totalTargeted) * 100) : 0;
-    const passPct = totalAttended ? Math.round((totalPassed / totalAttended) * 100) : 0;
-
-    const monthsWithSessions = sessions.map((v, i) => ({ v, i })).filter(x => x.v > 0);
-    const busiest = monthsWithSessions.reduce((a, b) => (b.v > a.v ? b : a));
-    const monthsWithPassed = passed.map((v, i) => ({ v, i })).filter(x => x.v > 0);
-    const bestPassMonth = monthsWithPassed.length ? monthsWithPassed.reduce((a, b) => (b.v > a.v ? b : a)) : null;
-
-    return {
-        sessions, passed, attended, targeted, year, hasData: true,
-        totalSessions, totalPassed, totalAttended, totalTargeted, attendancePct, passPct,
-        busiest, bestPassMonth
-    };
-}
-
-function buildTnaMonthlyResumeSentence(stats) {
-    if (!stats.hasData) {
-        return `Belum ada sesi Training TNA yang terlaksana di tahun ${stats.year}. Jadwalkan training lewat menu <b>Training TNA → Tambah Training</b>.`;
-    }
-    const { totalSessions, totalPassed, totalAttended, attendancePct, passPct, busiest, bestPassMonth, year } = stats;
-    let s = `Sepanjang tahun ${year}, sudah ada <b>${totalSessions} sesi</b> Training TNA yang terlaksana dengan total <b>${totalAttended} peserta hadir</b> (keterlaksanaan <b>${attendancePct}%</b> dari target undangan), dan <b>${totalPassed} peserta lulus</b> (kelulusan <b>${passPct}%</b> dari yang hadir). `;
-    if (busiest) s += `Bulan tersibuk ada di <b>${KPI_MONTH_NAMES_FULL[busiest.i]}</b> dengan ${busiest.v} sesi. `;
-    if (bestPassMonth) s += `Kelulusan terbanyak tercatat di bulan <b>${KPI_MONTH_NAMES_FULL[bestPassMonth.i]}</b> dengan ${bestPassMonth.v} peserta lulus.`;
-    return s;
-}
-
-function tnaMonthlyTrendCard(stats) {
-    const resume = buildTnaMonthlyResumeSentence(stats);
-    const badges = stats.hasData
-        ? `<span class="text-xs font-black px-2.5 py-1 rounded-full bg-amber-50 text-amber-600">${stats.totalSessions} Sesi</span>
-           <span class="text-xs font-black px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-600">${stats.totalPassed} Lulus</span>`
-        : "";
-    return `
-    <div class="bg-white rounded-3xl border border-slate-100 shadow-sm p-4 mb-3">
-        <div class="flex flex-wrap items-center justify-between gap-2 mb-2">
-            <h3 class="font-black text-slate-700 text-sm"><i class="fas fa-chalkboard-user text-amber-500 mr-1"></i> Tren Keterlaksanaan & Kelulusan TNA ${stats.year || new Date().getFullYear()}</h3>
-            <div class="flex items-center gap-2">${badges}</div>
-        </div>
-        ${stats.hasData
-            ? `<div class="relative h-56 sm:h-72" id="tna-monthly-chart-wrap"><canvas id="tna-monthly-chart"></canvas></div>`
-            : `<div class="h-40 flex flex-col items-center justify-center text-center gap-1">
-                    <i class="fas fa-chart-simple text-3xl text-slate-200"></i>
-                    <p class="text-sm text-slate-400 max-w-xs">Belum ada sesi Training TNA yang terlaksana tahun ini.</p>
-               </div>`}
-        <div class="mt-3 bg-amber-50/60 rounded-2xl p-3.5 flex items-start gap-2.5">
-            <i class="fas fa-sparkles text-amber-500 mt-0.5 shrink-0"></i>
-            <p class="text-[9px] text-slate-600 leading-relaxed">${resume}</p>
-        </div>
-    </div>`;
-}
-
-window.__tnaMonthlyRenderToken = window.__tnaMonthlyRenderToken || 0;
-
-function waitForChartJsThenRenderTnaMonthly(stats, attempt, token) {
-    attempt = attempt || 0;
-    if (token !== window.__tnaMonthlyRenderToken) return; // sudah ada render halaman yang lebih baru
-    const canvas = document.getElementById("tna-monthly-chart");
-    if (!canvas) return; // halaman sudah berpindah, gak perlu render lagi
-
-    if (typeof Chart === "undefined") {
-        if (attempt < 20) {
-            setTimeout(() => waitForChartJsThenRenderTnaMonthly(stats, attempt + 1, token), 100);
-        } else {
-            console.error("Chart.js tidak tersedia, chart Keterlaksanaan & Kelulusan TNA tidak bisa ditampilkan.");
-            showTnaMonthlyChartError("Grafik gagal dimuat. Coba muat ulang halaman.");
-        }
-        return;
-    }
-    renderTnaMonthlyChart(stats, token);
-}
-
-function showTnaMonthlyChartError(message) {
-    const wrap = document.getElementById("tna-monthly-chart-wrap");
-    if (!wrap) return;
-    wrap.innerHTML = `
-        <div class="h-full flex flex-col items-center justify-center text-center gap-2">
-            <i class="fas fa-triangle-exclamation text-2xl text-amber-300"></i>
-            <p class="text-xs text-slate-400 max-w-[240px]">${window.escapeHtml(message)}</p>
-            <button onclick="window.location.reload()" class="text-xs font-black text-indigo-500 hover:underline">Muat ulang halaman</button>
-        </div>`;
-}
-
-let __tnaMonthlyChartInstance = null;
-function renderTnaMonthlyChart(stats, token) {
-    if (!stats.hasData) return;
-    if (typeof token !== "undefined" && token !== window.__tnaMonthlyRenderToken) return;
-    const canvas = document.getElementById("tna-monthly-chart");
-    if (!canvas || typeof Chart === "undefined") return;
-
-    // Sama seperti chart KPI: tunggu 1 frame biar layout kartu udah kelar duluan, supaya
-    // canvas gak kebaca tinggi 0 pas render pertama.
-    requestAnimationFrame(() => {
-        if (typeof token !== "undefined" && token !== window.__tnaMonthlyRenderToken) return;
-        const liveCanvas = document.getElementById("tna-monthly-chart");
-        if (!liveCanvas) return;
-
-        try {
-            if (__tnaMonthlyChartInstance) { __tnaMonthlyChartInstance.destroy(); __tnaMonthlyChartInstance = null; }
-            const ctx = liveCanvas.getContext("2d");
-
-            __tnaMonthlyChartInstance = new Chart(ctx, {
-                type: "bar",
-                data: {
-                    labels: KPI_MONTH_NAMES_SHORT,
-                    datasets: [
-                        {
-                            type: "bar",
-                            label: "Sesi Terlaksana",
-                            data: stats.sessions,
-                            backgroundColor: "rgba(245,158,11,.55)",
-                            borderColor: "#f59e0b",
-                            borderWidth: 1.5,
-                            borderRadius: 6,
-                            maxBarThickness: 28,
-                            yAxisID: "y",
-                            order: 2,
-                            valueLabelColor: "#b45309",
-                            valueLabelOffset: -6,
-                            hideZeroValueLabels: true,
-                        },
-                        {
-                            type: "line",
-                            label: "Peserta Lulus",
-                            data: stats.passed,
-                            borderColor: "#10b981",
-                            backgroundColor: "#10b981",
-                            borderWidth: 2.5,
-                            tension: 0.4,
-                            pointRadius: 4,
-                            pointHoverRadius: 6,
-                            pointBackgroundColor: "#10b981",
-                            pointBorderColor: "#fff",
-                            pointBorderWidth: 2,
-                            yAxisID: "y1",
-                            order: 1,
-                            valueLabelColor: "#059669",
-                            valueLabelOffset: -10,
-                            hideZeroValueLabels: true,
-                        }
-                    ]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    layout: { padding: { top: 22 } },
-                    interaction: { intersect: false, mode: "index" },
-                    plugins: {
-                        legend: {
-                            display: true,
-                            position: "top",
-                            align: "end",
-                            labels: { boxWidth: 10, boxHeight: 10, usePointStyle: true, pointStyle: "circle", font: (c) => ({ size: c.chart.width < 480 ? 10 : 11, weight: "bold" }), color: "#64748b" }
-                        },
-                        tooltip: {
-                            backgroundColor: "#0f172a",
-                            titleFont: { weight: "bold" },
-                            padding: 10,
-                            cornerRadius: 10,
-                            callbacks: {
-                                afterBody: (items) => {
-                                    if (!items.length) return "";
-                                    const idx = items[0].dataIndex;
-                                    const tgt = stats.targeted[idx] || 0;
-                                    const att = stats.attended[idx] || 0;
-                                    return tgt ? [`Hadir: ${att}/${tgt} target`] : [];
-                                }
-                            }
-                        }
-                    },
-                    scales: {
-                        y: {
-                            position: "left",
-                            beginAtZero: true,
-                            ticks: { precision: 0, font: (c) => ({ size: c.chart.width < 480 ? 9 : 10 }), color: "#94a3b8" },
-                            grid: { color: "#f1f5f9" },
-                            title: { display: true, text: "Sesi", font: { size: 10, weight: "bold" }, color: "#94a3b8" }
-                        },
-                        y1: {
-                            position: "right",
-                            beginAtZero: true,
-                            ticks: { precision: 0, font: (c) => ({ size: c.chart.width < 480 ? 9 : 10 }), color: "#94a3b8" },
-                            grid: { display: false },
-                            title: { display: true, text: "Peserta Lulus", font: { size: 10, weight: "bold" }, color: "#94a3b8" }
-                        },
-                        x: {
-                            grid: { display: false },
-                            ticks: { font: (c) => ({ size: c.chart.width < 480 ? 9 : 10, weight: "bold" }), color: "#94a3b8" }
-                        }
-                    }
-                }
-            });
-        } catch (err) {
-            console.error("Gagal render chart Keterlaksanaan & Kelulusan TNA:", err);
-            showTnaMonthlyChartError("Terjadi kesalahan saat menggambar grafik.");
-        }
-    });
-}
-
 // ================= EFEKTIVITAS TRAINING TNA — % PESERTA YANG KPI-NYA NAIK (Dashboard Admin) =================
 // Efektivitas per training = (jumlah peserta hadir yang KPI-nya naik) ÷ (jumlah peserta hadir) × 100%.
 // "Naik" = KPI bulan training > KPI bulan sebelum training. Peserta hadir yang datanya bolong
@@ -3905,9 +3707,14 @@ function computeTrainingGrowth(t) {
     // atas). Buat non-admin, window.STATE.attendance sudah di-scope cuma punya sendiri, jadi kalau
     // dibaca langsung dari sini angka KPI training-nya bakal kosong/salah.
     const attendees = reportData("attendance").filter(a => a.trainingId === t.id);
+    // Diundang & Lulus per training — sama sumber datanya dengan computeTnaGrowthStats (agregat
+    // bulanan), ditambahkan di sini juga supaya tabel rincian per-training (halaman
+    // /admin/training-growth) bisa nampilin kolom yang sama persis dengan seri di chart.
+    const targetedCount = window.trainingTargetEmployees(t).length;
+    const passedCount = reportData("certificates").filter(c => c.trainingId === t.id).length;
 
     if (trainingMonth <= 1) {
-        return { training: t, month: trainingMonth, beforeMonth: null, attendedCount: attendees.length, naikCount: 0, effectivenessPct: null, eligible: false, reason: "no-prev-month", rows: [] };
+        return { training: t, month: trainingMonth, beforeMonth: null, attendedCount: attendees.length, targetedCount, passedCount, naikCount: 0, effectivenessPct: null, eligible: false, reason: "no-prev-month", rows: [] };
     }
 
     const beforeMonth = trainingMonth - 1;
@@ -3933,56 +3740,111 @@ function computeTrainingGrowth(t) {
     const naikCount = rows.filter(r => r.naik).length;
 
     if (attendedCount < TNA_GROWTH_MIN_SAMPLE) {
-        return { training: t, month: trainingMonth, beforeMonth, attendedCount, naikCount, effectivenessPct: null, eligible: false, reason: "min-sample", rows };
+        return { training: t, month: trainingMonth, beforeMonth, attendedCount, targetedCount, passedCount, naikCount, effectivenessPct: null, eligible: false, reason: "min-sample", rows };
     }
 
     const effectivenessPct = Math.round((naikCount / attendedCount) * 1000) / 10;
 
-    return { training: t, month: trainingMonth, beforeMonth, attendedCount, naikCount, effectivenessPct, eligible: true, rows };
+    return { training: t, month: trainingMonth, beforeMonth, attendedCount, targetedCount, passedCount, naikCount, effectivenessPct, eligible: true, rows };
 }
 
-function computeTnaGrowthStats() {
-    const year = new Date().getFullYear();
+function computeTnaGrowthStats(yearOverride) {
+    const year = yearOverride || new Date().getFullYear();
     const now = Date.now();
     const S = window.STATE;
-    const doneTrainings = S.trainings.filter(t => t.date && new Date(t.date).getFullYear() === year && new Date(t.date).getTime() <= now);
+    const trainingsThisYear = S.trainings.filter(t => t.date && new Date(t.date).getFullYear() === year);
+    // "Terlaksana" = sesi yang tanggalnya udah lewat/hari ini, bukan jadwal yang masih akan datang.
+    const doneTrainings = trainingsThisYear.filter(t => new Date(t.date).getTime() <= now);
 
+    // ---- Sesi, target undangan, hadir, lulus PER BULAN (digabung dari eks-chart "Tren
+    // Keterlaksanaan & Kelulusan TNA" yang sekarang dilebur ke sini) — dikelompokkan berdasarkan
+    // bulan TANGGAL TRAINING-nya, konsisten dgn cara Laporan Keterlaksanaan per-training menghitung
+    // target & hadir (lihat renderTrainingReport / window.trainingTargetEmployees).
+    const sessions = new Array(12).fill(0);
+    const targeted = new Array(12).fill(0);
+    const attended = new Array(12).fill(0);
+    const passed = new Array(12).fill(0);
+    doneTrainings.forEach(t => {
+        const m = new Date(t.date).getMonth();
+        sessions[m] += 1;
+        targeted[m] += window.trainingTargetEmployees(t).length;
+        attended[m] += S.attendance.filter(a => a.trainingId === t.id).length;
+        passed[m] += S.certificates.filter(c => c.trainingId === t.id).length;
+    });
+    const totalSessions = sessions.reduce((s, v) => s + v, 0);
+    const totalTargeted = targeted.reduce((s, v) => s + v, 0);
+    const totalAttended = attended.reduce((s, v) => s + v, 0);
+    const totalPassed = passed.reduce((s, v) => s + v, 0);
+    const attendancePct = totalTargeted ? Math.round((totalAttended / totalTargeted) * 100) : 0;
+    const passPct = totalAttended ? Math.round((totalPassed / totalAttended) * 100) : 0;
+
+    const monthsWithSessions = sessions.map((v, i) => ({ v, i })).filter(x => x.v > 0);
+    const busiest = monthsWithSessions.length ? monthsWithSessions.reduce((a, b) => (b.v > a.v ? b : a)) : null;
+    const monthsWithPassed = passed.map((v, i) => ({ v, i })).filter(x => x.v > 0);
+    const bestPassMonth = monthsWithPassed.length ? monthsWithPassed.reduce((a, b) => (b.v > a.v ? b : a)) : null;
+
+    // ---- Peserta yang KPI-nya naik (dari yang hadir) PER BULAN & PER TRAINING ----
     const perTraining = doneTrainings.map(computeTrainingGrowth).sort((a, b) => new Date(a.training.date) - new Date(b.training.date));
     const eligible = perTraining.filter(x => x.eligible);
 
-    const monthlyAttendedCount = new Array(12).fill(0);
+    // null (bukan 0) di bulan yang gak punya training "eligible" sama sekali, supaya garis "Naik
+    // KPI" di chart PUTUS di bulan itu — beda makna sama "0 peserta naik" yang datanya beneran ada.
+    const monthlyNaikCount = new Array(12).fill(null);
     const monthlyEffPctSum = new Array(12).fill(0);
     const monthlyEffCount = new Array(12).fill(0);
     eligible.forEach(x => {
-        monthlyAttendedCount[x.month - 1] += x.attendedCount;
-        monthlyEffPctSum[x.month - 1] += x.effectivenessPct;
-        monthlyEffCount[x.month - 1] += 1;
+        const idx = x.month - 1;
+        monthlyNaikCount[idx] = (monthlyNaikCount[idx] || 0) + x.naikCount;
+        monthlyEffPctSum[idx] += x.effectivenessPct;
+        monthlyEffCount[idx] += 1;
     });
     // Rata-rata SEDERHANA antar-training di bulan itu (bukan weighted by peserta) — sesuai cara
     // ngitung yang disepakati: persentase tiap training di-average, bukan dijumlah lalu dibagi total peserta.
     const monthlyAvgEffectiveness = monthlyEffPctSum.map((sum, i) => monthlyEffCount[i] ? Math.round((sum / monthlyEffCount[i]) * 10) / 10 : null);
 
+    const base = {
+        perTraining, year, sessions, targeted, attended, passed,
+        monthlyNaikCount, monthlyAvgEffectiveness,
+        totalTrainings: doneTrainings.length, totalSessions, totalTargeted, totalAttended, totalPassed,
+        attendancePct, passPct, busiest, bestPassMonth,
+    };
+
+    if (!totalSessions) {
+        return { ...base, hasData: false, hasEffectivenessData: false, eligibleCount: 0 };
+    }
+
     if (!eligible.length) {
-        return { perTraining, year, hasData: false, monthlyAttendedCount, monthlyAvgEffectiveness, totalTrainings: doneTrainings.length, eligibleCount: 0 };
+        return { ...base, hasData: true, hasEffectivenessData: false, eligibleCount: 0 };
     }
 
     const overallAvgEffectiveness = Math.round((eligible.reduce((s, x) => s + x.effectivenessPct, 0) / eligible.length) * 10) / 10;
     const best = eligible.reduce((a, b) => (b.effectivenessPct > a.effectivenessPct ? b : a));
     const worst = eligible.reduce((a, b) => (b.effectivenessPct < a.effectivenessPct ? b : a));
+    const totalNaik = eligible.reduce((s, x) => s + x.naikCount, 0);
+    const totalAttendedEligible = eligible.reduce((s, x) => s + x.attendedCount, 0);
 
     return {
-        perTraining, year, hasData: true, monthlyAttendedCount, monthlyAvgEffectiveness,
-        eligibleCount: eligible.length, totalTrainings: doneTrainings.length,
-        overallAvgEffectiveness, best, worst
+        ...base, hasData: true, hasEffectivenessData: true,
+        eligibleCount: eligible.length, overallAvgEffectiveness, best, worst,
+        totalNaik, totalAttendedEligible,
     };
 }
 
 function buildTnaGrowthResumeSentence(stats) {
     if (!stats.hasData) {
-        return `Belum ada training TNA tahun ${stats.year} yang datanya cukup buat dihitung efektivitasnya (minimal ${TNA_GROWTH_MIN_SAMPLE} peserta hadir, dan bukan training bulan Januari). Lengkapi data KPI lewat menu <b>Data Karyawan → Upload Data Karyawan</b>.`;
+        return `Belum ada sesi Training TNA yang terlaksana di tahun ${stats.year}. Jadwalkan training lewat menu <b>Training TNA → Tambah Training</b>.`;
     }
-    const { overallAvgEffectiveness, best, worst, eligibleCount, totalTrainings, year } = stats;
-    let s = `Dari <b>${eligibleCount}/${totalTrainings} training TNA</b> tahun ${year} yang datanya cukup dihitung, rata-rata <b>${overallAvgEffectiveness}%</b> peserta KPI-nya naik setelah ikut training (bulan training dibanding bulan sebelumnya). `;
+    const { totalTrainings, totalTargeted, totalAttended, totalPassed, attendancePct, passPct, busiest, bestPassMonth, year } = stats;
+    let s = `Sepanjang tahun ${year}, sudah ada <b>${totalTrainings} sesi</b> Training TNA yang terlaksana dengan total <b>${totalTargeted} peserta diundang</b>, <b>${totalAttended} hadir</b> (keterlaksanaan <b>${attendancePct}%</b> dari target undangan), dan <b>${totalPassed} lulus</b> (kelulusan <b>${passPct}%</b> dari yang hadir). `;
+    if (busiest) s += `Bulan tersibuk ada di <b>${KPI_MONTH_NAMES_FULL[busiest.i]}</b> dengan ${busiest.v} sesi. `;
+    if (bestPassMonth) s += `Kelulusan terbanyak tercatat di bulan <b>${KPI_MONTH_NAMES_FULL[bestPassMonth.i]}</b> dengan ${bestPassMonth.v} peserta lulus. `;
+
+    if (!stats.hasEffectivenessData) {
+        s += `Efektivitas (persentase peserta yang KPI-nya naik) belum bisa dihitung — butuh minimal ${TNA_GROWTH_MIN_SAMPLE} peserta hadir dan bukan training bulan Januari (KPI bulan sebelumnya gak ada datanya). Lengkapi data KPI lewat menu <b>Data Karyawan → Upload Data Karyawan</b>.`;
+        return s;
+    }
+    const { overallAvgEffectiveness, best, worst, eligibleCount, totalNaik, totalAttendedEligible } = stats;
+    s += `Dari <b>${eligibleCount}/${totalTrainings} training</b> yang datanya cukup dihitung, rata-rata <b>${overallAvgEffectiveness}%</b> peserta KPI-nya naik setelah ikut training (<b>${totalNaik}/${totalAttendedEligible} peserta hadir</b>). `;
     if (best.training.id !== worst.training.id) {
         s += `Efektivitas tertinggi ada di training <b>${window.escapeHtml(best.training.title)}</b> (${best.effectivenessPct}% peserta naik), sementara <b>${window.escapeHtml(worst.training.title)}</b> paling perlu dievaluasi lagi (${worst.effectivenessPct}% peserta naik).`;
     }
@@ -3992,20 +3854,22 @@ function buildTnaGrowthResumeSentence(stats) {
 function tnaGrowthTrendCard(stats) {
     const resume = buildTnaGrowthResumeSentence(stats);
     const badges = stats.hasData
-        ? `<span class="text-xs font-black px-2.5 py-1 rounded-full bg-indigo-50 text-indigo-600">${stats.overallAvgEffectiveness}% Rata² Naik</span>
-           <span class="text-xs font-black px-2.5 py-1 rounded-full bg-slate-100 text-slate-500">${stats.eligibleCount}/${stats.totalTrainings} Training</span>`
+        ? `<span class="text-xs font-black px-2.5 py-1 rounded-full bg-amber-50 text-amber-600">${stats.totalTrainings} Sesi</span>
+           <span class="text-xs font-black px-2.5 py-1 rounded-full bg-indigo-50 text-indigo-600">${stats.totalAttended} Hadir</span>
+           <span class="text-xs font-black px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-600">${stats.totalPassed} Lulus</span>
+           ${stats.hasEffectivenessData ? `<span class="text-xs font-black px-2.5 py-1 rounded-full bg-violet-50 text-violet-600">${stats.overallAvgEffectiveness}% Naik KPI</span>` : ""}`
         : "";
     return `
     <div class="bg-white rounded-3xl border border-slate-100 shadow-sm p-4 mb-3">
         <div class="flex flex-wrap items-center justify-between gap-2 mb-2">
-            <h3 class="font-black text-slate-700 text-sm"><i class="fas fa-arrow-trend-up text-indigo-500 mr-1"></i> Efektivitas Training TNA — % Peserta KPI Naik ${stats.year || new Date().getFullYear()}</h3>
-            <div class="flex items-center gap-2">${badges}</div>
+            <h3 class="font-black text-slate-700 text-sm"><i class="fas fa-arrow-trend-up text-indigo-500 mr-1"></i> Efektivitas Training TNA ${stats.year || new Date().getFullYear()}</h3>
+            <div class="flex items-center gap-2 flex-wrap">${badges}</div>
         </div>
         ${stats.hasData
             ? `<div class="relative h-56 sm:h-72" id="tna-growth-chart-wrap"><canvas id="tna-growth-chart"></canvas></div>`
             : `<div class="h-40 flex flex-col items-center justify-center text-center gap-1">
                     <i class="fas fa-chart-simple text-3xl text-slate-200"></i>
-                    <p class="text-sm text-slate-400 max-w-xs">Belum ada training TNA dengan data efektivitas yang cukup tahun ini.</p>
+                    <p class="text-sm text-slate-400 max-w-xs">Belum ada sesi Training TNA yang terlaksana tahun ini.</p>
                </div>`}
         <div class="mt-3 bg-indigo-50/60 rounded-2xl p-3.5 flex items-start gap-2.5">
             <i class="fas fa-sparkles text-indigo-500 mt-0.5 shrink-0"></i>
@@ -4014,6 +3878,7 @@ function tnaGrowthTrendCard(stats) {
         <a href="#/admin/training-growth" class="mt-3 inline-flex items-center gap-1 text-xs font-black text-indigo-500 hover:underline"><i class="fas fa-table-list"></i> Lihat rincian per training →</a>
     </div>`;
 }
+
 
 window.__tnaGrowthRenderToken = window.__tnaGrowthRenderToken || 0;
 
@@ -4068,21 +3933,64 @@ function renderTnaGrowthChart(stats, token) {
                     labels: KPI_MONTH_NAMES_SHORT,
                     datasets: [
                         {
+                            // Jumlah sesi training yang terlaksana bulan itu — skalanya jauh lebih
+                            // kecil (paling banyak belasan) dibanding jumlah peserta, makanya
+                            // dipisah ke sumbu kiri sendiri ("Sesi").
                             type: "bar",
-                            label: "Peserta Hadir",
-                            data: stats.monthlyAttendedCount,
-                            backgroundColor: "rgba(99,102,241,.45)",
-                            borderColor: "#6366f1",
+                            label: "Sesi Terlaksana",
+                            data: stats.sessions,
+                            backgroundColor: "rgba(245,158,11,.55)",
+                            borderColor: "#f59e0b",
                             borderWidth: 1.5,
                             borderRadius: 6,
-                            maxBarThickness: 28,
+                            maxBarThickness: 24,
                             yAxisID: "y",
-                            order: 2,
+                            order: 5,
+                            valueLabelColor: "#b45309",
+                            valueLabelOffset: -6,
+                            hideZeroValueLabels: true,
                         },
                         {
                             type: "line",
-                            label: "Rata² % Peserta KPI Naik",
-                            data: stats.monthlyAvgEffectiveness,
+                            label: "Diundang",
+                            data: stats.targeted,
+                            borderColor: "#94a3b8",
+                            backgroundColor: "#94a3b8",
+                            borderWidth: 2,
+                            borderDash: [5, 4],
+                            tension: 0.4,
+                            pointRadius: 3,
+                            pointHoverRadius: 5,
+                            pointBackgroundColor: "#94a3b8",
+                            pointBorderColor: "#fff",
+                            pointBorderWidth: 1.5,
+                            yAxisID: "y1",
+                            order: 4,
+                            hideValueLabels: true,
+                        },
+                        {
+                            type: "line",
+                            label: "Hadir",
+                            data: stats.attended,
+                            borderColor: "#4338ca",
+                            backgroundColor: "#4338ca",
+                            borderWidth: 2.5,
+                            tension: 0.4,
+                            pointRadius: 4,
+                            pointHoverRadius: 6,
+                            pointBackgroundColor: "#4338ca",
+                            pointBorderColor: "#fff",
+                            pointBorderWidth: 2,
+                            yAxisID: "y1",
+                            order: 3,
+                            valueLabelColor: "#4338ca",
+                            valueLabelOffset: -10,
+                            hideZeroValueLabels: true,
+                        },
+                        {
+                            type: "line",
+                            label: "Lulus",
+                            data: stats.passed,
                             borderColor: "#10b981",
                             backgroundColor: "#10b981",
                             borderWidth: 2.5,
@@ -4092,9 +4000,35 @@ function renderTnaGrowthChart(stats, token) {
                             pointBackgroundColor: "#10b981",
                             pointBorderColor: "#fff",
                             pointBorderWidth: 2,
+                            yAxisID: "y1",
+                            order: 2,
+                            valueLabelColor: "#059669",
+                            valueLabelOffset: 14,
+                            hideZeroValueLabels: true,
+                        },
+                        {
+                            // Peserta hadir yang KPI-nya naik (bulan training dibanding bulan
+                            // sebelumnya) — null (garis putus) di bulan yang gak punya training
+                            // "eligible" (lihat computeTnaGrowthStats), BUKAN 0.
+                            type: "line",
+                            label: "Naik KPI",
+                            data: stats.monthlyNaikCount,
                             spanGaps: true,
+                            borderColor: "#8b5cf6",
+                            backgroundColor: "#8b5cf6",
+                            borderWidth: 2.5,
+                            borderDash: [2, 3],
+                            tension: 0.4,
+                            pointRadius: 4,
+                            pointHoverRadius: 6,
+                            pointBackgroundColor: "#8b5cf6",
+                            pointBorderColor: "#fff",
+                            pointBorderWidth: 2,
                             yAxisID: "y1",
                             order: 1,
+                            valueLabelColor: "#7c3aed",
+                            valueLabelOffset: -10,
+                            hideZeroValueLabels: true,
                         }
                     ]
                 },
@@ -4108,7 +4042,7 @@ function renderTnaGrowthChart(stats, token) {
                             display: true,
                             position: "top",
                             align: "end",
-                            labels: { boxWidth: 10, boxHeight: 10, usePointStyle: true, pointStyle: "circle", font: (c) => ({ size: c.chart.width < 480 ? 10 : 11, weight: "bold" }), color: "#64748b" }
+                            labels: { boxWidth: 10, boxHeight: 10, usePointStyle: true, pointStyle: "circle", font: (c) => ({ size: c.chart.width < 480 ? 9 : 10, weight: "bold" }), color: "#64748b" }
                         },
                         tooltip: {
                             backgroundColor: "#0f172a",
@@ -4116,9 +4050,24 @@ function renderTnaGrowthChart(stats, token) {
                             padding: 10,
                             cornerRadius: 10,
                             callbacks: {
-                                label: (c) => c.dataset.yAxisID === "y1"
-                                    ? (c.parsed.y === null ? ` ${c.dataset.label}: belum ada data` : ` ${c.dataset.label}: ${c.parsed.y}%`)
-                                    : ` ${c.dataset.label}: ${c.parsed.y}`
+                                label: (c) => c.parsed.y === null ? ` ${c.dataset.label}: belum ada data` : ` ${c.dataset.label}: ${c.parsed.y}`,
+                                // Info persentase (keterlaksanaan, kelulusan, efektivitas naik KPI)
+                                // ditaruh di sini, bukan jadi garis terpisah, biar chart-nya gak
+                                // makin penuh sesak sama sumbu ke-3.
+                                afterBody: (items) => {
+                                    if (!items.length) return "";
+                                    const idx = items[0].dataIndex;
+                                    const tgt = stats.targeted[idx] || 0;
+                                    const att = stats.attended[idx] || 0;
+                                    const lulus = stats.passed[idx] || 0;
+                                    const naik = stats.monthlyNaikCount[idx];
+                                    const eff = stats.monthlyAvgEffectiveness[idx];
+                                    const lines = [];
+                                    if (tgt) lines.push(`Keterlaksanaan: ${Math.round((att / tgt) * 100)}% dari diundang`);
+                                    if (att) lines.push(`Kelulusan: ${Math.round((lulus / att) * 100)}% dari hadir`);
+                                    if (eff !== null && eff !== undefined) lines.push(`Efektivitas: ${eff}% KPI naik (${naik || 0}/${att} hadir)`);
+                                    return lines;
+                                }
                             }
                         }
                     },
@@ -4128,15 +4077,14 @@ function renderTnaGrowthChart(stats, token) {
                             beginAtZero: true,
                             ticks: { precision: 0, font: (c) => ({ size: c.chart.width < 480 ? 9 : 10 }), color: "#94a3b8" },
                             grid: { color: "#f1f5f9" },
-                            title: { display: true, text: "Peserta", font: { size: 10, weight: "bold" }, color: "#94a3b8" }
+                            title: { display: true, text: "Sesi", font: { size: 10, weight: "bold" }, color: "#94a3b8" }
                         },
                         y1: {
                             position: "right",
-                            min: 0,
-                            max: 100,
-                            ticks: { font: (c) => ({ size: c.chart.width < 480 ? 9 : 10 }), color: "#94a3b8", callback: (v) => v + "%" },
+                            beginAtZero: true,
+                            ticks: { precision: 0, font: (c) => ({ size: c.chart.width < 480 ? 9 : 10 }), color: "#94a3b8" },
                             grid: { display: false },
-                            title: { display: true, text: "% Peserta KPI Naik", font: { size: 10, weight: "bold" }, color: "#94a3b8" }
+                            title: { display: true, text: "Peserta", font: { size: 10, weight: "bold" }, color: "#94a3b8" }
                         },
                         x: {
                             grid: { display: false },
@@ -4353,7 +4301,7 @@ function diagramStatCardDark(icon, color, diagramHtml, label, subLabel, onclick,
     const attrs = onclick ? ` type="button" onclick="${onclick}"` : "";
     return `
     <${tag}${attrs} class="text-left w-full bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden flex items-stretch${onclick ? " hover:shadow-md hover:border-indigo-200 hover:-translate-y-0.5 active:translate-y-0 transition-all cursor-pointer" : ""}">
-        <div class="shrink-0 w-14 sm:w-[72px] bg-slate-900 flex items-center justify-center py-2 sm:py-3">
+        <div class="shrink-0 w-16 sm:w-[72px] bg-slate-900 flex items-center justify-center py-2 sm:py-3">
             ${diagramHtml}
         </div>
         <div class="flex-1 min-w-0 px-2 sm:px-3.5 py-1.5 flex flex-col justify-center">
@@ -4609,18 +4557,18 @@ window.ROUTES["certificates"] = function () {
         .sort((a, b) => (b.issuedAt?.seconds || 0) - (a.issuedAt?.seconds || 0));
 
     const cards = certs.map(c => `
-        <div class="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden group">
-            <div class="h-28 relative flex items-center justify-center overflow-hidden" style="background:radial-gradient(circle at 30% 20%,#3b2f0f,#0b1120 70%);">
+        <div class="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden group flex flex-col h-full">
+            <div class="h-20 relative flex items-center justify-center overflow-hidden" style="background:radial-gradient(circle at 30% 20%,#3b2f0f,#0b1120 70%);">
                 <div class="absolute inset-0 opacity-20" style="background-image:repeating-linear-gradient(135deg,rgba(191,155,74,.5) 0px,rgba(191,155,74,.5) 1px,transparent 1px,transparent 14px);"></div>
-                <div class="w-14 h-14 rounded-full flex items-center justify-center relative" style="background:radial-gradient(circle at 35% 30%,#f3e2ab,#bf9b4a 55%,#7a5c1f); box-shadow:0 4px 12px rgba(0,0,0,.35), inset 0 0 0 2px rgba(255,255,255,.35);">
-                    <i class="fas fa-award text-[#4a3403] text-xl"></i>
+                <div class="w-10 h-10 rounded-full flex items-center justify-center relative" style="background:radial-gradient(circle at 35% 30%,#f3e2ab,#bf9b4a 55%,#7a5c1f); box-shadow:0 3px 8px rgba(0,0,0,.35), inset 0 0 0 2px rgba(255,255,255,.35);">
+                    <i class="fas fa-award text-[#4a3403] text-sm"></i>
                 </div>
-                <span class="absolute top-3 right-3 bg-white/90 text-amber-700 text-[9px] font-black px-2 py-1 rounded-full uppercase tracking-wide">${c.type === 'training' ? 'Training TNA' : 'Onboarding'}</span>
+                <span class="absolute top-1.5 right-1.5 bg-white/90 text-amber-700 text-[7px] font-black px-1.5 py-0.5 rounded-full uppercase tracking-wide">${c.type === 'training' ? 'Training TNA' : 'Onboarding'}</span>
             </div>
-            <div class="p-4">
-                <p class="font-black text-slate-800 text-sm leading-snug">${window.escapeHtml(c.title)}</p>
-                <p class="text-[11px] text-slate-400 mt-1">Diterbitkan ${window.fmtDate(c.issuedAt)} • ${c.certId}</p>
-                <button onclick="printCertificate('${c.id}')" class="w-full mt-3 text-white text-xs font-bold py-2.5 rounded-xl transition" style="background:linear-gradient(120deg,#8a6b26,#bf9b4a);"><i class="fas fa-print mr-1"></i> Cetak / Simpan PDF</button>
+            <div class="p-2.5 flex flex-col flex-1">
+                <p class="font-black text-slate-800 text-[11px] leading-snug line-clamp-2">${window.escapeHtml(c.title)}</p>
+                <p class="text-[8px] text-slate-400 mt-1 line-clamp-1">Diterbitkan ${window.fmtDate(c.issuedAt)} • ${c.certId}</p>
+                <button onclick="printCertificate('${c.id}')" class="w-full mt-auto pt-2"><span class="block text-white text-[10px] font-bold py-2 rounded-lg transition" style="background:linear-gradient(120deg,#8a6b26,#bf9b4a);"><i class="fas fa-print mr-1"></i> Cetak / PDF</span></button>
             </div>
         </div>`).join("");
 
@@ -4629,7 +4577,7 @@ window.ROUTES["certificates"] = function () {
             <h1 class="text-xl font-black text-slate-800">Sertifikat Saya</h1>
             <p class="text-sm text-slate-500">Semua sertifikat dari Training & training yang sudah kamu selesaikan.</p>
         </div>
-        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+        <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2.5 items-stretch">
             ${cards || `<div class="col-span-full text-center py-16 text-slate-400"><i class="fas fa-award text-3xl mb-2"></i><p class="font-bold">Belum ada sertifikat. Selesaikan training dulu ya!</p></div>`}
         </div>
     `);
@@ -6464,7 +6412,7 @@ window.uploadPptFile = async function (inputEl, draftName, mi, li) {
     if (!/\.(ppt|pptx)$/i.test(file.name)) { window.toast("File harus format .ppt atau .pptx", "warn"); return; }
     if (file.size > 25 * 1024 * 1024) { window.toast("Ukuran file maksimal 25MB", "warn"); return; }
 
-    const prefix = draftName === "trainingDraft" ? "t" : "c";
+    const prefix = draftName === "trainingDraft" ? "t" : draftName === "materialDraft" ? "mat" : "c";
     const progressBox = document.getElementById(`ppt-progress-${prefix}-${mi}-${li}`);
     const progressBar = document.getElementById(`ppt-progress-${prefix}-${mi}-${li}-bar`);
     const progressPct = document.getElementById(`ppt-progress-${prefix}-${mi}-${li}-pct`);
@@ -6479,11 +6427,13 @@ window.uploadPptFile = async function (inputEl, draftName, mi, li) {
             if (progressBar) progressBar.style.width = pct + "%";
             if (progressPct) progressPct.textContent = pct + "%";
         });
-        const draft = draftName === "trainingDraft" ? trainingDraft : courseDraft;
+        const draft = draftName === "trainingDraft" ? trainingDraft : draftName === "materialDraft" ? materialDraft : courseDraft;
         draft.modules[mi].lessons[li].pptUrl = url;
         draft.modules[mi].lessons[li].pptFileName = file.name;
         window.toast(`File "${file.name}" berhasil diupload`, "success");
-        if (draftName === "trainingDraft") window.rerenderTrainingBuilder(); else window.rerenderBuilder();
+        if (draftName === "trainingDraft") window.rerenderTrainingBuilder();
+        else if (draftName === "materialDraft") window.rerenderMaterialBuilder();
+        else window.rerenderBuilder();
     } catch (e) {
         console.error(e);
         window.toast("Gagal upload file PPT: " + (e.message || e), "error");
@@ -6609,6 +6559,7 @@ function renderAdminSectionTabs(active) {
     const ctx = window.adminNavContext === "tna" ? "tna" : "onboarding";
     const tabs = ctx === "tna" ? [
         { key: "admin/trainings", icon: "fa-calendar-days", label: "Jadwal Training" },
+        { key: "admin/material-bank", icon: "fa-box-archive", label: "Bank Materi" },
         { key: "admin/tna-results", icon: "fa-clipboard-list", label: "Hasil TNA" },
         { key: "admin/competencies", icon: "fa-diagram-project", label: "Mapping Kompetensi" },
         { key: "admin/assignments", icon: "fa-file-signature", label: "Penilaian Tugas" },
@@ -7868,6 +7819,335 @@ window.deleteTraining = function (id) {
     });
 };
 
+// ================= ADMIN: BANK MATERI =================
+// Template modul/kuis/tugas yang tersimpan LEPAS dari jadwal training tertentu (collection
+// Firestore "materialBank"), supaya bisa dipakai berkali-kali. Contoh pemakaian: materi
+// "Teknik Closing" dipakai buat kelas refreshment tiap bulan — Juli & Agustus bisa pakai
+// materi yang SAMA (tinggal pilih dari Bank Materi pas bikin jadwal baru), pesertanya boleh
+// sama persis atau beda sama sekali, tanpa perlu input ulang modul/kuis/tugas dari nol.
+// Tiap training yang dibuat dari Bank Materi tetap dapat COPY sendiri (bukan referensi live),
+// jadi kalau modul di training itu diedit setelahnya, gak ngubah balik template di Bank Materi
+// (dan sebaliknya) — supaya rekam jejak tiap sesi training tetap apa adanya.
+window.ROUTES["admin/material-bank"] = requireAdmin(function (id) {
+    window.adminNavContext = "tna";
+    renderMaterialBankAdminList();
+    if (id === "new" || (id && window.STATE.materialBank.some(m => m.id === id))) {
+        renderMaterialBuilder(id === "new" ? null : id);
+    } else {
+        window.closeModal("modal-material-builder");
+    }
+});
+
+function renderMaterialBankAdminList() {
+    const rows = [...window.STATE.materialBank].sort((a, b) => String(a.title || "").localeCompare(String(b.title || ""))).map((m, idx) => {
+        const usageCount = window.STATE.trainings.filter(t => t.materialBankId === m.id).length;
+        const searchBlob = [m.title, m.category, m.description].map(v => String(v || "").toLowerCase()).join(" | ");
+        return `
+        <tr class="border-b border-slate-50 hover:bg-slate-50/60" data-msearch="${window.escapeHtml(searchBlob)}">
+            <td class="px-2 py-2 text-center"><p class="text-[10px] font-bold text-slate-400 material-admin-row-num">${idx + 1}</p></td>
+            <td class="px-2 py-2 min-w-[160px]">
+                <p class="font-bold text-slate-700 text-[11px] truncate max-w-[220px]">${window.escapeHtml(m.title)}</p>
+                <p class="text-[9px] text-slate-400 mt-1 truncate max-w-[220px]">${window.escapeHtml(m.description || '-')}</p>
+            </td>
+            <td class="px-2 py-2 min-w-[100px]"><p class="text-[11px] font-semibold text-slate-600 truncate max-w-[120px]">${window.escapeHtml(m.category || '-')}</p></td>
+            <td class="px-2 py-2 text-center"><p class="text-[11px] font-bold text-slate-700">${(m.modules || []).length}</p></td>
+            <td class="px-2 py-2 text-center"><p class="text-[11px] font-bold text-slate-700">${((m.quiz || {}).questions || []).length}</p></td>
+            <td class="px-2 py-2 text-center"><p class="text-[11px] font-bold text-slate-700">${(m.assignment || {}).enabled ? '<i class="fas fa-check text-emerald-500"></i>' : '-'}</p></td>
+            <td class="px-2 py-2 text-center"><span class="text-[9px] font-black px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-600 inline-block whitespace-nowrap">${usageCount}x dipakai</span></td>
+            <td class="px-2 py-2 text-right space-x-2 whitespace-nowrap">
+                <a href="#/admin/material-bank/${m.id}" class="text-indigo-500 hover:text-indigo-700 text-[11px]"><i class="fas fa-pen"></i></a>
+                <button onclick="window.guardedClick(this, () => window.deleteMaterialBank('${m.id}'))" class="text-rose-400 hover:text-rose-600 text-[11px]"><i class="fas fa-trash"></i></button>
+            </td>
+        </tr>`;
+    }).join("");
+
+    window.setPage(`
+        ${renderAdminSectionTabs("admin/material-bank")}
+        <div class="flex items-center justify-between mb-3">
+            <h1 class="text-xl font-black text-slate-800">Bank Materi</h1>
+            <a href="#/admin/material-bank/new" class="bg-indigo-500 hover:bg-indigo-600 text-white text-sm font-bold px-4 py-2.5 rounded-2xl"><i class="fas fa-plus mr-1"></i> Materi Baru</a>
+        </div>
+        <p class="text-xs text-slate-400 -mt-3 mb-4"><i class="fas fa-circle-info mr-1"></i> Simpan modul, kuis & tugas di sini supaya bisa dipakai ulang buat jadwal Training TNA yang berbeda-beda (mis. training refreshment bulanan) tanpa input ulang dari nol. Pilih "Pakai dari Bank Materi" saat bikin jadwal training baru.</p>
+        <div class="relative w-full sm:w-72 mb-3">
+            <i class="fas fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-slate-300 text-xs"></i>
+            <input type="text" oninput="window.filterMaterialBankAdminList(this.value)" placeholder="Cari judul materi, kategori, atau deskripsi..." class="w-full pl-8 pr-3 py-2 text-xs rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-200">
+        </div>
+        <div class="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-auto max-h-[75vh]">
+            <table class="w-full text-left border-separate border-spacing-0">
+                <thead class="text-[9px] font-black uppercase text-slate-400">
+                    <tr>
+                        <th class="sticky top-0 z-10 bg-slate-50 px-2 py-2 border-b border-slate-100 text-center">No</th>
+                        <th class="sticky top-0 z-10 bg-slate-50 px-2 py-2 border-b border-slate-100">Materi</th>
+                        <th class="sticky top-0 z-10 bg-slate-50 px-2 py-2 border-b border-slate-100">Kategori</th>
+                        <th class="sticky top-0 z-10 bg-slate-50 px-2 py-2 border-b border-slate-100 text-center">Modul</th>
+                        <th class="sticky top-0 z-10 bg-slate-50 px-2 py-2 border-b border-slate-100 text-center">Kuis</th>
+                        <th class="sticky top-0 z-10 bg-slate-50 px-2 py-2 border-b border-slate-100 text-center">Tugas</th>
+                        <th class="sticky top-0 z-10 bg-slate-50 px-2 py-2 border-b border-slate-100 text-center">Dipakai</th>
+                        <th class="sticky top-0 z-10 bg-slate-50 px-2 py-2 border-b border-slate-100 text-right">Aksi</th>
+                    </tr>
+                </thead>
+                <tbody id="material-bank-tbody">${rows || `<tr><td colspan="8" class="text-center py-10 text-slate-400">Belum ada materi tersimpan. Klik "Materi Baru" atau simpan dari form Training TNA.</td></tr>`}</tbody>
+            </table>
+            <p id="material-bank-search-empty" class="hide text-center text-xs text-slate-400 py-4">Tidak ada materi yang cocok dengan pencarian.</p>
+        </div>
+    `);
+}
+// Search judul/kategori/deskripsi di tabel "Bank Materi" — manipulasi DOM langsung (tanpa
+// render ulang halaman) biar fokus & posisi kursor di kotak pencarian gak ke-reset tiap admin
+// ngetik satu huruf. Nomor urut baris ikut di-update biar tetap rapi (sama pola dengan
+// filterTrainingAdminList di atas).
+window.filterMaterialBankAdminList = function (query) {
+    const tbody = document.getElementById("material-bank-tbody");
+    if (!tbody) return;
+    const q = String(query || "").toLowerCase().trim();
+    const rows = [...tbody.querySelectorAll("tr[data-msearch]")];
+    let visibleCount = 0;
+    rows.forEach(tr => {
+        const match = !q || tr.getAttribute("data-msearch").includes(q);
+        tr.style.display = match ? "" : "none";
+        if (match) {
+            visibleCount++;
+            const numEl = tr.querySelector(".material-admin-row-num");
+            if (numEl) numEl.textContent = visibleCount;
+        }
+    });
+    const emptyMsg = document.getElementById("material-bank-search-empty");
+    if (emptyMsg) emptyMsg.classList.toggle("hide", !(rows.length > 0 && visibleCount === 0));
+};
+
+window.deleteMaterialBank = function (id) {
+    window.confirmDelete("Hapus materi ini dari Bank Materi? Training yang sudah pakai materi ini sebelumnya TIDAK ikut terhapus (materinya sudah jadi copy sendiri di masing-masing training).", async () => {
+        await window.LMS_DB.deleteDoc(window.LMS_DB.ref("materialBank", id));
+        window.toast("Materi dihapus dari Bank Materi", "success");
+        window.navigate("/admin/material-bank");
+    });
+};
+
+function renderMaterialBuilder(id) {
+    if (!materialDraft || materialDraft._loadedId !== (id || "new")) {
+        const existing = id ? window.STATE.materialBank.find(m => m.id === id) : null;
+        materialDraft = existing ? JSON.parse(JSON.stringify(existing)) : {
+            title: "", description: "", category: "",
+            modules: [], quiz: { passingScore: 70, questions: [] },
+            assignment: { enabled: false, title: "", description: "", deadline: "" }
+        };
+        if (!Array.isArray(materialDraft.modules)) materialDraft.modules = [];
+        materialDraft.modules.forEach(m => { if (!Array.isArray(m.lessons)) m.lessons = []; });
+        if (!materialDraft.quiz) materialDraft.quiz = { passingScore: 70, questions: [] };
+        if (!Array.isArray(materialDraft.quiz.questions)) materialDraft.quiz.questions = [];
+        if (!materialDraft.assignment) materialDraft.assignment = { enabled: false, title: "", description: "", deadline: "" };
+        materialDraft._loadedId = id || "new";
+        materialDraft._id = id;
+    }
+    const d = materialDraft;
+
+    const modulesHtml = d.modules.map((m, mi) => `
+        <div class="border border-slate-100 rounded-2xl p-4 space-y-3">
+            <div class="flex items-center gap-2">
+                <input value="${window.escapeHtml(m.title)}" oninput="materialDraft.modules[${mi}].title=this.value" placeholder="Judul modul" class="flex-1 border border-slate-200 rounded-lg px-2.5 py-1.5 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-400">
+                <button onclick="materialDraft.modules.splice(${mi},1); rerenderMaterialBuilder()" class="text-rose-400 hover:text-rose-600 px-2"><i class="fas fa-trash"></i></button>
+            </div>
+            <div class="space-y-2 pl-3 border-l-2 border-indigo-50">
+                ${(m.lessons || []).map((l, li) => `
+                    <div class="flex items-center gap-2 flex-wrap bg-slate-50 rounded-xl p-2">
+                        <select onchange="materialDraft.modules[${mi}].lessons[${li}].type=this.value; rerenderMaterialBuilder()" class="border border-slate-200 rounded-lg px-2 py-1.5 text-xs">
+                            <option value="video" ${l.type === 'video' ? 'selected' : ''}>Video (YouTube)</option>
+                            <option value="ppt" ${l.type === 'ppt' ? 'selected' : ''}>PPT / Slide</option>
+                            <option value="text" ${l.type === 'text' ? 'selected' : ''}>Teks</option>
+                        </select>
+                        <input value="${window.escapeHtml(l.title)}" oninput="materialDraft.modules[${mi}].lessons[${li}].title=this.value" placeholder="Judul lesson" class="flex-1 min-w-[140px] border border-slate-200 rounded-lg px-2 py-1.5 text-xs">
+                        ${l.type === 'video' ? `<input value="${window.escapeHtml(l.videoUrl || '')}" oninput="materialDraft.modules[${mi}].lessons[${li}].videoUrl=this.value" placeholder="URL video (YouTube)" class="flex-1 min-w-[140px] border border-slate-200 rounded-lg px-2 py-1.5 text-xs">` : ""}
+                        ${l.type === 'ppt' ? `
+                            <div class="flex items-center gap-2 flex-1 min-w-[220px]">
+                                <input id="ppt-url-mat-${mi}-${li}" value="${window.escapeHtml(l.pptUrl || '')}" oninput="materialDraft.modules[${mi}].lessons[${li}].pptUrl=this.value" placeholder="URL file .pptx (link publik) atau upload di samping" class="flex-1 min-w-[140px] border border-slate-200 rounded-lg px-2 py-1.5 text-xs">
+                                <label class="shrink-0 text-[11px] font-bold text-indigo-600 hover:text-indigo-800 bg-indigo-50 px-2 py-1.5 rounded-lg cursor-pointer whitespace-nowrap">
+                                    <i class="fas fa-upload mr-1"></i> Upload
+                                    <input type="file" accept=".ppt,.pptx" class="hidden" onchange="window.uploadPptFile(this, 'materialDraft', ${mi}, ${li})">
+                                </label>
+                            </div>
+                            <input type="number" min="1" value="${l.slideCount || 1}" oninput="materialDraft.modules[${mi}].lessons[${li}].slideCount=parseInt(this.value)||1" placeholder="Jml slide" class="w-24 border border-slate-200 rounded-lg px-2 py-1.5 text-xs">
+                            <div id="ppt-progress-mat-${mi}-${li}" class="w-full hide">
+                                <div class="flex items-center justify-between text-[10px] font-bold text-indigo-600 mb-1"><span><i class="fas fa-spinner fa-spin mr-1"></i>Mengupload file PPT...</span><span id="ppt-progress-mat-${mi}-${li}-pct">0%</span></div>
+                                <div class="h-1.5 bg-slate-200 rounded-full overflow-hidden"><div id="ppt-progress-mat-${mi}-${li}-bar" class="h-full bg-indigo-500 transition-all" style="width:0%"></div></div>
+                            </div>
+                            ${l.pptUrl ? `<div class="w-full flex items-center gap-2 text-[11px] font-bold text-emerald-600 bg-emerald-50 rounded-lg px-2 py-1.5"><i class="fas fa-circle-check"></i> ${l.pptFileName ? `File "${window.escapeHtml(l.pptFileName)}" berhasil diupload` : 'File PPT terpasang'} <a href="${l.pptUrl}" target="_blank" class="ml-auto underline text-emerald-700 hover:text-emerald-900">Lihat</a></div>` : ""}
+                        ` : ""}
+                        <button onclick="materialDraft.modules[${mi}].lessons.splice(${li},1); rerenderMaterialBuilder()" class="text-rose-400 hover:text-rose-600 text-xs px-1"><i class="fas fa-xmark"></i></button>
+                        <textarea oninput="materialDraft.modules[${mi}].lessons[${li}].content=this.value" placeholder="Isi materi / catatan teks..." rows="2" class="w-full border border-slate-200 rounded-lg px-2 py-1.5 text-xs">${window.escapeHtml(l.content || '')}</textarea>
+                    </div>
+                `).join("")}
+                <button onclick="materialDraft.modules[${mi}].lessons=materialDraft.modules[${mi}].lessons||[]; materialDraft.modules[${mi}].lessons.push({id:'l'+Date.now(),title:'',type:'video',videoUrl:'',content:''}); rerenderMaterialBuilder()" class="text-[11px] font-bold text-indigo-500 hover:text-indigo-700"><i class="fas fa-plus mr-1"></i> Tambah Materi</button>
+            </div>
+        </div>
+    `).join("");
+
+    const questionsHtml = (d.quiz.questions || []).map((q, qi) => `
+        <div class="border border-slate-100 rounded-2xl p-4 space-y-2">
+            <div class="flex items-center gap-2">
+                <input value="${window.escapeHtml(q.question)}" oninput="materialDraft.quiz.questions[${qi}].question=this.value" placeholder="Pertanyaan" class="flex-1 border border-slate-200 rounded-lg px-2.5 py-1.5 text-sm outline-none focus:ring-2 focus:ring-indigo-400">
+                <button onclick="materialDraft.quiz.questions.splice(${qi},1); rerenderMaterialBuilder()" class="text-rose-400 hover:text-rose-600 px-2"><i class="fas fa-trash"></i></button>
+            </div>
+            ${(q.options || []).map((opt, oi) => `
+                <div class="flex items-center gap-2">
+                    <input type="radio" name="mat-correct-${qi}" ${q.correctIndex === oi ? 'checked' : ''} onchange="materialDraft.quiz.questions[${qi}].correctIndex=${oi}" class="accent-emerald-600">
+                    <input value="${window.escapeHtml(opt)}" oninput="materialDraft.quiz.questions[${qi}].options[${oi}]=this.value" placeholder="Opsi ${oi + 1}" class="flex-1 border border-slate-200 rounded-lg px-2 py-1.5 text-xs">
+                </div>
+            `).join("")}
+        </div>
+    `).join("");
+
+    const titleEl = document.getElementById("material-builder-title");
+    if (titleEl) titleEl.innerHTML = `<i class="fas fa-box-archive mr-1"></i> ${d._id ? 'Edit Materi Bank' : 'Materi Bank Baru'}`;
+    document.getElementById("material-builder-body").innerHTML = (`
+        <div class="space-y-2">
+            <div class="bg-white rounded-2xl border border-slate-100 shadow-sm p-3 space-y-2">
+                <h3 class="font-black text-sm text-slate-700">Info Materi</h3>
+                <input value="${window.escapeHtml(d.title)}" oninput="materialDraft.title=this.value" placeholder="Judul materi (mis. Refreshment Teknik Closing)" class="w-full border border-slate-200 rounded-lg px-2.5 py-1.5 text-sm">
+                <textarea oninput="materialDraft.description=this.value" placeholder="Deskripsi singkat (opsional)" rows="2" class="w-full border border-slate-200 rounded-lg px-2.5 py-1.5 text-sm">${window.escapeHtml(d.description)}</textarea>
+                <div>
+                    <label class="text-[10px] font-bold uppercase text-slate-400">Kategori</label>
+                    <input value="${window.escapeHtml(d.category)}" oninput="materialDraft.category=this.value" placeholder="Kategori" class="w-full border border-slate-200 rounded-lg px-2.5 py-1.5 text-sm mt-1">
+                </div>
+            </div>
+
+            <div class="bg-white rounded-2xl border border-slate-100 shadow-sm p-3 space-y-2">
+                <div class="flex items-center justify-between">
+                    <h3 class="font-black text-sm text-slate-700">Modul & Materi (opsional)</h3>
+                    <button onclick="materialDraft.modules.push({id:'m'+Date.now(),title:'',lessons:[]}); rerenderMaterialBuilder()" class="text-[11px] font-bold text-indigo-500 hover:text-indigo-700"><i class="fas fa-plus mr-1"></i> Tambah Modul</button>
+                </div>
+                <div class="space-y-3">${modulesHtml || '<p class="text-xs text-slate-400">Belum ada modul.</p>'}</div>
+            </div>
+
+            <div class="bg-white rounded-2xl border border-slate-100 shadow-sm p-3 space-y-2">
+                <div class="flex items-center justify-between flex-wrap gap-2">
+                    <h3 class="font-black text-sm text-slate-700">Kuis (opsional)</h3>
+                    <button onclick="materialDraft.quiz.questions.push({id:'q'+Date.now(),question:'',options:['','','',''],correctIndex:0}); rerenderMaterialBuilder()" class="text-[11px] font-bold text-indigo-500 hover:text-indigo-700"><i class="fas fa-plus mr-1"></i> Tambah Soal</button>
+                </div>
+                <div class="flex items-center gap-2">
+                    <label class="text-xs text-slate-500 font-semibold">Nilai kelulusan (%)</label>
+                    <input type="number" min="0" max="100" value="${d.quiz.passingScore}" oninput="materialDraft.quiz.passingScore=parseInt(this.value)||0" class="w-20 border border-slate-200 rounded-lg px-2 py-1 text-sm">
+                </div>
+                <div class="space-y-3">${questionsHtml || '<p class="text-xs text-slate-400">Belum ada soal.</p>'}</div>
+            </div>
+
+            <div class="bg-white rounded-2xl border border-slate-100 shadow-sm p-3 space-y-2">
+                <label class="flex items-center justify-between">
+                    <h3 class="font-black text-sm text-slate-700"><i class="fas fa-file-signature text-violet-500 mr-1"></i> Penugasan / Tugas (opsional)</h3>
+                    <input type="checkbox" ${d.assignment.enabled ? 'checked' : ''} onchange="materialDraft.assignment.enabled=this.checked; rerenderMaterialBuilder()" class="w-5 h-5 accent-violet-600">
+                </label>
+                ${d.assignment.enabled ? `
+                <div class="space-y-1.5 pt-1">
+                    <input value="${window.escapeHtml(d.assignment.title)}" oninput="materialDraft.assignment.title=this.value" placeholder="Judul tugas" class="w-full border border-slate-200 rounded-lg px-2.5 py-1.5 text-sm">
+                    <textarea oninput="materialDraft.assignment.description=this.value" placeholder="Instruksi / deskripsi tugas untuk peserta..." rows="2" class="w-full border border-slate-200 rounded-lg px-2.5 py-1.5 text-sm">${window.escapeHtml(d.assignment.description)}</textarea>
+                    <p class="text-[10px] text-slate-400"><i class="fas fa-circle-info mr-1"></i>Batas waktu pengumpulan diisi per jadwal training (di form training, bukan di sini), karena tiap jadwal biasanya beda tanggal.</p>
+                </div>` : ""}
+            </div>
+
+            <div class="bg-white rounded-2xl border border-slate-100 shadow-sm p-3 space-y-2">
+                <button onclick="window.guardedClick(this, () => window.saveMaterialDraft())" class="w-full bg-indigo-500 hover:bg-indigo-600 text-white font-bold py-3 rounded-2xl transition"><i class="fas fa-save mr-1"></i> Simpan Materi</button>
+            </div>
+        </div>
+    `);
+    window.openModal("modal-material-builder");
+}
+window.rerenderMaterialBuilder = function () { renderMaterialBuilder(materialDraft._id); };
+window.closeMaterialBuilder = function () {
+    window.closeModal("modal-material-builder");
+    materialDraft = null;
+    if (location.hash.replace(/^#/, "") !== "/admin/material-bank") window.navigate("/admin/material-bank");
+};
+window.saveMaterialDraft = async function () {
+    const d = materialDraft;
+    if (!d.title.trim()) { window.toast("Judul materi wajib diisi", "warn"); return; }
+    // Cegah judul persis sama (case-insensitive) dengan materi lain yang sudah ada di Bank
+    // Materi, biar gak numpuk duplikat nama yang bikin bingung pas milih di picker training.
+    const titleNorm = d.title.trim().toLowerCase();
+    const dupe = window.STATE.materialBank.find(m => m.id !== d._id && String(m.title || "").trim().toLowerCase() === titleNorm);
+    if (dupe) { window.toast(`Sudah ada materi dengan judul "${dupe.title}" di Bank Materi. Pakai judul lain atau edit materi yang sudah ada.`, "warn"); return; }
+    const { col, ref, addDoc, setDoc, serverTimestamp } = window.LMS_DB;
+    const payload = {
+        title: d.title, description: d.description || "", category: d.category || "",
+        modules: d.modules, quiz: d.quiz,
+        assignment: { enabled: !!d.assignment.enabled, title: d.assignment.title || "", description: d.assignment.description || "", deadline: "" },
+        updatedAt: serverTimestamp()
+    };
+    if (d._id) {
+        await setDoc(ref("materialBank", d._id), payload, { merge: true });
+    } else {
+        payload.createdAt = serverTimestamp();
+        payload.createdBy = window.STATE.user.id;
+        await addDoc(col("materialBank"), payload);
+    }
+    materialDraft = null;
+    window.toast("Materi tersimpan di Bank Materi", "success");
+    window.navigate("/admin/material-bank");
+};
+
+// ---- Jembatan Bank Materi <-> form Training TNA ----
+// "Pakai dari Bank Materi": buka picker berisi daftar Bank Materi, admin pilih satu, lalu
+// modules/quiz/assignment/category-nya di-COPY (deep clone, bukan referensi) ke trainingDraft
+// yang lagi dibuka. Setelah itu tinggal isi tanggal/lokasi/peserta seperti biasa lalu simpan —
+// hasilnya jadi training baru yang independen dari materi asal di Bank Materi.
+window.openMaterialPicker = function () {
+    if (!window.STATE.materialBank.length) {
+        window.toast("Bank Materi masih kosong. Simpan materi dulu lewat menu \"Bank Materi\" atau tombol \"Simpan sebagai Materi Bank\" di bawah.", "warn");
+        return;
+    }
+    const rows = [...window.STATE.materialBank].sort((a, b) => String(a.title || "").localeCompare(String(b.title || ""))).map(m => `
+        <button onclick="window.applyMaterialToTraining('${m.id}')" class="w-full text-left border border-slate-100 hover:border-indigo-300 hover:bg-indigo-50/50 rounded-2xl p-3 transition">
+            <p class="font-bold text-sm text-slate-700">${window.escapeHtml(m.title)}</p>
+            <p class="text-[11px] text-slate-400 mt-0.5 truncate">${window.escapeHtml(m.description || m.category || '-')}</p>
+            <p class="text-[10px] font-bold text-indigo-500 mt-1.5"><i class="fas fa-layer-group mr-1"></i>${(m.modules || []).length} modul &nbsp;•&nbsp; <i class="fas fa-circle-question mr-1"></i>${((m.quiz || {}).questions || []).length} soal ${((m.assignment || {}).enabled) ? '&nbsp;•&nbsp; <i class="fas fa-file-signature mr-1"></i>ada tugas' : ''}</p>
+        </button>
+    `).join("");
+    document.getElementById("material-picker-body").innerHTML = `
+        <p class="text-xs text-slate-400 mb-1">Pilih materi — modul, kuis & tugas dari materi ini akan mengganti isi form training yang sedang kamu edit (bisa diedit lagi setelahnya, gak ngubah materi aslinya di Bank Materi).</p>
+        <div class="space-y-2">${rows}</div>
+    `;
+    window.openModal("modal-material-picker");
+};
+window.applyMaterialToTraining = function (materialId) {
+    const m = window.STATE.materialBank.find(x => x.id === materialId);
+    if (!m || !trainingDraft) return;
+    trainingDraft.modules = JSON.parse(JSON.stringify(m.modules || []));
+    trainingDraft.quiz = JSON.parse(JSON.stringify(m.quiz || { passingScore: 70, questions: [] }));
+    trainingDraft.assignment = JSON.parse(JSON.stringify(m.assignment || { enabled: false, title: "", description: "", deadline: "" }));
+    if (!trainingDraft.category) trainingDraft.category = m.category || "";
+    trainingDraft.materialBankId = m.id; // jejak asal materi, buat hitung "Nx dipakai" di list Bank Materi
+    window.closeModal("modal-material-picker");
+    window.rerenderTrainingBuilder();
+    window.toast(`Materi "${m.title}" dipakai — cek & sesuaikan sebelum simpan`, "success");
+};
+// Kebalikannya: simpan modul/kuis/tugas yang lagi diisi di form training SEBAGAI materi baru
+// di Bank Materi, supaya bisa dipakai ulang nanti tanpa harus buka menu Bank Materi terpisah.
+window.saveTrainingAsMaterial = async function () {
+    const d = trainingDraft;
+    if (!d) return;
+    if (!(d.modules || []).length && !((d.quiz || {}).questions || []).length && !(d.assignment || {}).enabled) {
+        window.toast("Isi dulu modul/kuis/tugas-nya sebelum disimpan ke Bank Materi", "warn");
+        return;
+    }
+    const titleToSave = d.title ? d.title.trim() : "";
+    if (!titleToSave) { window.toast("Isi dulu judul training-nya sebelum disimpan ke Bank Materi", "warn"); return; }
+    // Sama seperti di form Bank Materi: judul persis sama (case-insensitive) dengan materi yang
+    // sudah ada di Bank Materi tidak boleh disimpan lagi, biar gak dobel.
+    const titleNorm = titleToSave.toLowerCase();
+    const dupe = window.STATE.materialBank.find(m => String(m.title || "").trim().toLowerCase() === titleNorm);
+    if (dupe) { window.toast(`Sudah ada materi dengan judul "${dupe.title}" di Bank Materi. Ganti judul training ini dulu, atau edit langsung materi yang sudah ada lewat menu Bank Materi.`, "warn"); return; }
+    const { col, addDoc, serverTimestamp } = window.LMS_DB;
+    const payload = {
+        title: titleToSave,
+        description: d.description || "", category: d.category || "",
+        modules: JSON.parse(JSON.stringify(d.modules || [])),
+        quiz: JSON.parse(JSON.stringify(d.quiz || { passingScore: 70, questions: [] })),
+        assignment: { enabled: !!(d.assignment || {}).enabled, title: (d.assignment || {}).title || "", description: (d.assignment || {}).description || "", deadline: "" },
+        createdAt: serverTimestamp(), createdBy: window.STATE.user.id
+    };
+    const docRef = await addDoc(col("materialBank"), payload);
+    trainingDraft.materialBankId = docRef.id;
+    window.toast(`Tersimpan ke Bank Materi sebagai "${payload.title}"`, "success");
+};
+
 // ================= ADMIN: HASIL TNA (REKAP) =================
 // Tab baru "Hasil TNA" di dalam "Kelola Training TNA" — rekap gap/problem hasil analisa
 // Training Need Analysis per departemen & level jabatan, lengkap dengan corrective action,
@@ -9056,6 +9336,7 @@ window.sendAttendanceReminder = function (trainingId, userId) {
 
 // ---- Training Builder (mirror Onboarding Builder): info + modul/lesson + kuis ----
 let trainingDraft = null;
+let materialDraft = null; // draft form Bank Materi (lihat renderMaterialBuilder)
 let trainingParticipantSearch = "";
 let trainingDeptFilterSearch = "";
 let trainingPosFilterSearch = "";
@@ -9281,11 +9562,11 @@ function renderTrainingBuilder(id) {
                 </div>
 
                 <div class="bg-white rounded-2xl border border-slate-100 shadow-sm p-3 space-y-2">
-                    <div class="flex items-center justify-between">
+                    <div class="flex items-center justify-between flex-wrap gap-2">
                         <h3 class="font-black text-sm text-slate-700">Modul & Materi (opsional)</h3>
                         <button onclick="trainingDraft.modules.push({id:'m'+Date.now(),title:'',lessons:[]}); rerenderTrainingBuilder()" class="text-[11px] font-bold text-amber-500 hover:text-amber-700"><i class="fas fa-plus mr-1"></i> Tambah Modul</button>
                     </div>
-                    <p class="text-xs text-slate-400">Materi tambahan yang wajib dipelajari peserta secara mandiri (video/PPT/teks), selain sesi tatap muka/online.</p>
+                    <p class="text-xs text-slate-400">Materi tambahan yang wajib dipelajari peserta secara mandiri (video/PPT/teks), selain sesi tatap muka/online. Materi yang sering dipakai ulang (mis. training refreshment bulanan) bisa disimpan/dipilih dari "Bank Materi" biar gak perlu input ulang tiap bulan.</p>
                     <div class="space-y-3">${modulesHtml || '<p class="text-xs text-slate-400">Belum ada modul.</p>'}</div>
                 </div>
 
@@ -9723,6 +10004,7 @@ window.saveTrainingDraft = async function () {
         quota: parseInt(d.quota) || null, attendanceCode: (d.attendanceCode || genCode()).toUpperCase(),
         coverImage: d.coverImage || "",
         modules: d.modules, quiz: d.quiz, assignment: d.assignment,
+        materialBankId: d.materialBankId || "",
         participants: {
             excludedDepartments: Array.isArray(d.participants.excludedDepartments) ? d.participants.excludedDepartments : [],
             excludedPositions: Array.isArray(d.participants.excludedPositions) ? d.participants.excludedPositions : [],
@@ -14471,7 +14753,6 @@ window.ROUTES["admin/reports"] = requireAdmin(function () {
     const tnaStats = computeEmployeeTnaStats();
     const companyKpiStats = computeCompanyKpiStats();
     window.__companyKpiView = "overall"; // reset ke tampilan default tiap kali halaman ini dibuka
-    const tnaMonthlyStats = computeTnaMonthlyStats();
     const tnaGrowthStats = computeTnaGrowthStats();
 
     const topCourses = [...S.courses].map(c => ({
@@ -14547,7 +14828,6 @@ window.ROUTES["admin/reports"] = requireAdmin(function () {
         </div>
 
         ${companyKpiPerformanceCard(companyKpiStats)}
-        ${tnaMonthlyTrendCard(tnaMonthlyStats)}
         ${tnaGrowthTrendCard(tnaGrowthStats)}
 
         <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
@@ -14605,9 +14885,6 @@ window.ROUTES["admin/reports"] = requireAdmin(function () {
     const companyKpiToken = ++window.__companyKpiRenderToken;
     waitForChartJsThenRenderCompany(companyKpiStats, 0, companyKpiToken);
 
-    const tnaMonthlyToken = ++window.__tnaMonthlyRenderToken;
-    waitForChartJsThenRenderTnaMonthly(tnaMonthlyStats, 0, tnaMonthlyToken);
-
     const tnaGrowthToken = ++window.__tnaGrowthRenderToken;
     waitForChartJsThenRenderTnaGrowth(tnaGrowthStats, 0, tnaGrowthToken);
 });
@@ -14616,11 +14893,219 @@ window.ROUTES["admin/reports"] = requireAdmin(function () {
 // Halaman tabel semua training TNA tahun berjalan lengkap dengan jumlah peserta hadir, jumlah
 // yang KPI-nya naik, dan persentase efektivitasnya — reuse computeTnaGrowthStats/
 // computeTrainingGrowth yang sama persis dengan yang dipakai buat chart di Dashboard Admin,
-// biar angkanya konsisten.
-window.ROUTES["admin/training-growth"] = requireAdmin(function () {
-    const stats = computeTnaGrowthStats();
+// biar angkanya konsisten. Dilengkapi filter Departemen (multi-select + search) dan filter
+// Bulan (multi-select) + Tahun (single-select) — semua filter disimpan di module-state
+// (trainingGrowthFilters) supaya tetap kepilih walau tabelnya di-render ulang.
+//
+// Filter Departemen/Bulan sengaja pakai pola "pilih beberapa dulu, baru Terapkan" — centang
+// checkbox di dalam dropdown TIDAK langsung ngerender ulang seluruh halaman (cuma update
+// checkbox itu sendiri lewat DOM biasa), jadi user bisa pilih banyak opsi berturut-turut tanpa
+// halaman "melompat" ke atas tiap kali nyentang. Tabel & kartu ringkasan baru ke-update sekali
+// waktu tombol "Terapkan" (atau "Semua"/Reset) diklik.
+const TRAINING_GROWTH_MONTH_NAMES = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
 
-    const rows = stats.perTraining.map(x => {
+function defaultTrainingGrowthFilters() {
+    return { year: new Date().getFullYear(), depts: [], months: [] };
+}
+let trainingGrowthFilters = null; // null = belum diinit, lihat window.ROUTES["admin/training-growth"]
+let trainingGrowthOpenFilter = null; // 'depts' | 'months' | null — grup filter mana yang dropdown-nya lagi kebuka
+let trainingGrowthDraft = null; // array pilihan sementara selama dropdown kebuka, baru dipindah ke trainingGrowthFilters pas "Terapkan"
+let trainingGrowthDeptSearch = ""; // teks pencarian departemen yang lagi diketik di dropdown
+let trainingGrowthTableSearch = ""; // teks pencarian nama training di tabel utama
+
+// Tahun-tahun yang ada training TNA-nya (buat opsi filter Tahun), digabung dengan tahun berjalan
+// biar tahun ini selalu ada opsinya walau belum ada training sama sekali.
+function trainingGrowthAvailableYears() {
+    const set = new Set([new Date().getFullYear()]);
+    (window.STATE.trainings || []).forEach(t => { if (t.date) set.add(new Date(t.date).getFullYear()); });
+    return [...set].sort((a, b) => b - a);
+}
+
+// Departemen peserta yang HADIR di sebuah training (dari attendance, bukan target undangan) —
+// dipakai buat filter Departemen supaya "training per departemen X" berarti training yang
+// beneran dihadiri minimal 1 orang dari departemen X.
+function trainingAttendeeDepts(t) {
+    const attendees = reportData("attendance").filter(a => a.trainingId === t.id);
+    const set = new Set();
+    attendees.forEach(a => {
+        const emp = employeeOfUserId(a.userId);
+        const d = emp && emp.dept ? emp.dept.trim() : "";
+        if (d) set.add(d);
+    });
+    return set;
+}
+
+function renderTrainingGrowthDeptFilterDropdown(allDepts) {
+    const applied = trainingGrowthFilters.depts;
+    const isOpen = trainingGrowthOpenFilter === "depts";
+    const draft = isOpen ? trainingGrowthDraft : applied;
+    const badgeLabel = applied.length === 0 ? "Semua" : applied.length === 1 ? applied[0] : `${applied.length} dipilih`;
+    const itemsHtml = allDepts.map(d => `
+        <label class="tg-dept-item flex items-center gap-2 px-2.5 py-1.5 rounded-lg hover:bg-slate-50 cursor-pointer text-xs text-slate-600" data-dept-name="${window.escapeHtml(d.toLowerCase())}">
+            <input type="checkbox" class="tg-filter-item-checkbox accent-indigo-600" ${draft.includes(d) ? "checked" : ""} onchange="window.toggleTrainingGrowthDraftValue(${window.escapeHtml(JSON.stringify(d))})"> ${window.escapeHtml(d)}
+        </label>`).join("");
+    return `
+    <div class="relative">
+        <button type="button" onclick="window.toggleTrainingGrowthFilterDropdown('depts')" class="flex items-center gap-2 text-xs font-bold px-3 py-2 rounded-xl border transition ${applied.length ? "border-indigo-300 bg-indigo-50 text-indigo-700" : "border-slate-200 bg-white text-slate-600 hover:border-slate-300"}">
+            <i class="fas fa-building text-[10px]"></i> Departemen: <span class="font-black">${window.escapeHtml(badgeLabel)}</span>
+            <i class="fas fa-chevron-down text-[9px] ${isOpen ? "rotate-180" : ""} transition-transform"></i>
+        </button>
+        ${isOpen ? `
+        <div class="fixed inset-0 z-10" onclick="window.closeTrainingGrowthFilterDropdown()"></div>
+        <div class="absolute z-20 mt-2 w-64 bg-white border border-slate-100 rounded-2xl shadow-xl p-2" onclick="event.stopPropagation()">
+            <div class="relative mb-2">
+                <i class="fas fa-search absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-300 text-[10px]"></i>
+                <input type="text" id="tg-dept-search-input" value="${window.escapeHtml(trainingGrowthDeptSearch)}" oninput="window.filterTrainingGrowthDeptOptions(this.value)" placeholder="Cari departemen..." class="w-full border border-slate-200 rounded-lg pl-7 pr-2 py-1.5 text-xs focus:outline-none focus:border-indigo-300">
+            </div>
+            <label class="flex items-center gap-2 px-2.5 py-1.5 rounded-lg hover:bg-slate-50 cursor-pointer text-xs font-bold text-slate-600">
+                <input type="checkbox" id="tg-draft-all-checkbox" class="accent-indigo-600" ${draft.length === 0 ? "checked" : ""} onchange="window.setTrainingGrowthDraftAll()"> Semua Departemen
+            </label>
+            <div class="border-t border-slate-50 my-1"></div>
+            <div class="max-h-56 overflow-y-auto" id="tg-dept-options-list">${itemsHtml || `<p class="text-[11px] text-slate-400 text-center py-3">Belum ada data departemen.</p>`}</div>
+            <div class="border-t border-slate-50 mt-1 pt-2 flex items-center justify-between gap-1">
+                <button type="button" onclick="window.closeTrainingGrowthFilterDropdown()" class="text-[11px] font-bold text-slate-400 hover:text-slate-600 px-2 py-1.5">Batal</button>
+                <button type="button" onclick="window.applyTrainingGrowthFilter()" class="text-[11px] font-black text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg px-3 py-1.5 transition">Terapkan<span id="tg-draft-count" class="ml-1 font-bold opacity-80">${draft.length ? ` (${draft.length})` : ""}</span></button>
+            </div>
+        </div>` : ""}
+    </div>`;
+}
+
+function renderTrainingGrowthMonthFilterDropdown() {
+    const applied = trainingGrowthFilters.months;
+    const isOpen = trainingGrowthOpenFilter === "months";
+    const draft = isOpen ? trainingGrowthDraft : applied;
+    const badgeLabel = applied.length === 0 ? "Semua"
+        : applied.length === 1 ? TRAINING_GROWTH_MONTH_NAMES[Number(applied[0]) - 1]
+        : `${applied.length} dipilih`;
+    const itemsHtml = TRAINING_GROWTH_MONTH_NAMES.map((name, idx) => `
+        <label class="flex items-center gap-2 px-2.5 py-1.5 rounded-lg hover:bg-slate-50 cursor-pointer text-xs text-slate-600">
+            <input type="checkbox" class="tg-filter-item-checkbox accent-indigo-600" ${draft.includes(String(idx + 1)) ? "checked" : ""} onchange="window.toggleTrainingGrowthDraftValue('${idx + 1}')"> ${name}
+        </label>`).join("");
+    return `
+    <div class="relative">
+        <button type="button" onclick="window.toggleTrainingGrowthFilterDropdown('months')" class="flex items-center gap-2 text-xs font-bold px-3 py-2 rounded-xl border transition ${applied.length ? "border-indigo-300 bg-indigo-50 text-indigo-700" : "border-slate-200 bg-white text-slate-600 hover:border-slate-300"}">
+            <i class="fas fa-calendar-days text-[10px]"></i> Bulan: <span class="font-black">${window.escapeHtml(badgeLabel)}</span>
+            <i class="fas fa-chevron-down text-[9px] ${isOpen ? "rotate-180" : ""} transition-transform"></i>
+        </button>
+        ${isOpen ? `
+        <div class="fixed inset-0 z-10" onclick="window.closeTrainingGrowthFilterDropdown()"></div>
+        <div class="absolute z-20 mt-2 w-52 bg-white border border-slate-100 rounded-2xl shadow-xl p-2" onclick="event.stopPropagation()">
+            <label class="flex items-center gap-2 px-2.5 py-1.5 rounded-lg hover:bg-slate-50 cursor-pointer text-xs font-bold text-slate-600">
+                <input type="checkbox" id="tg-draft-all-checkbox" class="accent-indigo-600" ${draft.length === 0 ? "checked" : ""} onchange="window.setTrainingGrowthDraftAll()"> Semua Bulan
+            </label>
+            <div class="border-t border-slate-50 my-1"></div>
+            <div class="max-h-56 overflow-y-auto">${itemsHtml}</div>
+            <div class="border-t border-slate-50 mt-1 pt-2 flex items-center justify-between gap-1">
+                <button type="button" onclick="window.closeTrainingGrowthFilterDropdown()" class="text-[11px] font-bold text-slate-400 hover:text-slate-600 px-2 py-1.5">Batal</button>
+                <button type="button" onclick="window.applyTrainingGrowthFilter()" class="text-[11px] font-black text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg px-3 py-1.5 transition">Terapkan<span id="tg-draft-count" class="ml-1 font-bold opacity-80">${draft.length ? ` (${draft.length})` : ""}</span></button>
+            </div>
+        </div>` : ""}
+    </div>`;
+}
+
+window.toggleTrainingGrowthFilterDropdown = function (key) {
+    if (trainingGrowthOpenFilter === key) {
+        // Nutup dropdown yang lagi kebuka TANPA nerapin pilihan sementaranya (sama kayak Batal).
+        trainingGrowthOpenFilter = null;
+        trainingGrowthDraft = null;
+    } else {
+        // Buka dropdown baru: draft dimulai dari pilihan yang sudah ke-Terapkan sebelumnya.
+        trainingGrowthOpenFilter = key;
+        trainingGrowthDraft = [...trainingGrowthFilters[key]];
+    }
+    trainingGrowthDeptSearch = "";
+    window.ROUTES["admin/training-growth"]();
+};
+window.closeTrainingGrowthFilterDropdown = function () {
+    trainingGrowthOpenFilter = null;
+    trainingGrowthDraft = null;
+    trainingGrowthDeptSearch = "";
+    window.ROUTES["admin/training-growth"]();
+};
+// Pindahin draft pilihan ke filter yang beneran dipakai buat nyaring tabel, baru render ulang
+// sekali aja — dipanggil dari tombol "Terapkan".
+window.applyTrainingGrowthFilter = function () {
+    if (trainingGrowthOpenFilter && trainingGrowthDraft) {
+        trainingGrowthFilters[trainingGrowthOpenFilter] = trainingGrowthDraft;
+    }
+    trainingGrowthOpenFilter = null;
+    trainingGrowthDraft = null;
+    trainingGrowthDeptSearch = "";
+    window.ROUTES["admin/training-growth"]();
+};
+window.setTrainingGrowthYear = function (year) {
+    trainingGrowthFilters.year = Number(year);
+    window.ROUTES["admin/training-growth"]();
+};
+window.resetTrainingGrowthFilters = function () {
+    trainingGrowthFilters = defaultTrainingGrowthFilters();
+    trainingGrowthOpenFilter = null;
+    trainingGrowthDraft = null;
+    trainingGrowthDeptSearch = "";
+    window.ROUTES["admin/training-growth"]();
+};
+// Centang/lepas satu opsi di draft yang lagi kebuka — cuma update array JS + checkbox master
+// "Semua" di DOM langsung (LIHAT window.updateTrainingGrowthDraftUI), SENGAJA tanpa render ulang
+// seluruh halaman supaya user bisa nyentang banyak opsi berturut-turut tanpa halaman ke-scroll
+// balik ke atas tiap klik. Halaman baru di-render ulang pas "Terapkan"/"Batal"/dropdown ditutup.
+window.toggleTrainingGrowthDraftValue = function (value) {
+    if (!trainingGrowthDraft) return;
+    const idx = trainingGrowthDraft.indexOf(value);
+    if (idx >= 0) trainingGrowthDraft.splice(idx, 1); else trainingGrowthDraft.push(value);
+    window.updateTrainingGrowthDraftUI();
+};
+window.setTrainingGrowthDraftAll = function () {
+    trainingGrowthDraft = [];
+    document.querySelectorAll(".tg-filter-item-checkbox").forEach(cb => { cb.checked = false; });
+    window.updateTrainingGrowthDraftUI();
+};
+window.updateTrainingGrowthDraftUI = function () {
+    const masterCb = document.getElementById("tg-draft-all-checkbox");
+    if (masterCb) masterCb.checked = trainingGrowthDraft.length === 0;
+    const countEl = document.getElementById("tg-draft-count");
+    if (countEl) countEl.textContent = trainingGrowthDraft.length ? ` (${trainingGrowthDraft.length})` : "";
+};
+// Filter opsi departemen di dalam dropdown yang lagi kebuka tanpa render ulang seluruh halaman,
+// biar fokus & posisi kursor di kotak pencarian gak ke-reset tiap ketikan.
+window.filterTrainingGrowthDeptOptions = function (value) {
+    trainingGrowthDeptSearch = value || "";
+    const q = trainingGrowthDeptSearch.trim().toLowerCase();
+    document.querySelectorAll("#tg-dept-options-list .tg-dept-item").forEach(el => {
+        const name = el.getAttribute("data-dept-name") || "";
+        el.style.display = !q || name.includes(q) ? "" : "none";
+    });
+};
+// Filter baris tabel Efektivitas Training TNA per nama training tanpa render ulang seluruh
+// halaman, biar fokus & posisi kursor di kotak pencarian gak ke-reset tiap ketikan.
+window.filterTrainingGrowthTableRows = function (value) {
+    trainingGrowthTableSearch = value || "";
+    const q = trainingGrowthTableSearch.trim().toLowerCase();
+    document.querySelectorAll("#tg-table-body tr[data-tg-title]").forEach(el => {
+        const title = el.getAttribute("data-tg-title") || "";
+        el.style.display = !q || title.includes(q) ? "" : "none";
+    });
+};
+
+window.ROUTES["admin/training-growth"] = requireAdmin(function () {
+    if (!trainingGrowthFilters) trainingGrowthFilters = defaultTrainingGrowthFilters();
+
+    const stats = computeTnaGrowthStats(trainingGrowthFilters.year);
+    const allDepts = window.sel.allDeptNames();
+
+    const selectedDepts = new Set(trainingGrowthFilters.depts.map(d => d.toLowerCase()));
+    const selectedMonths = new Set(trainingGrowthFilters.months);
+
+    const filteredPerTraining = stats.perTraining.filter(x => {
+        if (selectedMonths.size && !selectedMonths.has(String(x.month))) return false;
+        if (selectedDepts.size) {
+            const depts = trainingAttendeeDepts(x.training);
+            const match = [...depts].some(d => selectedDepts.has(d.toLowerCase()));
+            if (!match) return false;
+        }
+        return true;
+    });
+
+    const rows = filteredPerTraining.map((x, idx) => {
         const t = x.training;
         const dateStr = window.fmtDate ? window.fmtDate(t.date) : new Date(t.date).toLocaleDateString("id-ID");
         if (!x.eligible) {
@@ -14628,51 +15113,111 @@ window.ROUTES["admin/training-growth"] = requireAdmin(function () {
                 ? "Training bulan Januari — data KPI bulan sebelumnya tidak tersedia"
                 : `Data belum cukup (min. ${TNA_GROWTH_MIN_SAMPLE} peserta hadir, baru ${x.attendedCount || 0})`;
             return `
-            <tr class="border-b border-slate-50">
-                <td class="py-2.5 px-3">
-                    <p class="font-bold text-slate-700 text-sm">${window.escapeHtml(t.title)}</p>
-                    <p class="text-[11px] text-slate-400">${dateStr}</p>
+            <tr class="border-b border-slate-50" data-tg-title="${window.escapeHtml(t.title).toLowerCase()}">
+                <td class="py-2 px-3 align-top text-center text-xs text-slate-400">${idx + 1}</td>
+                <td class="py-2 px-3 align-top">
+                    <p class="font-bold text-slate-700 text-xs">${window.escapeHtml(t.title)}</p>
+                    <p class="text-[10px] text-slate-400">${dateStr}</p>
                 </td>
-                <td class="py-2.5 px-3 text-center text-slate-300 text-xs" colspan="3">${reasonText}</td>
+                <td class="py-2 px-3 align-top text-center text-xs text-slate-600">${x.targetedCount ?? 0}</td>
+                <td class="py-2 px-3 align-top text-center text-xs text-slate-600">${x.attendedCount}</td>
+                <td class="py-2 px-3 align-top text-center text-xs text-slate-600">${x.passedCount ?? 0}</td>
+                <td class="py-2 px-3 align-top text-center text-slate-300 text-xs" colspan="2">${reasonText}</td>
             </tr>`;
         }
         const effClass = x.effectivenessPct >= 50 ? "text-emerald-600" : (x.effectivenessPct > 0 ? "text-amber-600" : "text-rose-600");
         return `
-        <tr class="border-b border-slate-50 hover:bg-indigo-50/30 cursor-pointer" onclick="window.navigate('/admin/training-growth-detail/${t.id}')">
-            <td class="py-2.5 px-3">
-                <p class="font-bold text-slate-700 text-sm">${window.escapeHtml(t.title)}</p>
-                <p class="text-[11px] text-slate-400">${dateStr}</p>
+        <tr class="border-b border-slate-50 hover:bg-indigo-50/30 cursor-pointer" data-tg-title="${window.escapeHtml(t.title).toLowerCase()}" onclick="window.navigate('/admin/training-growth-detail/${t.id}')">
+            <td class="py-2 px-3 align-top text-center text-xs text-slate-400">${idx + 1}</td>
+            <td class="py-2 px-3 align-top">
+                <p class="font-bold text-slate-700 text-xs">${window.escapeHtml(t.title)}</p>
+                <p class="text-[10px] text-slate-400">${dateStr}</p>
             </td>
-            <td class="py-2.5 px-3 text-center text-sm text-slate-600">${x.attendedCount}</td>
-            <td class="py-2.5 px-3 text-center text-sm text-slate-600">${x.naikCount}</td>
-            <td class="py-2.5 px-3 text-center text-sm font-black ${effClass}">${x.effectivenessPct}%</td>
-            <td class="py-2.5 px-3 text-center"><i class="fas fa-chevron-right text-slate-300"></i></td>
+            <td class="py-2 px-3 align-top text-center text-xs text-slate-600">${x.targetedCount ?? 0}</td>
+            <td class="py-2 px-3 align-top text-center text-xs text-slate-600">${x.attendedCount}</td>
+            <td class="py-2 px-3 align-top text-center text-xs text-slate-600">${x.passedCount ?? 0}</td>
+            <td class="py-2 px-3 align-top text-center text-xs text-slate-600">${x.naikCount}</td>
+            <td class="py-2 px-3 align-top text-center text-xs font-black ${effClass}">${x.effectivenessPct}%</td>
+            <td class="py-2 px-3 align-top text-center"><i class="fas fa-chevron-right text-slate-300 text-xs"></i></td>
         </tr>`;
-    }).join("") || `<tr><td colspan="5" class="py-10 text-center text-slate-400 text-sm">Belum ada training TNA tahun ${stats.year}.</td></tr>`;
+    }).join("") || `<tr><td colspan="8" class="py-10 text-center text-slate-400 text-xs">${stats.perTraining.length ? "Tidak ada training yang cocok dengan filter di atas." : `Belum ada training TNA tahun ${trainingGrowthFilters.year}.`}</td></tr>`;
+
+    const hasActiveFilter = trainingGrowthFilters.depts.length || trainingGrowthFilters.months.length;
+    const yearOptionsHtml = trainingGrowthAvailableYears().map(y => `<option value="${y}" ${y === trainingGrowthFilters.year ? "selected" : ""}>${y}</option>`).join("");
+
+    // ---- Ringkasan kartu (Total Sesi, % Kehadiran, % Kelulusan, % KPI Naik) — dihitung dari
+    // training-training yang lolos filter (Departemen/Bulan/Tahun) di atas, BUKAN dari total
+    // keseluruhan, biar kartunya selalu sinkron sama isi tabel di bawahnya. % Kehadiran & %
+    // Kelulusan dihitung agregat (total hadir/lulus ÷ total diundang/hadir), sedangkan % KPI Naik
+    // rata-rata sederhana antar-training eligible (sama cara hitungnya dengan monthlyAvgEffectiveness).
+    const totalSesi = filteredPerTraining.length;
+    const sumTargeted = filteredPerTraining.reduce((s, x) => s + (x.targetedCount || 0), 0);
+    const sumAttended = filteredPerTraining.reduce((s, x) => s + (x.attendedCount || 0), 0);
+    const sumPassed = filteredPerTraining.reduce((s, x) => s + (x.passedCount || 0), 0);
+    const attendancePctFiltered = sumTargeted ? Math.round((sumAttended / sumTargeted) * 100) : 0;
+    const passPctFiltered = sumAttended ? Math.round((sumPassed / sumAttended) * 100) : 0;
+    const eligibleFiltered = filteredPerTraining.filter(x => x.eligible);
+    const kpiNaikPctFiltered = eligibleFiltered.length
+        ? Math.round((eligibleFiltered.reduce((s, x) => s + x.effectivenessPct, 0) / eligibleFiltered.length) * 10) / 10
+        : null;
+    const summaryCardsHtml = `
+    <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-3">
+        ${statCard("fa-calendar-check", "indigo", totalSesi, "Total Sesi")}
+        ${statCard("fa-users", "emerald", totalSesi ? `${attendancePctFiltered}%` : "-", "% Kehadiran")}
+        ${statCard("fa-certificate", "violet", totalSesi ? `${passPctFiltered}%` : "-", "% Kelulusan")}
+        ${statCard("fa-arrow-trend-up", kpiNaikPctFiltered === null ? "indigo" : (kpiNaikPctFiltered >= 50 ? "emerald" : (kpiNaikPctFiltered > 0 ? "amber" : "rose")), kpiNaikPctFiltered === null ? "-" : `${kpiNaikPctFiltered}%`, "% KPI Naik")}
+    </div>`;
+
+    // Simpan posisi scroll sebelum render ulang & kembalikan lagi setelahnya, supaya buka/tutup
+    // dropdown filter (atau klik Terapkan/Reset) gak bikin halaman "melompat" balik ke atas kalau
+    // usernya lagi udah scroll ke bawah buat lihat tabelnya.
+    const __tgScrollY = window.scrollY;
 
     window.setPage(`
         <a href="#/admin/reports" class="text-xs font-bold text-slate-400 hover:text-indigo-600"><i class="fas fa-arrow-left mr-1"></i> Kembali ke Laporan</a>
         <div class="flex items-center justify-between gap-2 mt-2 mb-1">
             <h1 class="text-xl font-black text-slate-800">Efektivitas Training TNA per Training</h1>
         </div>
-        <p class="text-xs text-slate-400 mb-3">Efektivitas = jumlah peserta hadir yang KPI-nya naik (bulan training dibanding bulan sebelumnya) ÷ jumlah peserta hadir. Klik salah satu training buat lihat tren lanjutannya sampai bulan berjalan.</p>
+        <div class="flex flex-wrap items-center gap-2 mb-3">
+            <select onchange="window.setTrainingGrowthYear(this.value)" class="text-xs font-bold px-3 py-2 rounded-xl border border-slate-200 bg-white text-slate-600 hover:border-slate-300 focus:outline-none">${yearOptionsHtml}</select>
+            ${renderTrainingGrowthMonthFilterDropdown()}
+            ${renderTrainingGrowthDeptFilterDropdown(allDepts)}
+            ${hasActiveFilter ? `<button type="button" onclick="window.resetTrainingGrowthFilters()" class="text-xs font-bold px-3 py-2 rounded-xl text-rose-500 hover:bg-rose-50 transition"><i class="fas fa-xmark mr-1"></i>Reset Filter</button>` : ""}
+            <div class="relative ml-auto">
+                <i class="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-slate-300 text-xs"></i>
+                <input type="text" id="tg-table-search-input" value="${window.escapeHtml(trainingGrowthTableSearch)}" oninput="window.filterTrainingGrowthTableRows(this.value)" placeholder="Cari nama training..." class="text-xs font-bold pl-8 pr-3 py-2 rounded-xl border border-slate-200 bg-white text-slate-600 hover:border-slate-300 focus:outline-none w-48 sm:w-64">
+            </div>
+        </div>
+        ${summaryCardsHtml}
         <div class="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden">
-            <div class="overflow-x-auto">
+            <div class="overflow-x-auto max-h-[65vh] overflow-y-auto">
                 <table class="w-full text-left">
-                    <thead class="bg-slate-50">
+                    <thead class="bg-slate-50 sticky top-0 z-10">
                         <tr class="text-[10px] uppercase font-black text-slate-400">
-                            <th class="py-2.5 px-3">Training</th>
-                            <th class="py-2.5 px-3 text-center">Peserta Hadir</th>
-                            <th class="py-2.5 px-3 text-center">KPI Naik</th>
-                            <th class="py-2.5 px-3 text-center">Efektivitas</th>
-                            <th class="py-2.5 px-3"></th>
+                            <th class="py-2.5 px-3 bg-slate-50">No</th>
+                            <th class="py-2.5 px-3 bg-slate-50">Training</th>
+                            <th class="py-2.5 px-3 text-center bg-slate-50">Diundang</th>
+                            <th class="py-2.5 px-3 text-center bg-slate-50">Hadir</th>
+                            <th class="py-2.5 px-3 text-center bg-slate-50">Lulus</th>
+                            <th class="py-2.5 px-3 text-center bg-slate-50">Naik KPI</th>
+                            <th class="py-2.5 px-3 text-center bg-slate-50">Efektivitas</th>
+                            <th class="py-2.5 px-3 bg-slate-50"></th>
                         </tr>
                     </thead>
-                    <tbody>${rows}</tbody>
+                    <tbody id="tg-table-body">${rows}</tbody>
                 </table>
             </div>
         </div>
     `);
+
+    if (trainingGrowthOpenFilter === "depts" && trainingGrowthDeptSearch) {
+        window.filterTrainingGrowthDeptOptions(trainingGrowthDeptSearch);
+    }
+    if (trainingGrowthTableSearch) {
+        window.filterTrainingGrowthTableRows(trainingGrowthTableSearch);
+    }
+    window.scrollTo(0, __tgScrollY);
+    requestAnimationFrame(() => window.scrollTo(0, __tgScrollY));
 });
 
 // Halaman detail 1 training: ringkasan growth + trajectory rata-rata KPI peserta (dari bulan
