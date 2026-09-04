@@ -16180,10 +16180,10 @@ function renderLeaderboardPage() {
     const lbUsersByUsername = {};
     (window.STATE.users || []).forEach(u => { lbUsersByUsername[normalizeUsername(u.username)] = u; });
     const lbAvatarHtml = (x) => {
-        const displayName = x.emp.nama || x.emp.username || "-";
-        const initial = window.escapeHtml(displayName.trim().charAt(0).toUpperCase() || "?");
         const linkedUser = x.emp.username ? lbUsersByUsername[normalizeUsername(x.emp.username)] : null;
-        return (linkedUser && linkedUser.photoUrl) ? `<img src="${linkedUser.photoUrl}" class="w-full h-full object-cover" alt="Foto profil">` : initial;
+        // Belum ganti foto profil -> ikon generik (bukan huruf inisial lagi), biar konsisten
+        // di semua slot avatar leaderboard (podium & baris tabel).
+        return (linkedUser && linkedUser.photoUrl) ? `<img src="${linkedUser.photoUrl}" class="w-full h-full object-cover" alt="Foto profil">` : `<span class="leading-none">🤵</span>`;
     };
     const lbIsMe = (x) => window.STATE.user && x.emp.username && normalizeUsername(x.emp.username) === normalizeUsername(window.STATE.user.username);
 
@@ -16194,8 +16194,8 @@ function renderLeaderboardPage() {
     const podiumCount = Math.min(3, ranked.length);
     const podiumMedal = {
         1: { bar: "from-amber-700 to-amber-400", ring: "ring-amber-400", h: "h-16", av: "w-14 h-14", icon: '<i class="fas fa-crown text-amber-400"></i>', textSz: "text-[12px]", iconColorHex: "#d4af37", badgeIconSz: "text-5xl", numSz: "text-xs" },
-        2: { bar: "from-amber-700 to-amber-400", ring: "ring-amber-400", h: "h-11", av: "w-11 h-11", icon: '<i class="fas fa-trophy text-slate-400"></i>', textSz: "text-[10px]", iconColorHex: "#9ca3af", badgeIconSz: "text-4xl", numSz: "text-[10px]" },
-        3: { bar: "from-amber-700 to-amber-400", ring: "ring-amber-400", h: "h-8", av: "w-11 h-11", icon: '<i class="fas fa-trophy text-orange-400"></i>', textSz: "text-[10px]", iconColorHex: "#a86a3d", badgeIconSz: "text-4xl", numSz: "text-[10px]" },
+        2: { bar: "from-amber-700 to-amber-400", ring: "ring-amber-400", h: "h-11", av: "w-14 h-14", icon: '<i class="fas fa-trophy text-slate-400"></i>', textSz: "text-[10px]", iconColorHex: "#9ca3af", badgeIconSz: "text-4xl", numSz: "text-[10px]" },
+        3: { bar: "from-amber-700 to-amber-400", ring: "ring-amber-400", h: "h-8", av: "w-14 h-14", icon: '<i class="fas fa-trophy text-orange-400"></i>', textSz: "text-[10px]", iconColorHex: "#a86a3d", badgeIconSz: "text-4xl", numSz: "text-[10px]" },
     };
     // Ikon fa-award diwarnain langsung (emas/perak/perunggu), tanpa lingkaran gradasi lagi —
     // angka ranking ditumpuk di tengah icon pakai outline putih biar tetep kebaca jelas.
@@ -16365,7 +16365,7 @@ window.openLeaderboardPosterPreview = function () {
         }
         // Belum ganti foto profil -> ikon orang generik (bukan huruf inisial lagi), biar konsisten
         // dengan avatar bulat yang ada foto (sama-sama gambar/ikon, bukan campur teks & gambar).
-        return `<i class="fas fa-user ${iconSizeClass || "text-[8px]"}"></i>`;
+        return `<span class="leading-none ${iconSizeClass || "text-[8px]"}">🤵</span>`;
     };
 
     const podiumMedal = {
