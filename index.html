@@ -16358,17 +16358,20 @@ window.openLeaderboardPosterPreview = function () {
     // username, foto profilnya ada di dokumen "users").
     const lbUsersByUsername = {};
     (window.STATE.users || []).forEach(u => { lbUsersByUsername[normalizeUsername(u.username)] = u; });
-    const avatarHtml = (x) => {
-        const displayName = x.emp.nama || x.emp.username || "-";
-        const initial = window.escapeHtml(displayName.trim().charAt(0).toUpperCase() || "?");
+    const avatarHtml = (x, iconSizeClass) => {
         const linkedUser = x.emp.username ? lbUsersByUsername[normalizeUsername(x.emp.username)] : null;
-        return (linkedUser && linkedUser.photoUrl) ? `<img src="${linkedUser.photoUrl}" class="w-full h-full object-cover" alt="Foto profil">` : initial;
+        if (linkedUser && linkedUser.photoUrl) {
+            return `<img src="${linkedUser.photoUrl}" class="w-full h-full object-cover" alt="Foto profil">`;
+        }
+        // Belum ganti foto profil -> ikon orang generik (bukan huruf inisial lagi), biar konsisten
+        // dengan avatar bulat yang ada foto (sama-sama gambar/ikon, bukan campur teks & gambar).
+        return `<i class="fas fa-user ${iconSizeClass || "text-[8px]"}"></i>`;
     };
 
     const podiumMedal = {
         1: { h: "h-14", av: "w-12 h-12", icon: '<i class="fas fa-crown text-amber-400"></i>', iconColorHex: "#d4af37", badgeIconSz: "text-4xl", numSz: "text-[10px]" },
-        2: { h: "h-9", av: "w-9 h-9", icon: '<i class="fas fa-trophy text-slate-400"></i>', iconColorHex: "#9ca3af", badgeIconSz: "text-3xl", numSz: "text-[9px]" },
-        3: { h: "h-7", av: "w-9 h-9", icon: '<i class="fas fa-trophy text-orange-400"></i>', iconColorHex: "#a86a3d", badgeIconSz: "text-3xl", numSz: "text-[9px]" },
+        2: { h: "h-9", av: "w-12 h-12", icon: '<i class="fas fa-trophy text-slate-400"></i>', iconColorHex: "#9ca3af", badgeIconSz: "text-3xl", numSz: "text-[9px]" },
+        3: { h: "h-7", av: "w-12 h-12", icon: '<i class="fas fa-trophy text-orange-400"></i>', iconColorHex: "#a86a3d", badgeIconSz: "text-3xl", numSz: "text-[9px]" },
     };
     const certBadge = (rank, medal) => `
         <span class="relative inline-flex items-center justify-center shrink-0">
@@ -16415,7 +16418,7 @@ window.openLeaderboardPosterPreview = function () {
             return `
             <div class="flex-1 max-w-[33%] flex flex-col items-center">
                 <div class="text-[10px] mb-0.5">${medal.icon}</div>
-                <div class="w-full max-w-[54px] rounded-full ${medal.av} ring-2 ring-amber-300 flex items-center justify-center font-black text-white overflow-hidden shrink-0 mx-auto" style="aspect-ratio:1/1;${meta.gradient}">${avatarHtml(x)}</div>
+                <div class="rounded-full ${medal.av} ring-2 ring-amber-300 flex items-center justify-center font-black text-white overflow-hidden shrink-0 mx-auto" style="aspect-ratio:1/1;${meta.gradient}">${avatarHtml(x, "text-lg")}</div>
                 <p class="text-[8px] font-black text-white truncate max-w-[64px] text-center mt-1">${window.escapeHtml(displayName)}</p>
                 <p class="text-[6px] max-w-[64px] text-center leading-tight break-words"><span class="font-bold text-amber-300">${window.escapeHtml(x.emp.dept || '-')}</span><br><span class="font-bold text-amber-300 opacity-80">${window.escapeHtml(x.emp.designation || '-')}</span></p>
                 <p class="text-[9px] font-black text-amber-200 mt-0.5">${x.kpi ? `${x.kpi.pct}<span class="text-[6px] font-bold text-amber-200/60">%</span>` : `<span class="text-[7px] font-bold text-slate-500">-</span>`}</p>
@@ -16431,27 +16434,64 @@ window.openLeaderboardPosterPreview = function () {
 
         const tableEntries = ranked.slice(podiumCount);
         const tableTotal = tableEntries.length;
-        // Baris <div> flex biasa (bukan <tr>) supaya bisa dialirkan CSS multi-column di
-        // ".lbp-rows-col": rank 1..N ngisi kolom pertama dulu dari atas, begitu penuh
-        // (ketinggian kolom = sisa tinggi kartu) otomatis lanjut ke kolom berikutnya.
+        // Baris <div> flex biasa (bukan <tr>) dialirkan ke 2 kolom (kiri/kanan) yang HITUNGANNYA
+        // ditentukan eksplisit di JS (bukan diserahkan ke algoritma multi-column bawaan CSS).
         //
-        // TAPI tetap ada batas realistis: 1 kartu cuma muat ±2 kolom x ±12 baris (di dalam
-        // tinggi A4 landscape yang sudah dipotong header/podium/footer) sebelum kepotong ke
-        // halaman kertas berikutnya. Kalau pesertanya lebih dari MAX_VISIBLE (kategori kayak
-        // Staff/Officer yang bisa 100+ orang), tampilin sebanyak mungkin dari atas + tetap
-        // sisain 3 baris performa TERBAWAH di akhir (biar "siapa yang perlu diperhatikan"
-        // gak ilang), sisanya diwakili 1 baris ringkasan "+N peringkat lainnya" — mirip
-        // logika lipat versi lama, cuma sekarang kapasitasnya jauh lebih besar berkat kolom.
-        const MAX_VISIBLE = 24;
-        let visibleItems;
-        if (tableTotal <= MAX_VISIBLE) {
-            visibleItems = tableEntries.map((x, i) => ({ x, rank: podiumCount + i + 1 }));
+        // Kenapa gak pakai CSS multi-column lagi: dulu baris "3 terbawah" dipisah ke section
+        // sendiri di BAWAH kedua kolom (spanning penuh tapi isinya cuma numpuk di kiri) — hasilnya
+        // ada area kosong gede di kanan yang mubazir, padahal kolom kanan di atasnya udah lebih
+        // pendek (isinya lebih dikit) dari kolom kiri.
+        //
+        // Aturan alur baris "tengah" (rank 4 dst) sekarang bertingkat 3 level, dievaluasi
+        // berurutan — baru naik level kalau level sebelumnya beneran gak cukup:
+        //   1) Muat di 1 grid (<= COL_CAPACITY baris)? -> 1 kolom full-width aja (persis lebar
+        //      area leaderboard kategorinya), JANGAN dipaksa mekar jadi 2 kolom.
+        //   2) Gak cukup 1 grid tapi cukup di 2 grid (<= COL_CAPACITY*2 baris)? -> kolom KIRI
+        //      diisi penuh (COL_CAPACITY) dulu, sisanya ngalir apa adanya ke kolom KANAN — kolom
+        //      kanan BOLEH berhenti di tengah (gak dipaksa nyampe dasar), karena emang segitu aja
+        //      sisa datanya & tempatnya udah cukup.
+        //   3) Masih gak cukup juga di 2 grid penuh? -> kolom kanan tetap diisi penuh sampai
+        //      dasar, tapi 3 baris TERAKHIRNYA di-swap jadi 3 peringkat TERBAWAH (zona merah)
+        //      yang dijamin selalu tampil utuh (flex-shrink:0), dan sisanya yang kesembunyi
+        //      ditandai baris "N peringkat lainnya".
+        const LEFT_CAPACITY = 13; // batas aman baris yang muat tegak di grid KIRI
+        const RIGHT_MIDDLE_CAPACITY = 13; // batas baris "normal" di grid KANAN (belum termasuk 3-terbawah) — sama tingginya dengan grid kiri, jadi gak ada ruang kosong tersisa
+        const BOTTOM_CAPACITY = 3; // slot 3-terbawah yang dikunci di dasar grid KANAN (kalau dipakai)
+        let leftEntries, rightEntries, bottomEntries, hiddenCount;
+        if (tableTotal <= LEFT_CAPACITY) {
+            // Level 1: 1 grid (kiri, 13 baris) cukup — semua apa adanya di 1 kolom, gak usah dipetakan ke kanan.
+            leftEntries = tableEntries;
+            rightEntries = [];
+            bottomEntries = [];
+            hiddenCount = 0;
+        } else if (tableTotal <= LEFT_CAPACITY + RIGHT_MIDDLE_CAPACITY) {
+            // Level 2: butuh 2 grid (kiri 13 + kanan sisanya, maks 13), tapi cukup — gak usah
+            // dipaksa dipotong/dipisah ke 3-terbawah, dan gak usah dipaksa nempel ke dasar kolom
+            // kanan (misal cuma 18 atau 21 baris, kolom kanan berhenti apa adanya di tengah).
+            leftEntries = tableEntries.slice(0, LEFT_CAPACITY);
+            rightEntries = tableEntries.slice(LEFT_CAPACITY);
+            bottomEntries = [];
+            hiddenCount = 0;
         } else {
-            const topCount = MAX_VISIBLE - 4; // sisa slot: 1 ringkasan + 3 performa terbawah
-            const hiddenCount = tableTotal - topCount - 3;
-            const topSlice = tableEntries.slice(0, topCount).map((x, i) => ({ x, rank: podiumCount + i + 1 }));
-            const bottomSlice = tableEntries.slice(tableTotal - 3).map((x, i) => ({ x, rank: podiumCount + (tableTotal - 3) + i + 1 }));
-            visibleItems = [...topSlice, { moreCount: hiddenCount }, ...bottomSlice];
+            // Level 3: kiri (13) + kanan-normal (13) penuh masih kurang (>26 baris) — baru di sini
+            // 3 baris TERAKHIR dipisah & dikunci ke dasar grid kanan (3-terbawah/zona merah).
+            // Total maks tanpa dilipat = 13 (kiri) + 13 (kanan-normal) + 3 (kanan-bawah) = 29 baris.
+            //
+            // PENTING: kolom kanan itu 1 flex-column yang TINGGI TOTALNYA disamakan (stretch)
+            // sama kolom kiri = tinggi 13 baris, BUKAN 13+3=16 baris. bottomEntries (3 baris,
+            // shrink-0) numpang di kolom kanan YANG SAMA, jadi motong tinggi yang bisa dipakai
+            // bagian "tengah" kanan. Ruang riil buat baris tengah kanan = 13 − 3 = 10 baris, bukan
+            // 13 penuh — kalau tetap dianggap 13, entry ke-11/12/13 ketiban overflow:hidden di
+            // bawah tanpa kehitung "N lainnya", atau nangkring pas di garis potong (nama kepotong
+            // separuh).
+            const RIGHT_MIDDLE_CAPACITY_LV3 = RIGHT_MIDDLE_CAPACITY - BOTTOM_CAPACITY; // 13 - 3 = 10
+            leftEntries = tableEntries.slice(0, LEFT_CAPACITY);
+            bottomEntries = tableEntries.slice(tableTotal - BOTTOM_CAPACITY);
+            const middlePool = tableEntries.slice(LEFT_CAPACITY, tableTotal - BOTTOM_CAPACITY); // sisa antara kolom kiri & 3-terbawah
+            const needsMoreRow = middlePool.length > RIGHT_MIDDLE_CAPACITY_LV3;
+            const rightMiddleShown = needsMoreRow ? RIGHT_MIDDLE_CAPACITY_LV3 - 1 : RIGHT_MIDDLE_CAPACITY_LV3; // sisain 1 slot buat baris "N lainnya" kalau perlu
+            rightEntries = middlePool.slice(0, Math.max(0, rightMiddleShown));
+            hiddenCount = middlePool.length - rightEntries.length; // selisih RIIL, bukan dihitung sebelum slot "N lainnya" dipotong (dulu nyimpang -1)
         }
         const rowHtml = (x, rank) => {
             const displayName = x.emp.nama || x.emp.username || "-";
@@ -16460,7 +16500,7 @@ window.openLeaderboardPosterPreview = function () {
                 <span class="w-0.5 self-stretch shrink-0 ${zoneColorOf(rank, total, showRedZone)}" style="min-height:16px"></span>
                 <span class="py-1 pl-1 pr-0.5 text-center w-5 shrink-0 text-[8px] font-black ${rankNumberColorOf(rank, total, showRedZone)}">${rank}</span>
                 <div class="flex items-center gap-1 min-w-0 py-1 px-1 flex-1">
-                    <div class="w-4 h-4 rounded-full flex items-center justify-center text-[6px] font-black text-white shrink-0 overflow-hidden" style="${meta.gradient}">${avatarHtml(x)}</div>
+                    <div class="w-4 h-4 rounded-full flex items-center justify-center text-[6px] font-black text-white shrink-0 overflow-hidden" style="${meta.gradient}">${avatarHtml(x, "text-[7px]")}</div>
                     <div class="min-w-0">
                         <p class="text-[8px] font-bold text-white truncate">${window.escapeHtml(displayName)}</p>
                         <p class="text-[6px] truncate text-slate-400">${window.escapeHtml(x.emp.dept || '-')} &bull; ${window.escapeHtml(x.emp.designation || '-')}</p>
@@ -16470,12 +16510,30 @@ window.openLeaderboardPosterPreview = function () {
             </div>`;
         };
         const moreRowHtml = (n) => `
-            <div class="lbp-row flex items-center justify-center py-1.5 border-b border-white/5">
+            <div class="lbp-row flex items-center justify-center py-1 border-b border-white/5">
                 <span class="text-[7px] font-black text-amber-300"><i class="fas fa-ellipsis mr-1"></i>${n} peringkat lainnya</span>
             </div>`;
-        const rowsHtml = tableTotal
-            ? visibleItems.map(item => item.moreCount !== undefined ? moreRowHtml(item.moreCount) : rowHtml(item.x, item.rank)).join("")
-            : `<p class="text-center text-[8px] text-slate-500 py-3">Belum ada data</p>`;
+
+        if (!tableTotal) {
+            var rowsAreaHtml = `<p class="text-center text-[8px] text-slate-500 py-3">Belum ada data</p>`;
+        } else if (rightEntries.length === 0 && bottomEntries.length === 0) {
+            // Level 1: cukup 1 grid -> 1 kolom full-width, gak dipetakan ke kanan sama sekali.
+            const leftColHtml = leftEntries.map((x, i) => rowHtml(x, podiumCount + i + 1)).join("");
+            var rowsAreaHtml = `<div class="flex-1 min-w-0 overflow-hidden">${leftColHtml}</div>`;
+        } else {
+            const needsGuaranteedBottom = bottomEntries.length > 0;
+            const leftColHtml = leftEntries.map((x, i) => rowHtml(x, podiumCount + i + 1)).join("");
+            const rightMiddleHtml = rightEntries.map((x, i) => rowHtml(x, podiumCount + leftEntries.length + i + 1)).join("");
+            const bottomGuaranteedHtml = needsGuaranteedBottom ? `
+                ${hiddenCount > 0 ? moreRowHtml(hiddenCount) : ""}
+                ${bottomEntries.map((x, i) => rowHtml(x, podiumCount + (tableTotal - 3) + i + 1)).join("")}` : "";
+            var rowsAreaHtml = `
+                <div class="flex-1 min-w-0 overflow-hidden">${leftColHtml}</div>
+                <div class="flex-1 min-w-0 flex flex-col">
+                    <div class="flex-1 min-h-0 overflow-hidden">${rightMiddleHtml}</div>
+                    <div class="shrink-0">${bottomGuaranteedHtml}</div>
+                </div>`;
+        }
 
         return `
         <div class="flex-1 rounded-xl border border-white/10 overflow-hidden flex flex-col" style="min-width:0;background:linear-gradient(160deg,#0c1424,#101c34);">
@@ -16487,13 +16545,14 @@ window.openLeaderboardPosterPreview = function () {
                 <p class="text-[6px] font-bold text-white/85 mt-1">Divisi ${window.escapeHtml(meta.label)} &bull; ${total} karyawan${activeMonth ? ` &bull; KPI ${KPI_MONTH_NAMES_FULL[activeMonth - 1]}` : ""}</p>
             </div>
             ${podiumHtml}
-            <div class="lbp-rows-col flex-1">${rowsHtml}</div>
+            <div class="lbp-rows-col flex-1 flex gap-0.5 min-h-0">${rowsAreaHtml}</div>
             <div class="flex items-center gap-2 px-2 py-1 border-t border-white/10" style="background:rgba(255,255,255,.03);">
                 <span class="flex items-center gap-1 text-[6px] font-bold text-slate-400"><span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>Zona Top Performer</span>
                 ${showRedZone ? `<span class="flex items-center gap-1 text-[6px] font-bold text-slate-400"><span class="w-1.5 h-1.5 rounded-full bg-rose-500"></span>Zona Perlu Perhatian</span>` : ""}
             </div>
         </div>`;
     };
+
 
     // 1 slide isinya maksimal 3 kartu leaderboard. Divisi Support & Produksi (3 kategori)
     // otomatis pas jadi 1 slide. Divisi Sales (8 kategori: RM, BM, SPV + 5 usia join)
@@ -16588,17 +16647,24 @@ window.openLeaderboardPosterPreview = function () {
         .lbp-footer { margin-top: auto; flex-shrink: 0; display: flex; justify-content: space-between; align-items: center; font-size: 6.8pt; color: #a8e6ff; border-top: .3mm solid rgba(34,211,238,.4); padding-top: 1.8mm; position: relative; z-index: 1; }
         .lbp-cards-row { position: relative; z-index: 1; }
 
-        /* Daftar peringkat di luar podium (rank 4 dst) dialirkan pakai CSS multi-column, BUKAN
-           dilipat/disembunyikan. column-width 44mm pas buat 2 kolom dalam 1 kartu (lebar kartu
-           ±90mm) — begitu kolom pertama penuh sampai ke bawah kartu, rank berikutnya otomatis
-           lanjut ke kolom kedua di sebelah kanannya. column-fill:auto biar ngisi kolom pertama
-           penuh dulu (bukan dibagi rata). min-height:0 di sepanjang rantai flex (cards-row →
-           kartu → rows-col) WAJIB ada, kalau enggak flex item defaultnya gak mau lebih pendek
-           dari konten aslinya walau parent-nya udah dibatasi tinggi — itu penyebab poster
-           kemarin kepotong ke halaman tambahan. Jumlah baris yang ditampilkan sendiri sudah
-           dibatasi di JS (MAX_VISIBLE) biar gak pernah nyampe titik overflow ini. */
-        .lbp-cards-row, .lbp-cards-row > div, .lbp-rows-col { min-height: 0; }
-        .lbp-rows-col { column-width: 44mm; column-gap: 2mm; column-fill: auto; overflow: hidden; }
+        /* Daftar peringkat di luar podium (rank 4 dst) dialirkan ke 2 kolom (".lbp-rows-col" =
+           flex row berisi 2 div anak) — kolom kiri & kanan dibagi EKSPLISIT di JS
+           (leaderboardCardHtml), BUKAN diserahkan ke algoritma CSS multi-column bawaan browser.
+           Alasannya: dulu pakai column-width+column-fill:auto, hasilnya kolom kanan sering
+           berhenti lebih pendek dari kolom kiri (browser yang nentuin), dan baris "3 terbawah"
+           yang dipisah ke section sendiri jadi numpuk di kiri doang — sisa ruang kanan mubazir
+           kosong. Sekarang kolom kiri sengaja diisi PORSI LEBIH BANYAK baris "tengah" (dia gak
+           perlu nyisain ruang buat apa-apa, jadi beneran ngisi penuh ke bawah), sementara kolom
+           kanan diisi sisanya + (kalau ada) 3 baris performa TERBAWAH yang di-pin ke dasar kolom
+           kanan lewat flex-shrink:0 — jadi PERSIS makan ruang kosong yang dulu mubazir itu, dan
+           tetap dijamin selalu utuh ke-render (gak pernah ikut ke-clip) walau bagian atasnya
+           (baris "tengah" di kolom kanan, flex-1 + min-height:0) harus menyusut/ke-clip duluan.
+           min-height:0 di sepanjang rantai flex (cards-row → kartu → rows-col → kolom kanan)
+           WAJIB ada, kalau enggak flex item defaultnya gak mau lebih pendek dari konten aslinya
+           walau parent-nya udah dibatasi tinggi — itu penyebab poster kemarin kepotong ke
+           halaman tambahan. Jumlah baris yang ditampilkan sendiri sudah dibatasi di JS
+           (TOP_MAX) biar gak pernah nyampe titik overflow ini. */
+        .lbp-cards-row, .lbp-cards-row > div, .lbp-rows-col, .lbp-rows-col > div { min-height: 0; }
         .lbp-row { break-inside: avoid; page-break-inside: avoid; -webkit-column-break-inside: avoid; }
 
         @media print {
