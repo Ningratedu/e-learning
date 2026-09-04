@@ -371,6 +371,14 @@ html.dark .hover\:bg-amber-50\/40:hover, html.dark .hover\:bg-amber-50\/50:hover
 html.dark .hover\:bg-emerald-50\/40:hover { background-color: rgba(16,185,129,.14) !important; }
 html.dark .hover\:bg-indigo-50\/30:hover, html.dark .hover\:bg-indigo-50\/40:hover, html.dark .hover\:bg-indigo-50\/50:hover { background-color: rgba(99,102,241,.14) !important; }
 html.dark .hover\:bg-rose-50\/40:hover { background-color: rgba(244,63,94,.14) !important; }
+/* Baris zona hijau/merah di Klasemen KPI (top performer / perlu perhatian) — dipakai
+   langsung di background <tr>, bukan cuma badge, jadi butuh remap juga biar di dark
+   mode gak ketinggalan pastel terang (kontras jeblok / "gak aman" dibaca di atas dasar
+   gelap). Dipertipis opacity-nya di dark mode karena tr-nya lebar & mepet baris lain. */
+html.dark .bg-emerald-50\/70 { background-color: rgba(16,185,129,.10) !important; }
+html.dark .hover\:bg-emerald-50:hover { background-color: rgba(16,185,129,.18) !important; }
+html.dark .bg-rose-50\/70 { background-color: rgba(244,63,94,.10) !important; }
+html.dark .hover\:bg-rose-50:hover { background-color: rgba(244,63,94,.18) !important; }
 html.dark .hover\:bg-violet-50\/40:hover, html.dark .hover\:bg-violet-50\/50:hover { background-color: rgba(139,92,246,.14) !important; }
 
 /* Teks warna aksen (amber/emerald/indigo/rose/sky/violet/orange/teal, shade 500-900) didesain
@@ -2625,11 +2633,13 @@ window.renderSidebar = function () {
         { key: "courses", icon: "fa-book-open", label: "Onboarding Training" },
         { key: "trainings", icon: "fa-chalkboard-user", label: "Training By TNA" },
         { key: "certificates", icon: "fa-award", label: "Sertifikat Saya" },
+        { key: "leaderboard", icon: "fa-trophy", label: "Leaderboard KPI" },
     ] : [
         { key: "dashboard", icon: "fa-chart-simple", label: "Dashboard" },
         { key: "courses", icon: "fa-book-open", label: "Onboarding Training" },
         { key: "trainings", icon: "fa-chalkboard-user", label: "Training By TNA" },
         { key: "certificates", icon: "fa-award", label: "Sertifikat Saya" },
+        { key: "leaderboard", icon: "fa-trophy", label: "Leaderboard KPI" },
         // Menu khusus role peserta dengan level jabatan Supervisor ke atas (dikonfigurasi admin
         // lewat window.tnaInputConfig()) — buat input data "Hasil TNA" timnya sendiri.
         ...(window.sel.canInputTna() ? [{ key: "tna-input", icon: "fa-clipboard-list", label: "Request Training" }] : []),
@@ -2640,6 +2650,7 @@ window.renderSidebar = function () {
         { key: "admin/onboarding-schedule", icon: "fa-layer-group", label: "Kelola Onboarding" },
         { key: "admin/trainings", icon: "fa-calendar-days", label: "Kelola Training TNA" },
         { key: "admin/employees", icon: "fa-id-card-clip", label: "Data Karyawan" },
+        { key: "admin/leaderboard", icon: "fa-trophy", label: "Kelola Leaderboard" },
         { key: "admin/training-import", icon: "fa-file-import", label: "Import Training Lama" },
         { key: "admin/users", icon: "fa-users-gear", label: "Kelola Akun" },
     ];
@@ -15596,6 +15607,901 @@ window.openReportDetail = function (type) {
     window.openModal("modal-dashboard-detail");
 };
 
+
+// ================= LEADERBOARD KPI =================
+// Fitur "Leaderboard": ranking karyawan berdasarkan nilai KPI bulanan terakhir, dikelompokkan
+// jadi 3 divisi (Sales / Support / Produksi). Karena nama departemen & posisi di data karyawan
+// adalah teks bebas hasil import Excel, admin WAJIB memetakan dulu lewat "Kelola Leaderboard"
+// (#/admin/leaderboard):
+//   1) Setiap departemen dipetakan ke salah satu dari 3 divisi.
+//   2) Setiap posisi (dalam departemen-departemen milik divisi itu) dipetakan ke salah satu
+//      kategori leaderboard divisi tersebut.
+// Konfigurasi disimpan di collection "settings" dokumen "leaderboardConfig":
+// { deptDivision: { "<Nama Departemen>": "sales"|"support"|"produksi" },
+//   posisiMap: { sales: { rm:[...], bm:[...], spv:[...], sales:[...] },
+//                support: { staff:[...], spv:[...], manager:[...] },
+//                produksi: { staff:[...], spv:[...], manager:[...] } } }
+//
+// Khusus divisi Sales, kategori mapping "sales" (posisi umum "Sales") OTOMATIS dipecah jadi 5
+// leaderboard tampilan berdasarkan usia join (dihitung dari tglBergabung ke tanggal hari ini,
+// BUKAN dari field "masaKerja" hasil import yang bisa basi kalau lama tidak diimpor ulang):
+// 0-<1 bulan, 1-<3 bulan, 3-<6 bulan, 6-12 bulan, >12 bulan.
+
+// Kategori dipakai admin waktu memetakan POSISI (mapping-only, kategori "sales" di sini nanti
+// otomatis dipecah lagi jadi 5 leaderboard tampilan berdasarkan usia join).
+window.leaderboardMapCategories = {
+    sales: [
+        { key: "rm", label: "Regional Manager (RM)" },
+        { key: "bm", label: "Branch Manager (BM)" },
+        { key: "spv", label: "Supervisor (SPV)" },
+        { key: "sales", label: "Sales" },
+    ],
+    support: [
+        { key: "staff", label: "Staff/Officer" },
+        { key: "spv", label: "Supervisor (SPV)" },
+        { key: "manager", label: "Manager" },
+    ],
+    produksi: [
+        { key: "staff", label: "Staff/Officer" },
+        { key: "spv", label: "Supervisor (SPV)" },
+        { key: "manager", label: "Manager" },
+    ],
+};
+// Struktur leaderboard yang benar-benar DITAMPILKAN ke user (kategori "sales" di divisi Sales
+// sudah dipecah jadi 5 bucket usia join, bukan 1 kategori gabungan).
+window.LEADERBOARD_DIVISIONS = [
+    {
+        key: "sales", categories: [
+            { key: "rm", label: "Regional Manager (RM)" },
+            { key: "bm", label: "Branch Manager (BM)" },
+            { key: "spv", label: "Supervisor (SPV)" },
+            { key: "sales_0_1", label: "Sales Usia Join 0-<1 bulan", tenureMonths: [0, 1] },
+            { key: "sales_1_3", label: "Sales Usia Join 1-<3 bulan", tenureMonths: [1, 3] },
+            { key: "sales_3_6", label: "Sales Usia Join 3-<6 bulan", tenureMonths: [3, 6] },
+            { key: "sales_6_12", label: "Sales Usia Join 6-12 bulan", tenureMonths: [6, 12] },
+            { key: "sales_12plus", label: "Sales Usia Join >12 bulan", tenureMonths: [12, Infinity] },
+        ]
+    },
+    {
+        key: "support", categories: [
+            { key: "staff", label: "Staff/Officer" },
+            { key: "spv", label: "Supervisor (SPV)" },
+            { key: "manager", label: "Manager" },
+        ]
+    },
+    {
+        key: "produksi", categories: [
+            { key: "staff", label: "Staff/Officer" },
+            { key: "spv", label: "Supervisor (SPV)" },
+            { key: "manager", label: "Manager" },
+        ]
+    },
+];
+window.LEADERBOARD_DIVISION_META = {
+    sales: { label: "Sales", icon: "fa-handshake", chipActive: "bg-indigo-600 border-indigo-600 text-white", chipHover: "hover:border-indigo-300", soft: "bg-indigo-50", text: "text-indigo-600", ring: "ring-indigo-200" },
+    support: { label: "Support", icon: "fa-headset", chipActive: "bg-emerald-600 border-emerald-600 text-white", chipHover: "hover:border-emerald-300", soft: "bg-emerald-50", text: "text-emerald-600", ring: "ring-emerald-200" },
+    produksi: { label: "Produksi", icon: "fa-industry", chipActive: "bg-amber-500 border-amber-500 text-white", chipHover: "hover:border-amber-300", soft: "bg-amber-50", text: "text-amber-600", ring: "ring-amber-200" },
+};
+
+window.leaderboardConfig = function () {
+    const doc = (window.STATE.settings || []).find(s => s.id === "leaderboardConfig");
+    return {
+        deptDivision: (doc && doc.deptDivision) || {},
+        posisiMap: (doc && doc.posisiMap) || { sales: {}, support: {}, produksi: {} },
+        // Pengecualian per (departemen + designation/jabatan) — OPSIONAL. Dipakai buat kasus
+        // departemen yang isinya campuran, misal dept "Project Operations Sampora" defaultnya
+        // divisi Produksi tapi ada juga karyawan dengan designation "Sales" di dalamnya yang
+        // harus tetap masuk divisi Sales. Key formatnya "<Departemen>|||<Designation>" (dipakai
+        // apa adanya buat ditampilkan, matching-nya selalu case-insensitive lewat
+        // leaderboardDivisionOfEmployee/parseLeaderboardOverrideKey).
+        designationOverride: (doc && doc.designationOverride) || {}
+    };
+};
+window.parseLeaderboardOverrideKey = function (key) {
+    const idx = key.indexOf("|||");
+    if (idx < 0) return null;
+    return { dept: key.slice(0, idx), posisi: key.slice(idx + 3) };
+};
+// setDoc lalu patch window.STATE.settings secara lokal (collection "settings" cuma di-fetch
+// sekali waktu boot, bukan realtime — lihat startLiveListeners), supaya leaderboard langsung
+// kepakai konfigurasi baru di sesi yang sama tanpa perlu reload halaman.
+window.saveLeaderboardConfig = async function (cfg) {
+    const { ref, setDoc } = window.LMS_DB;
+    const payload = { deptDivision: cfg.deptDivision || {}, posisiMap: cfg.posisiMap || {}, designationOverride: cfg.designationOverride || {} };
+    await setDoc(ref("settings", "leaderboardConfig"), payload, { merge: false });
+    const idx = window.STATE.settings.findIndex(s => s.id === "leaderboardConfig");
+    const newDoc = { id: "leaderboardConfig", ...payload };
+    if (idx >= 0) window.STATE.settings[idx] = newDoc; else window.STATE.settings.push(newDoc);
+    window.dispatchEvent(new CustomEvent("lms-state-changed", { detail: "settings" }));
+    window.toast("Konfigurasi leaderboard disimpan", "success");
+};
+window.leaderboardDivisionOfDept = function (deptName, cfg) {
+    cfg = cfg || window.leaderboardConfig();
+    const d = String(deptName || "").trim().toLowerCase();
+    if (!d) return null;
+    const found = Object.keys(cfg.deptDivision || {}).find(k => String(k).trim().toLowerCase() === d);
+    return found ? cfg.deptDivision[found] : null;
+};
+// Divisi efektif seorang karyawan: kalau ada pengecualian khusus buat kombinasi
+// departemen+designation(jabatan)-nya, itu yang dipakai (menang atas mapping default
+// departemen). Kalau tidak ada, fallback ke mapping departemen seperti biasa lewat
+// leaderboardDivisionOfDept.
+window.leaderboardDivisionOfEmployee = function (emp, cfg) {
+    cfg = cfg || window.leaderboardConfig();
+    const dept = String((emp && emp.dept) || "").trim().toLowerCase();
+    const designation = String((emp && emp.designation) || "").trim().toLowerCase();
+    if (dept && designation) {
+        const overrideKey = Object.keys(cfg.designationOverride || {}).find(k => {
+            const parsed = window.parseLeaderboardOverrideKey(k);
+            return parsed && parsed.dept.trim().toLowerCase() === dept && parsed.posisi.trim().toLowerCase() === designation;
+        });
+        if (overrideKey) return cfg.designationOverride[overrideKey];
+    }
+    return window.leaderboardDivisionOfDept(emp && emp.dept, cfg);
+};
+// Usia join (dalam bulan bulat) dihitung dari tanggal bergabung sampai HARI INI, supaya selalu
+// akurat walau data karyawan sudah lama tidak di-import ulang lewat Excel.
+window.leaderboardTenureMonths = function (emp) {
+    const ms = tsMillis(emp && emp.tglBergabung);
+    if (!ms) return null;
+    const join = new Date(ms);
+    const now = new Date();
+    let months = (now.getFullYear() - join.getFullYear()) * 12 + (now.getMonth() - join.getMonth());
+    if (now.getDate() < join.getDate()) months -= 1;
+    return Math.max(0, months);
+};
+// Divisi + kategori leaderboard TAMPILAN milik seorang karyawan (null kalau departemen/posisinya
+// belum dipetakan admin, atau — khusus kategori "sales" — belum punya tanggal bergabung).
+window.leaderboardCategoryOfEmployee = function (emp, cfg) {
+    if (!emp) return null;
+    cfg = cfg || window.leaderboardConfig();
+    const division = window.leaderboardDivisionOfEmployee(emp, cfg);
+    if (!division) return null;
+    const posisiMapDiv = (cfg.posisiMap && cfg.posisiMap[division]) || {};
+    const posisi = String(emp.posisi || "").trim().toLowerCase();
+    if (!posisi) return null;
+    const catKeyFound = Object.keys(posisiMapDiv).find(catKey =>
+        (posisiMapDiv[catKey] || []).some(p => String(p).trim().toLowerCase() === posisi));
+    if (!catKeyFound) return null;
+    if (division === "sales" && catKeyFound === "sales") {
+        const months = window.leaderboardTenureMonths(emp);
+        if (months === null) return null;
+        const divDef = window.LEADERBOARD_DIVISIONS.find(d => d.key === "sales");
+        const tenureCat = divDef.categories.find(c => c.tenureMonths && months >= c.tenureMonths[0] && months < c.tenureMonths[1]);
+        return tenureCat ? { division, category: tenureCat.key } : null;
+    }
+    return { division, category: catKeyFound };
+};
+// KPI bulan TERAKHIR yang datanya terisi (tahun berjalan) untuk seorang karyawan. Balikin
+// { pct, month } atau null kalau belum ada data KPI sama sekali. Dipakai waktu filter bulan
+// di halaman Leaderboard di-set ke "Otomatis" (bukan bulan spesifik).
+window.leaderboardLatestKpi = function (emp) {
+    if (!emp || !emp.kpi) return null;
+    let best = null;
+    for (let m = 1; m <= 12; m++) {
+        const raw = emp.kpi[m] ?? emp.kpi[String(m)];
+        if (typeof raw === "number") best = { pct: Math.round(raw * 1000) / 10, month: m };
+    }
+    return best;
+};
+// KPI di SATU bulan spesifik (1-12) untuk seorang karyawan. Balikin { pct, month } atau null
+// kalau bulan itu belum ada datanya. Dipakai waktu admin/user filter leaderboard ke bulan
+// tertentu (bukan "otomatis bulan terkini").
+window.leaderboardKpiForMonth = function (emp, month) {
+    if (!emp || !emp.kpi || !month) return null;
+    const raw = emp.kpi[month] ?? emp.kpi[String(month)];
+    if (typeof raw !== "number") return null;
+    return { pct: Math.round(raw * 1000) / 10, month };
+};
+// Semua karyawan AKTIF (belum resign) yang sudah kebagian divisi+kategori leaderboard, lengkap
+// dengan skor KPI-nya. cfg opsional dipakai supaya halaman admin bisa preview pakai draft yang
+// belum disimpan. month opsional (1-12): kalau diisi, skor diambil dari BULAN ITU SAJA; kalau
+// null/tidak diisi, otomatis pakai bulan terakhir yang datanya terisi per karyawan (perilaku lama).
+window.leaderboardBuildEntries = function (cfg, month) {
+    cfg = cfg || window.leaderboardConfig();
+    return (window.STATE.employees || [])
+        .filter(e => !e.tglResign)
+        .map(e => {
+            const catInfo = window.leaderboardCategoryOfEmployee(e, cfg);
+            const kpi = month ? window.leaderboardKpiForMonth(e, month) : window.leaderboardLatestKpi(e);
+            return { emp: e, division: catInfo ? catInfo.division : null, category: catInfo ? catInfo.category : null, kpi };
+        })
+        .filter(x => x.division && x.category);
+};
+// Ranking 1 kategori leaderboard, urut KPI% terbaru/bulan terpilih tertinggi -> terendah.
+// Karyawan yang belum punya data KPI (di bulan yang difilter) tetap ditampilkan tapi diletakkan
+// paling bawah (dianggap "belum ada data", bukan otomatis diberi skor 0 yang bisa menyesatkan
+// seolah performanya paling jelek).
+window.leaderboardRankCategory = function (division, category, cfg, month) {
+    return window.leaderboardBuildEntries(cfg, month)
+        .filter(x => x.division === division && x.category === category)
+        .sort((a, b) => {
+            const av = a.kpi ? a.kpi.pct : -1;
+            const bv = b.kpi ? b.kpi.pct : -1;
+            return bv - av;
+        });
+};
+
+// ---- ADMIN: Kelola Leaderboard (#/admin/leaderboard) ----
+let leaderboardConfigDraft = null; // null = belum diinit dari data tersimpan
+window.ROUTES["admin/leaderboard"] = requireAdmin(function () { renderLeaderboardAdminConfig(); });
+
+function renderLeaderboardAdminConfig() {
+    if (leaderboardConfigDraft === null) {
+        const saved = window.leaderboardConfig();
+        leaderboardConfigDraft = {
+            deptDivision: { ...saved.deptDivision },
+            posisiMap: {
+                sales: { ...(saved.posisiMap.sales || {}) },
+                support: { ...(saved.posisiMap.support || {}) },
+                produksi: { ...(saved.posisiMap.produksi || {}) },
+            },
+            designationOverride: { ...(saved.designationOverride || {}) }
+        };
+    }
+    const draft = leaderboardConfigDraft;
+    const allDepts = window.sel.allDeptNames();
+
+    const deptDivisionRows = allDepts.length ? allDepts.map(dep => {
+        const currentKey = Object.keys(draft.deptDivision).find(k => k.toLowerCase() === dep.toLowerCase());
+        const activeDiv = currentKey ? draft.deptDivision[currentKey] : null;
+        const btns = ["sales", "support", "produksi"].map(dv => {
+            const meta = window.LEADERBOARD_DIVISION_META[dv];
+            const active = activeDiv === dv;
+            return `<button type="button" onclick="window.setLeaderboardDeptDivision('${window.escapeHtml(dep).replace(/'/g, "\\'")}','${dv}')" class="text-[10px] font-bold px-2 py-1 rounded-full border transition ${active ? meta.chipActive : 'bg-white border-slate-200 text-slate-500 ' + meta.chipHover}">${active ? '<i class="fas fa-check mr-1"></i>' : ''}${meta.label}</button>`;
+        }).join("");
+        return `
+        <div class="flex items-center justify-between gap-2 py-1.5 border-b border-slate-50 last:border-0" data-tsearch="${window.escapeHtml(dep.toLowerCase())}">
+            <p class="text-xs font-bold text-slate-700 truncate">${window.escapeHtml(dep)}</p>
+            <div class="flex items-center gap-1 shrink-0 flex-wrap justify-end">
+                ${btns}
+                ${activeDiv ? `<button type="button" onclick="window.setLeaderboardDeptDivision('${window.escapeHtml(dep).replace(/'/g, "\\'")}', null)" title="Hapus mapping" class="text-slate-300 hover:text-rose-500 text-[10px] px-1"><i class="fas fa-xmark"></i></button>` : ''}
+            </div>
+        </div>`;
+    }).join("") : `<p class="text-xs text-slate-400 py-4 text-center">Belum ada data departemen. Import dulu lewat menu Data Karyawan.</p>`;
+
+    // Pengecualian per (departemen + designation/jabatan) — OPSIONAL. Departemen yang isinya
+    // campuran (mis. dept "Project Operations Sampora" defaultnya Produksi tapi ada karyawan
+    // dengan designation "Sales" di dalamnya) bisa di-override di sini supaya designation itu
+    // tetap masuk divisi lain, terlepas dari mapping default departemennya di langkah 1. Cuma
+    // ditampilkan buat departemen yang PUNYA data designation (kalau kosong semua, tidak ada
+    // yang bisa dikecualikan).
+    const overrideDeptsHtml = Object.keys(draft.deptDivision).map(dep => {
+        const defaultDiv = draft.deptDivision[dep];
+        const designationList = window.sel.designationNamesForDeptsAndLevels([dep], []);
+        if (!designationList.length) return "";
+        const defaultMeta = window.LEADERBOARD_DIVISION_META[defaultDiv];
+        const rows = designationList.map(desig => {
+            const overrideKey = Object.keys(draft.designationOverride || {}).find(k => {
+                const parsed = window.parseLeaderboardOverrideKey(k);
+                return parsed && parsed.dept.toLowerCase() === dep.toLowerCase() && parsed.posisi.toLowerCase() === desig.toLowerCase();
+            });
+            const activeOverride = overrideKey ? draft.designationOverride[overrideKey] : null;
+            const btns = ["sales", "support", "produksi"].map(dv => {
+                const meta = window.LEADERBOARD_DIVISION_META[dv];
+                const active = activeOverride === dv;
+                return `<button type="button" onclick="window.setLeaderboardDesignationOverride('${window.escapeHtml(dep).replace(/'/g, "\\'")}','${window.escapeHtml(desig).replace(/'/g, "\\'")}','${dv}')" class="text-[10px] font-bold px-2 py-1 rounded-full border transition ${active ? meta.chipActive : 'bg-white border-slate-200 text-slate-500 ' + meta.chipHover}">${active ? '<i class="fas fa-check mr-1"></i>' : ''}${meta.label}</button>`;
+            }).join("");
+            return `
+            <div class="flex items-center justify-between gap-2 py-1.5 border-b border-slate-50 last:border-0">
+                <p class="text-[11px] font-bold text-slate-600 truncate">${window.escapeHtml(desig)}${!activeOverride ? ` <span class="text-slate-300 font-normal">(default: ${defaultMeta.label})</span>` : ''}</p>
+                <div class="flex items-center gap-1 shrink-0 flex-wrap justify-end">
+                    ${btns}
+                    ${activeOverride ? `<button type="button" onclick="window.setLeaderboardDesignationOverride('${window.escapeHtml(dep).replace(/'/g, "\\'")}','${window.escapeHtml(desig).replace(/'/g, "\\'")}', null)" title="Hapus pengecualian" class="text-slate-300 hover:text-rose-500 text-[10px] px-1"><i class="fas fa-xmark"></i></button>` : ''}
+                </div>
+            </div>`;
+        }).join("");
+        return `
+        <details class="border-b border-slate-100 last:border-0 pb-2 mb-2 last:pb-0 last:mb-0" data-tsearch="${window.escapeHtml((dep + " " + designationList.join(" ")).toLowerCase())}">
+            <summary class="font-bold text-xs text-slate-700 cursor-pointer select-none py-1"><i class="fas fa-code-branch text-rose-500 mr-1.5"></i>${window.escapeHtml(dep)} <span class="text-slate-300 font-normal">— default ${defaultMeta.label}</span></summary>
+            <div class="mt-1 pl-1">${rows}</div>
+        </details>`;
+    }).filter(Boolean).join("");
+
+    const posisiSectionsHtml = ["sales", "support", "produksi"].map(dv => {
+        const meta = window.LEADERBOARD_DIVISION_META[dv];
+        const deptsInDiv = Object.keys(draft.deptDivision).filter(k => draft.deptDivision[k] === dv);
+        const posisiOptions = window.sel.posisiNamesForDepts(deptsInDiv);
+        // Tambahin posisi milik karyawan yang designation-nya di-override MASUK ke divisi ini,
+        // walau departemennya sendiri dipetakan ke divisi lain di langkah 1 (kasus dept
+        // campuran, mis. designation "Sales" di dept yang defaultnya Produksi). Diambil dari
+        // posisi ASLI karyawan yang bersangkutan (karena kategori tetap di-mapping lewat
+        // posisi/level, bukan designation), bukan dari nama designation-nya.
+        Object.keys(draft.designationOverride || {}).forEach(k => {
+            if (draft.designationOverride[k] !== dv) return;
+            const parsed = window.parseLeaderboardOverrideKey(k);
+            if (!parsed) return;
+            (window.STATE.employees || []).forEach(e => {
+                if (String(e.dept || "").trim().toLowerCase() !== parsed.dept.trim().toLowerCase()) return;
+                if (String(e.designation || "").trim().toLowerCase() !== parsed.posisi.trim().toLowerCase()) return;
+                const p = String(e.posisi || "").trim();
+                if (p && !posisiOptions.some(x => x.toLowerCase() === p.toLowerCase())) posisiOptions.push(p);
+            });
+        });
+        const cats = window.leaderboardMapCategories[dv];
+        const catBlocks = cats.map(cat => {
+            const assigned = (draft.posisiMap[dv][cat.key] || []);
+            const chips = posisiOptions.length ? posisiOptions.map(p => {
+                const active = assigned.some(x => x.toLowerCase() === p.toLowerCase());
+                return `<button type="button" onclick="window.toggleLeaderboardPosisi('${dv}','${cat.key}','${window.escapeHtml(p).replace(/'/g, "\\'")}')" class="text-[11px] font-bold px-2.5 py-1.5 rounded-full border transition ${active ? meta.chipActive : 'bg-white border-slate-200 text-slate-500 ' + meta.chipHover}">${active ? '<i class="fas fa-check mr-1"></i>' : ''}${window.escapeHtml(p)}</button>`;
+            }).join("") : `<p class="text-[11px] text-slate-400">Belum ada posisi terdeteksi di departemen divisi ini.</p>`;
+            return `
+            <div class="mb-3 last:mb-0">
+                <p class="text-[11px] font-black text-slate-500 uppercase tracking-wide mb-1.5">${cat.label}</p>
+                <div class="flex flex-wrap gap-1.5">${chips}</div>
+            </div>`;
+        }).join("");
+        return `
+        <div class="bg-white rounded-3xl border border-slate-100 shadow-sm p-4">
+            <h3 class="font-black text-sm text-slate-700 mb-1"><i class="fas ${meta.icon} mr-1.5 ${meta.text}"></i> Divisi ${meta.label}</h3>
+            <p class="text-xs text-slate-400 mb-3">${deptsInDiv.length ? `Departemen: ${deptsInDiv.map(d => window.escapeHtml(d)).join(", ")}` : 'Belum ada departemen dipetakan ke divisi ini — atur dulu di langkah 1 di atas.'}</p>
+            ${catBlocks}
+            ${dv === "sales" ? `<p class="text-[10px] text-slate-400 mt-1"><i class="fas fa-circle-info mr-1"></i>Kategori "Sales" otomatis dipecah jadi 5 leaderboard usia join saat ditampilkan ke user.</p>` : ''}
+        </div>`;
+    }).join("");
+
+    // Ringkasan preview pakai DRAFT (belum tentu sudah disimpan) supaya admin langsung lihat
+    // efek perubahan sebelum klik Simpan.
+    const previewEntries = window.leaderboardBuildEntries(draft);
+    const totalActive = (window.STATE.employees || []).filter(e => !e.tglResign).length;
+    const mappedCount = previewEntries.length;
+
+    window.setPage(`
+    <div class="max-w-5xl mx-auto">
+        <div class="flex items-center justify-between mb-4 flex-wrap gap-2">
+            <div>
+                <h2 class="text-lg font-black text-slate-800"><i class="fas fa-trophy text-amber-500 mr-1.5"></i> Kelola Leaderboard</h2>
+                <p class="text-xs text-slate-400 mt-0.5 max-w-xl">Petakan departemen ke 3 divisi, lalu petakan posisi karyawan ke kategori leaderboard di tiap divisi. Ranking dihitung otomatis dari nilai KPI bulanan terakhir tiap karyawan.</p>
+            </div>
+            <span class="text-xs font-black px-3 py-1.5 rounded-full ${mappedCount ? 'bg-emerald-50 text-emerald-600' : 'bg-slate-100 text-slate-400'} whitespace-nowrap">${mappedCount}/${totalActive} karyawan aktif masuk leaderboard</span>
+        </div>
+
+        <div class="grid grid-cols-1 ${overrideDeptsHtml ? 'md:grid-cols-2' : ''} gap-4 mb-4">
+            <div class="bg-white rounded-3xl border border-slate-100 shadow-sm max-h-[380px] overflow-y-auto">
+                <div class="sticky top-0 z-10 bg-white/95 backdrop-blur-sm px-4 pt-4 pb-2 border-b border-slate-100">
+                    <h3 class="font-black text-sm text-slate-700 mb-0.5"><i class="fas fa-diagram-project text-indigo-500 mr-1.5"></i> 1. Mapping Departemen ke Divisi</h3>
+                    <p class="text-[11px] text-slate-400">Nama departemen di data karyawan bebas teks, jadi tiap departemen perlu dipetakan manual ke salah satu dari 3 divisi berikut.</p>
+                </div>
+                <div class="px-4 pb-3">${deptDivisionRows}</div>
+            </div>
+
+            ${overrideDeptsHtml ? `
+            <div class="bg-white rounded-3xl border border-slate-100 shadow-sm max-h-[380px] overflow-y-auto">
+                <div class="sticky top-0 z-10 bg-white/95 backdrop-blur-sm px-4 pt-4 pb-2 border-b border-slate-100">
+                    <h3 class="font-black text-sm text-slate-700 mb-0.5"><i class="fas fa-code-branch text-rose-500 mr-1.5"></i> 1b. Pengecualian Designation/Jabatan (opsional)</h3>
+                    <p class="text-[11px] text-slate-400">Buat departemen campuran (misal ada designation "Sales" di tengah departemen non-Sales), klik departemennya lalu pilih divisi khusus buat designation itu. Designation lain tetap ikut divisi default departemennya.</p>
+                </div>
+                <div class="px-4 pb-3">${overrideDeptsHtml}</div>
+            </div>` : ''}
+        </div>
+
+        <div class="mb-2">
+            <h3 class="font-black text-sm text-slate-700"><i class="fas fa-user-tag text-indigo-500 mr-1.5"></i> 2. Mapping Posisi per Kategori Leaderboard</h3>
+            <p class="text-xs text-slate-400 mb-3">Pilih posisi (dari data karyawan) mana saja yang termasuk tiap kategori, khusus untuk departemen yang sudah dipetakan ke divisi tersebut di langkah 1.</p>
+        </div>
+        <div class="space-y-4 mb-6">${posisiSectionsHtml}</div>
+
+        <button onclick="window.guardedClick(this, () => window.saveLeaderboardConfig(leaderboardConfigDraft))" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-2xl transition"><i class="fas fa-save mr-1"></i> Simpan Konfigurasi Leaderboard</button>
+    </div>`);
+}
+
+window.setLeaderboardDeptDivision = function (dep, division) {
+    if (leaderboardConfigDraft === null) return;
+    // Hapus dulu entri lama (case-insensitive) biar gak numpuk key beda kapitalisasi.
+    Object.keys(leaderboardConfigDraft.deptDivision).forEach(k => {
+        if (k.toLowerCase() === dep.toLowerCase()) delete leaderboardConfigDraft.deptDivision[k];
+    });
+    if (division) leaderboardConfigDraft.deptDivision[dep] = division;
+    renderLeaderboardAdminConfig();
+};
+window.setLeaderboardDesignationOverride = function (dep, designation, division) {
+    if (leaderboardConfigDraft === null) return;
+    leaderboardConfigDraft.designationOverride = leaderboardConfigDraft.designationOverride || {};
+    // Hapus dulu entri lama (case-insensitive) buat kombinasi dept+designation ini biar gak
+    // numpuk key beda kapitalisasi.
+    Object.keys(leaderboardConfigDraft.designationOverride).forEach(k => {
+        const parsed = window.parseLeaderboardOverrideKey(k);
+        if (parsed && parsed.dept.toLowerCase() === dep.toLowerCase() && parsed.posisi.toLowerCase() === designation.toLowerCase()) {
+            delete leaderboardConfigDraft.designationOverride[k];
+        }
+    });
+    if (division) leaderboardConfigDraft.designationOverride[`${dep}|||${designation}`] = division;
+    renderLeaderboardAdminConfig();
+};
+window.toggleLeaderboardPosisi = function (division, catKey, posisiName) {
+    if (leaderboardConfigDraft === null) return;
+    const map = leaderboardConfigDraft.posisiMap[division] = leaderboardConfigDraft.posisiMap[division] || {};
+    const wasActiveHere = (map[catKey] || []).some(p => p.toLowerCase() === posisiName.toLowerCase());
+    // 1 posisi cuma boleh masuk 1 kategori per divisi, jadi lepas dulu dari SEMUA kategori.
+    Object.keys(map).forEach(k => {
+        map[k] = (map[k] || []).filter(p => p.toLowerCase() !== posisiName.toLowerCase());
+    });
+    if (!wasActiveHere) map[catKey] = [...(map[catKey] || []), posisiName];
+    renderLeaderboardAdminConfig();
+};
+
+// ---- USER: Halaman Leaderboard (#/leaderboard) ----
+// Bisa diakses admin maupun karyawan biasa. Default menampilkan leaderboard milik user yang
+// login sendiri (kalau datanya sudah dipetakan admin), tapi tetap bisa browse divisi/kategori
+// lain lewat tab & chip di atas tabel.
+let leaderboardViewDivision = null;
+let leaderboardViewCategory = null;
+let leaderboardViewMonth = null; // null = otomatis (bulan terakhir yang datanya terisi per karyawan), 1-12 = bulan spesifik
+let leaderboardSearchQuery = ""; // filter cari nama/departemen/posisi di kategori leaderboard yang lagi ditampilkan
+let leaderboardFolded = true; // default: klasemen dilipat, cuma nampilin top 5 + 3 terbawah
+window.ROUTES["leaderboard"] = function () { renderLeaderboardPage(); };
+
+function renderLeaderboardPage() {
+    const cfg = window.leaderboardConfig();
+    const hasAnyMapping = Object.keys(cfg.deptDivision || {}).length > 0;
+    const myEmp = window.sel.employeeOfUser(window.STATE.user);
+    const myCat = myEmp ? window.leaderboardCategoryOfEmployee(myEmp) : null;
+
+    if (!hasAnyMapping) {
+        window.setPage(`
+        <div class="max-w-2xl mx-auto">
+            <div class="mb-4">
+                <h2 class="text-lg font-black text-slate-800"><i class="fas fa-trophy text-amber-500 mr-1.5"></i> Leaderboard KPI</h2>
+            </div>
+            <div class="bg-white rounded-3xl border border-slate-100 shadow-sm p-4">
+                ${dashboardEmptyState("fa-trophy", "Leaderboard belum dikonfigurasi admin. Coba cek lagi nanti ya.", window.sel.isAdmin() ? "/admin/leaderboard" : "/dashboard", window.sel.isAdmin() ? "Kelola Leaderboard" : "Kembali")}
+            </div>
+        </div>`);
+        return;
+    }
+
+    if (leaderboardViewDivision === null || !window.LEADERBOARD_DIVISIONS.some(d => d.key === leaderboardViewDivision)) {
+        leaderboardViewDivision = (myCat && myCat.division) || window.LEADERBOARD_DIVISIONS[0].key;
+    }
+    const divDef = window.LEADERBOARD_DIVISIONS.find(d => d.key === leaderboardViewDivision) || window.LEADERBOARD_DIVISIONS[0];
+    if (leaderboardViewCategory === null || !divDef.categories.some(c => c.key === leaderboardViewCategory)) {
+        leaderboardViewCategory = (myCat && myCat.division === divDef.key) ? myCat.category : divDef.categories[0].key;
+    }
+
+    const divTabs = window.LEADERBOARD_DIVISIONS.map(d => {
+        const meta = window.LEADERBOARD_DIVISION_META[d.key];
+        const active = d.key === leaderboardViewDivision;
+        return `<button type="button" onclick="window.setLeaderboardView('${d.key}', null)" class="flex-1 min-w-[100px] text-xs font-black px-3 py-2.5 rounded-2xl transition ${active ? meta.chipActive : 'bg-white text-slate-500 border border-slate-200 ' + meta.chipHover}"><i class="fas ${meta.icon} mr-1"></i>${meta.label}</button>`;
+    }).join("");
+
+    const meta = window.LEADERBOARD_DIVISION_META[divDef.key];
+    // Label kategori aslinya ada akronim jabatan di belakang, mis. "Branch Manager (BM)" — di
+    // tampilan leaderboard udah cukup jelas dari konteks makanya akronimnya dibuang, tapi data
+    // aslinya (window.LEADERBOARD_DIVISIONS) TETAP ada akronimnya karena masih dipakai di halaman
+    // admin "Kelola Leaderboard".
+    const stripAcronym = (label) => (label || "").replace(/\s*\([A-Z]+\)\s*$/, "");
+    const catChips = divDef.categories.map(c => {
+        const active = c.key === leaderboardViewCategory;
+        const isMine = myCat && myCat.division === divDef.key && myCat.category === c.key;
+        return `<button type="button" onclick="window.setLeaderboardView('${divDef.key}', '${c.key}')" class="text-[11px] font-bold px-3 py-1.5 rounded-full border transition whitespace-nowrap ${active ? meta.chipActive : 'bg-white border-slate-200 text-slate-500 ' + meta.chipHover}">${window.escapeHtml(stripAcronym(c.label))}${isMine ? ' <i class="fas fa-user ml-1"></i>' : ''}</button>`;
+    }).join("");
+
+    const ranked = window.leaderboardRankCategory(divDef.key, leaderboardViewCategory, null, leaderboardViewMonth);
+    const catMeta = divDef.categories.find(c => c.key === leaderboardViewCategory);
+    const searchQuery = leaderboardSearchQuery.trim().toLowerCase();
+
+    const monthFilterHtml = `
+    <div class="flex items-center gap-2 mb-3">
+        <label class="text-[11px] font-black text-slate-400 uppercase tracking-wide shrink-0"><i class="fas fa-calendar-days mr-1"></i>Bulan</label>
+        <select onchange="window.setLeaderboardMonth(this.value)" class="text-xs font-bold border border-slate-200 rounded-xl px-2.5 py-2 bg-white text-slate-600 outline-none focus:ring-2 focus:ring-indigo-400">
+            <option value="" ${leaderboardViewMonth === null ? "selected" : ""}>Otomatis (Bulan Terkini)</option>
+            ${KPI_MONTH_NAMES_FULL.map((m, i) => `<option value="${i + 1}" ${leaderboardViewMonth === i + 1 ? "selected" : ""}>${m}</option>`).join("")}
+        </select>
+    </div>`;
+
+    // Zona ala klasemen liga: 3 teratas = zona hijau ("zona juara"/top performer),
+    // 3 terbawah = zona merah ("zona perlu perhatian") — merah cuma dipakai kalau pesertanya
+    // cukup banyak biar gak tabrakan sama zona hijau waktu list-nya pendek.
+    const total = ranked.length;
+    const showRedZone = total > 5;
+
+    // Bulan yang ditampilkan di header pas filter "Otomatis": BUKAN bulan kalender hari ini,
+    // tapi bulan KPI yang paling banyak muncul di antara data yang lagi ditampilkan — soalnya
+    // "Otomatis" ngambil bulan TERAKHIR YANG DATANYA TERISI per karyawan, dan itu belum tentu
+    // sama dengan bulan berjalan (mis. baru tanggal 4, KPI bulan ini belum di-input semua jadi
+    // yang kepakai masih data bulan lalu).
+    let headerMonth;
+    if (leaderboardViewMonth) {
+        headerMonth = leaderboardViewMonth;
+    } else {
+        const monthCounts = {};
+        ranked.forEach(x => { if (x.kpi) monthCounts[x.kpi.month] = (monthCounts[x.kpi.month] || 0) + 1; });
+        let bestMonth = null, bestCount = -1;
+        Object.keys(monthCounts).forEach(m => { if (monthCounts[m] > bestCount) { bestCount = monthCounts[m]; bestMonth = parseInt(m, 10); } });
+        headerMonth = bestMonth || (new Date().getMonth() + 1);
+    }
+
+    const zoneColorOf = (rank) => {
+        if (rank <= 3) return "bg-emerald-500";
+        if (showRedZone && rank > total - 3) return "bg-rose-500";
+        return "bg-transparent";
+    };
+    const rankNumberColorOf = (rank) => {
+        if (rank === 1) return "text-amber-500";
+        if (rank <= 3) return "text-emerald-600";
+        if (showRedZone && rank > total - 3) return "text-rose-500";
+        return "text-slate-400";
+    };
+    // Warna latar baris untuk zona (versi muda/pastel dari zoneColorOf, biar gak terlalu kontras
+    // dibanding cuma garis kecil di kiri) — dipakai sebagai fallback kalau barisnya bukan "KAMU"
+    // (baris "KAMU" tetap prioritas pakai warna highlight divisi, meta.soft).
+    const zoneRowBgOf = (rank) => {
+        if (rank <= 3) return "bg-emerald-50/70 hover:bg-emerald-50";
+        if (showRedZone && rank > total - 3) return "bg-rose-50/70 hover:bg-rose-50";
+        return "hover:bg-slate-50/80";
+    };
+
+    const foldHiddenCount = total > 8 ? total - 8 : 0;
+    const foldToggleRowHtml = foldHiddenCount > 0 ? `
+    <tr id="leaderboard-fold-toggle-row" style="${searchQuery ? "display:none" : ""}">
+        <td colspan="4" class="py-2.5 text-center border-t border-b border-slate-50">
+            <button type="button" id="leaderboard-fold-btn" data-hidden-count="${foldHiddenCount}" onclick="window.toggleLeaderboardFold()" class="text-[11px] font-black ${meta.text} hover:underline">
+                ${leaderboardFolded ? `<i class="fas fa-chevron-down mr-1"></i>Tampilkan ${foldHiddenCount} lainnya` : `<i class="fas fa-chevron-up mr-1"></i>Sembunyikan`}
+            </button>
+        </td>
+    </tr>` : "";
+
+    // Lookup foto profil: employee cuma nyimpen username, foto profilnya (photoUrl) ada di
+    // dokumen "users" (di-upload lewat menu Edit Profil) — jadi perlu dicocokin lewat username.
+    const lbUsersByUsername = {};
+    (window.STATE.users || []).forEach(u => { lbUsersByUsername[normalizeUsername(u.username)] = u; });
+
+    const rowsHtml = ranked.length ? (() => {
+        const rowEls = ranked.map((x, i) => {
+            const rank = i + 1;
+            const isMe = window.STATE.user && x.emp.username && normalizeUsername(x.emp.username) === normalizeUsername(window.STATE.user.username);
+            const searchHay = `${x.emp.nama || ""} ${x.emp.username || ""} ${x.emp.dept || ""} ${x.emp.designation || ""} ${x.emp.posisi || ""}`.toLowerCase();
+            const visible = !searchQuery || searchHay.includes(searchQuery);
+            const isFoldable = total > 8 && rank > 5 && rank <= total - 3;
+            const foldHidden = isFoldable && leaderboardFolded && !searchQuery;
+            const displayName = x.emp.nama || x.emp.username || "-";
+            const initial = window.escapeHtml(displayName.trim().charAt(0).toUpperCase() || "?");
+            const linkedUser = x.emp.username ? lbUsersByUsername[normalizeUsername(x.emp.username)] : null;
+            const avatarInnerHtml = (linkedUser && linkedUser.photoUrl) ? `<img src="${linkedUser.photoUrl}" class="w-full h-full object-cover" alt="Foto profil">` : initial;
+            const rankIcon = rank === 1 ? '<i class="fas fa-trophy text-amber-400 text-[11px]"></i>' : rank === 2 ? '<i class="fas fa-trophy text-slate-400 text-[11px]"></i>' : rank === 3 ? '<i class="fas fa-trophy text-amber-700 text-[11px]"></i>' : '';
+            return `
+        <tr data-lbsearch="${window.escapeHtml(searchHay)}" ${isFoldable ? 'data-lbfold="1"' : ''} style="${(!visible || foldHidden) ? "display:none" : ""}" class="border-b border-slate-50 last:border-0 ${isMe ? meta.soft : zoneRowBgOf(rank)} transition">
+            <td class="py-0 pl-0 pr-0 relative w-[14px]"><span class="block w-1 self-stretch h-full ${zoneColorOf(rank)}" style="min-height:38px"></span></td>
+            <td class="py-1.5 pl-1.5 pr-1 text-center w-7">
+                <div class="flex flex-col items-center leading-none gap-0.5">
+                    <span class="text-[11px] font-black ${rankNumberColorOf(rank)}">${rank}</span>
+                    ${rankIcon}
+                </div>
+            </td>
+            <td class="py-1.5 px-1.5 min-w-0">
+                <div class="flex items-center gap-1.5 min-w-0">
+                    <div class="w-6 h-6 rounded-full ${meta.chipActive.split(' ')[0]} flex items-center justify-center text-[9px] font-black text-white shrink-0 overflow-hidden">${avatarInnerHtml}</div>
+                    <div class="min-w-0">
+                        <p class="text-[11px] font-bold text-slate-700 truncate">${window.escapeHtml(displayName)}${isMe ? ` <span class="text-[8px] font-black ${meta.text} align-middle">(KAMU)</span>` : ''}</p>
+                        <p class="text-[8px] truncate"><i class="fas fa-flag mr-1 opacity-60 ${meta.text}"></i><span class="font-bold ${meta.text}">${window.escapeHtml(x.emp.dept || '-')}</span> <span class="mx-1 text-slate-300">•</span><i class="fas fa-shirt mr-1 opacity-60 ${meta.text}"></i><span class="font-bold ${meta.text}">${window.escapeHtml(x.emp.designation || '-')}</span></p>
+                    </div>
+                </div>
+            </td>
+            <td class="py-1.5 pl-1.5 pr-2 text-right shrink-0 w-16">
+                ${x.kpi ? `<p class="text-[11px] font-black text-slate-700">${x.kpi.pct}<span class="text-[8px] font-bold text-slate-400">%</span></p>` : `<p class="text-[10px] font-bold text-slate-300">-</p>`}
+            </td>
+        </tr>`;
+        });
+        // Sisip tombol "tampilkan lainnya" tepat di bawah baris ranking ke-5 (bukan di paling
+        // bawah tabel), biar user langsung ngeh ada yang dilipat pas ngeliat top 5.
+        if (foldHiddenCount > 0 && rowEls.length > 5) rowEls.splice(5, 0, foldToggleRowHtml);
+        return rowEls.join("");
+    })() : `<tr><td colspan="4" class="py-6">${dashboardEmptyState("fa-users-slash", "Belum ada karyawan di kategori leaderboard ini.", "/leaderboard", "Kembali")}</td></tr>`;
+
+    const searchFilterHtml = `
+    <div class="relative mb-3">
+        <i class="fas fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-slate-300 text-xs"></i>
+        <input type="text" id="leaderboard-search-input" value="${window.escapeHtml(leaderboardSearchQuery)}" oninput="window.filterLeaderboardRows(this.value)" placeholder="Cari nama, departemen, atau posisi..." class="w-full pl-8 pr-3 py-2 text-xs rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-200">
+    </div>`;
+    const visibleCount = ranked.filter(x => {
+        const hay = `${x.emp.nama || ""} ${x.emp.username || ""} ${x.emp.dept || ""} ${x.emp.designation || ""} ${x.emp.posisi || ""}`.toLowerCase();
+        return !searchQuery || hay.includes(searchQuery);
+    }).length;
+
+    window.setPage(`
+    <div class="max-w-2xl mx-auto">
+        <div class="mb-4 flex items-start justify-between gap-2">
+            <div>
+                <h2 class="text-lg font-black text-slate-800"><i class="fas fa-trophy text-amber-500 mr-1.5"></i> Leaderboard KPI</h2>
+                <p class="text-xs text-slate-400 mt-0.5">Papan peringkat karyawan berdasarkan nilai KPI bulanan${leaderboardViewMonth ? ` bulan <b>${KPI_MONTH_NAMES_FULL[leaderboardViewMonth - 1]}</b>` : " terakhir"} di kategorinya masing-masing.</p>
+            </div>
+            <button type="button" onclick="window.openLeaderboardPosterPreview()" title="Preview poster semua leaderboard (A4 landscape)" class="shrink-0 flex items-center gap-1.5 text-[11px] font-black px-3 py-2 rounded-2xl bg-slate-800 hover:bg-slate-700 text-white transition"><i class="fas fa-print"></i><span class="hidden sm:inline">Cetak Poster Utama</span></button>
+        </div>
+        <div class="flex gap-2 mb-3">${divTabs}</div>
+        <div class="flex flex-wrap gap-1.5 mb-3">${catChips}</div>
+        ${monthFilterHtml}
+        ${searchFilterHtml}
+        <div class="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden">
+            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 px-4 py-2.5 ${meta.chipActive.split(' ')[0]}">
+                <p class="text-[10px] font-black text-white uppercase tracking-wide leading-snug"><i class="fas fa-shield-halved mr-1.5 text-white/70"></i>Leaderboard KPI Divisi ${meta.label} Kategori ${window.escapeHtml(stripAcronym(catMeta ? catMeta.label : ""))} Bulan ${window.escapeHtml(KPI_MONTH_NAMES_FULL[headerMonth - 1])} ${new Date().getFullYear()}</p>
+                <p id="leaderboard-count-badge" class="text-[10px] font-bold text-white/80 shrink-0">${visibleCount} karyawan${leaderboardViewMonth ? ` • KPI ${KPI_MONTH_NAMES_FULL[leaderboardViewMonth - 1]}` : ""}</p>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="w-full border-collapse text-[12px]">
+                    <thead>
+                        <tr class="text-[9px] font-black text-slate-400 uppercase tracking-wider border-b border-slate-100">
+                            <th class="w-[18px]"></th>
+                            <th class="py-2 text-center w-9">#</th>
+                            <th class="py-2 px-2 text-left">Nama</th>
+                            <th class="py-2 pr-3 text-right w-20">KPI</th>
+                        </tr>
+                    </thead>
+                    <tbody id="leaderboard-rows-list">${rowsHtml}</tbody>
+                </table>
+            </div>
+            <p id="leaderboard-search-empty" class="${ranked.length > 0 && visibleCount === 0 ? "" : "hide"} text-center text-xs text-slate-400 py-10">Tidak ada karyawan yang cocok dengan pencarian.</p>
+            ${ranked.length > 0 ? `
+            <div class="flex flex-wrap items-center gap-x-4 gap-y-1 px-4 py-2.5 border-t border-slate-50 text-[10px] font-bold text-slate-400">
+                <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-sm bg-emerald-500"></span>Zona Top Performer</span>
+                ${showRedZone ? `<span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-sm bg-rose-500"></span>Zona Perlu Perhatian</span>` : ''}
+            </div>` : ''}
+        </div>
+        ${!myCat ? `<p class="text-[11px] text-slate-400 text-center mt-3">Kamu belum termasuk di leaderboard manapun (departemen/posisi kamu belum dipetakan admin).</p>` : ''}
+    </div>`);
+}
+
+// ---- CETAK POSTER LEADERBOARD (1 halaman A4 landscape, semua divisi & kategori) ----
+// Polanya SAMA kayak window.printCertificate: buka tab baru berisi dokumen HTML sendiri
+// (window.open + document.write), bukan popup/modal nempel di halaman ini. Tabnya jadi
+// preview dulu — ada tombol "Cetak / Simpan PDF" di pojok atas buat baru munculin dialog
+// print bawaan browser (dari situ user bisa pilih printer fisik atau "Save as PDF").
+// Poster-nya dibangun dari data leaderboard TERKINI (top 5 tiap kategori, mode "otomatis"
+// per karyawan — sama seperti filter bulan default di halaman /leaderboard).
+window.LEADERBOARD_POSTER_GRADIENTS = {
+    sales: "linear-gradient(135deg,#4338ca,#6366f1)",
+    support: "linear-gradient(135deg,#059669,#10b981)",
+    produksi: "linear-gradient(135deg,#d97706,#f59e0b)",
+};
+window.LEADERBOARD_POSTER_RANK_COLORS = ["#f59e0b", "#94a3b8", "#b45309"]; // emas/perak/perunggu, sisanya default slate
+
+window.openLeaderboardPosterPreview = function () {
+    const cfg = window.leaderboardConfig();
+    const stripAcronym = (label) => (label || "").replace(/\s*\([A-Z]+\)\s*$/, "");
+    const companyName = "Raja Sukses Propertindo";
+
+    // Ikutin filter bulan yang lagi aktif di halaman Leaderboard (leaderboardViewMonth):
+    // null = "Otomatis" (bulan terakhir yang datanya terisi per karyawan, seperti biasa),
+    // 1-12 = filter ke bulan spesifik itu SAJA — sama-sama dipakai buat ranking tiap
+    // kategori di poster maupun buat label bulan di judulnya.
+    const activeMonth = leaderboardViewMonth;
+    const totalMapped = window.leaderboardBuildEntries(cfg, activeMonth).length;
+
+    // Label bulan buat judul poster: kalau filter "Otomatis", ambil bulan yang paling banyak
+    // muncul di antara data yang lagi kepakai (persis logika headerMonth di halaman aslinya)
+    // supaya judulnya tetap representatif walau tiap karyawan bisa beda "bulan terakhir"-nya.
+    let headerMonth = activeMonth;
+    if (!headerMonth) {
+        const monthCounts = {};
+        window.leaderboardBuildEntries(cfg, null).forEach(x => { if (x.kpi) monthCounts[x.kpi.month] = (monthCounts[x.kpi.month] || 0) + 1; });
+        let bestMonth = null, bestCount = -1;
+        Object.keys(monthCounts).forEach(m => { if (monthCounts[m] > bestCount) { bestCount = monthCounts[m]; bestMonth = parseInt(m, 10); } });
+        headerMonth = bestMonth || (new Date().getMonth() + 1);
+    }
+    const monthLabel = `${KPI_MONTH_NAMES_FULL[headerMonth - 1]} ${new Date().getFullYear()}`;
+
+    // Persis logika fold di halaman /leaderboard (leaderboardFolded default true): kalau
+    // pesertanya lebih dari (foldTop+foldBottom) orang, yang ditampilkan cuma top N + M
+    // terbawah, sisanya "dilipat" dan diwakili 1 baris indikator jumlah yang disembunyikan
+    // (di poster statis gak ada tombol buka/tutup). foldTop/foldBottom dibikin per-slide (bukan
+    // konstan) — slide yang kategorinya lebih sedikit otomatis punya lebih banyak ruang kosong,
+    // jadi threshold-nya dilonggarkan supaya bagian yang "dilipat" ikut kelihatan sebagian.
+    const catCardHtml = (divKey, cat, foldTop, foldBottom) => {
+        const ranked = window.leaderboardRankCategory(divKey, cat.key, cfg, activeMonth);
+        const total = ranked.length;
+        const showRedZone = total > foldTop; // sama seperti showRedZone di halaman (total > 5)
+        const foldHiddenCount = total > (foldTop + foldBottom) ? total - (foldTop + foldBottom) : 0;
+
+        const rowHtml = (x, idx) => {
+            const rank = idx + 1;
+            const name = window.escapeHtml(x.emp.nama || x.emp.username || "-");
+            const dept = window.escapeHtml(x.emp.dept || "-");
+            const desig = window.escapeHtml(x.emp.designation || "-");
+            const score = x.kpi ? `${x.kpi.pct}%` : "-";
+            const isBottomZone = showRedZone && rank > total - foldBottom;
+            const rankColor = rank <= 3 ? (window.LEADERBOARD_POSTER_RANK_COLORS[rank - 1] || "#cbd5e1") : (isBottomZone ? "#f43f5e" : "#94a3b8");
+            const zoneClass = rank <= 3 ? "lbp-zone-green" : (isBottomZone ? "lbp-zone-red" : "");
+            const rankIcon = rank === 1 ? '<i class="fas fa-trophy" style="color:#f59e0b"></i>' : rank === 2 ? '<i class="fas fa-trophy" style="color:#94a3b8"></i>' : rank === 3 ? '<i class="fas fa-trophy" style="color:#b45309"></i>' : '';
+            return `
+            <div class="lbp-cat-row ${zoneClass}">
+                <span class="lbp-cat-rank" style="background:${rankColor}">${rank}</span>
+                <div class="lbp-cat-info">
+                    <p class="lbp-cat-name">${name} ${rankIcon}</p>
+                    <p class="lbp-cat-meta"><i class="fas fa-flag"></i> ${dept} <span class="lbp-dot">&bull;</span> <i class="fas fa-shirt"></i> ${desig}</p>
+                </div>
+                <span class="lbp-cat-score">${score}</span>
+            </div>`;
+        };
+
+        let rowsHtml;
+        if (!total) {
+            rowsHtml = `<p class="lbp-cat-empty"><i class="fas fa-circle-info"></i> Belum ada data</p>`;
+        } else if (foldHiddenCount > 0) {
+            const topRows = ranked.slice(0, foldTop).map((x, i) => rowHtml(x, i)).join("");
+            const bottomRows = ranked.slice(total - foldBottom).map((x, i) => rowHtml(x, total - foldBottom + i)).join("");
+            rowsHtml = `${topRows}<div class="lbp-cat-fold"><i class="fas fa-chevron-down"></i> ${foldHiddenCount} peringkat lainnya (dilipat, sama seperti di halaman Leaderboard)</div>${bottomRows}`;
+        } else {
+            rowsHtml = ranked.map((x, i) => rowHtml(x, i)).join("");
+        }
+
+        return `
+        <div class="lbp-cat-card">
+            <p class="lbp-cat-title">${window.escapeHtml(stripAcronym(cat.label))}<span class="lbp-cat-total">${total} orang</span></p>
+            ${rowsHtml}
+        </div>`;
+    };
+
+    // 4 halaman terpisah biar tiap halaman muat rapi di 1 lembar A4 landscape: makin sedikit
+    // kategori di 1 halaman, makin longgar foldTop/foldBottom-nya (makin banyak dari yang
+    // "dilipat" ikut kelihatan) karena ruang kosongnya makin banyak.
+    const SLIDES = [
+        { divKey: "sales", catKeys: ["rm", "bm", "spv"], subtitle: "Regional Manager, Branch Manager &amp; Supervisor", foldTop: 8, foldBottom: 5 },
+        { divKey: "sales", catKeys: ["sales_0_1", "sales_1_3", "sales_3_6", "sales_6_12", "sales_12plus"], subtitle: "Semua Kategori Usia Join Sales", foldTop: 6, foldBottom: 4 },
+        { divKey: "support", catKeys: null, subtitle: "Staff/Officer, Supervisor &amp; Manager", foldTop: 8, foldBottom: 5 },
+        { divKey: "produksi", catKeys: null, subtitle: "Staff/Officer, Supervisor &amp; Manager", foldTop: 8, foldBottom: 5 },
+    ];
+
+    const now = new Date();
+    const printedAt = `${String(now.getDate()).padStart(2, "0")} ${KPI_MONTH_NAMES_FULL[now.getMonth()]} ${now.getFullYear()} • ${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+
+    const pagesHtml = SLIDES.map((slide, idx) => {
+        const meta = window.LEADERBOARD_DIVISION_META[slide.divKey];
+        const gradient = window.LEADERBOARD_POSTER_GRADIENTS[slide.divKey];
+        const divDef = window.LEADERBOARD_DIVISIONS.find(d => d.key === slide.divKey);
+        const cats = slide.catKeys ? divDef.categories.filter(c => slide.catKeys.includes(c.key)) : divDef.categories;
+        const cardsHtml = cats.map(cat => catCardHtml(slide.divKey, cat, slide.foldTop, slide.foldBottom)).join("");
+        return `
+        <div class="lbp-page">
+            <div class="lbp-header">
+                <div class="lbp-title-wrap">
+                    <div class="lbp-mark" style="background:${gradient}"><i class="fas ${meta.icon}"></i></div>
+                    <div>
+                        <h1>Leaderboard KPI ${companyName} ${monthLabel}</h1>
+                        <p>Divisi ${window.escapeHtml(meta.label)} &mdash; ${slide.subtitle}${activeMonth ? `, KPI bulan <b>${KPI_MONTH_NAMES_FULL[activeMonth - 1]}</b>` : ", berdasarkan KPI bulan terakhir yang terisi"}</p>
+                    </div>
+                </div>
+                <div class="lbp-header-right">
+                    <div class="lbp-badge"><i class="fas fa-users mr-1"></i>${totalMapped} karyawan aktif masuk leaderboard</div>
+                    <div class="lbp-page-num">Halaman ${idx + 1} / ${SLIDES.length}</div>
+                </div>
+            </div>
+            <div class="lbp-division">
+                <div class="lbp-division-head" style="background:${gradient}">
+                    <i class="fas ${meta.icon}"></i>
+                    <span>Divisi ${window.escapeHtml(meta.label)}</span>
+                    <span class="lbp-count">${cats.length} kategori</span>
+                </div>
+                <div class="lbp-division-body" style="grid-template-columns: repeat(${cats.length}, 1fr);">${cardsHtml}</div>
+            </div>
+            <div class="lbp-footer">
+                <span>${companyName} &mdash; NingratEdu LMS</span>
+                <span>Dicetak ${printedAt}</span>
+            </div>
+        </div>`;
+    }).join("");
+
+    const win = window.open("", "_blank");
+    win.document.write(`
+    <html><head><title>Poster Leaderboard KPI - ${companyName}</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.7.2/css/all.min.css" rel="stylesheet">
+    <style>
+        * { box-sizing: border-box; }
+        html, body { margin: 0; padding: 0; background: #64748b; }
+        body { font-family: 'Segoe UI', Arial, sans-serif; }
+
+        .lbp-toolbar { position: sticky; top: 0; z-index: 10; display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 12px 18px; background: #1e293b; color: #fff; }
+        .lbp-toolbar p { margin: 0; font-size: 13px; font-weight: 800; display: flex; align-items: center; gap: 8px; }
+        .lbp-toolbar button { border: 0; cursor: pointer; font-weight: 800; font-size: 12.5px; padding: 9px 16px; border-radius: 10px; display: inline-flex; align-items: center; gap: 7px; transition: opacity .15s; }
+        .lbp-toolbar button:hover { opacity: .88; }
+        .lbp-btn-print { background: #4338ca; color: #fff; }
+        .lbp-btn-close { background: #334155; color: #fff; }
+
+        .lbp-canvas { display: flex; flex-direction: column; align-items: center; gap: 18px; padding: 28px 16px; }
+        .lbp-page { width: 297mm; min-height: 210mm; box-sizing: border-box; padding: 6mm 10mm 8mm; color: #1e293b; display: flex; flex-direction: column; gap: 3mm; background: #fff; box-shadow: 0 10px 40px rgba(0,0,0,.35); }
+        .lbp-header { display: flex; align-items: center; justify-content: space-between; border-bottom: 1mm solid #4338ca; padding-bottom: 2.5mm; }
+        .lbp-header .lbp-title-wrap { display: flex; align-items: center; gap: 3mm; }
+        .lbp-header .lbp-mark { width: 12mm; height: 12mm; border-radius: 3mm; background: linear-gradient(135deg,#4338ca,#6366f1); display: flex; align-items: center; justify-content: center; color: #fff; font-size: 16pt; flex-shrink: 0; }
+        .lbp-header h1 { font-size: 17pt; font-weight: 900; margin: 0; letter-spacing: .2px; line-height: 1.1; }
+        .lbp-header p { font-size: 8.5pt; color: #64748b; margin: 0.8mm 0 0; }
+        .lbp-header-right { display: flex; flex-direction: column; align-items: flex-end; gap: 1.5mm; }
+        .lbp-header .lbp-badge { background: #f1f5f9; color: #475569; font-weight: 800; font-size: 8pt; padding: 2mm 4mm; border-radius: 20mm; text-align: right; white-space: nowrap; }
+        .lbp-page-num { font-size: 7.5pt; font-weight: 800; color: #94a3b8; white-space: nowrap; }
+        .lbp-division { border-radius: 3mm; overflow: hidden; border: .35mm solid #e2e8f0; flex: 1; }
+        .lbp-division-head { padding: 1.8mm 4mm; color: #fff; font-weight: 900; font-size: 10.5pt; display: flex; align-items: center; gap: 2.2mm; }
+        .lbp-division-head .lbp-count { margin-left: auto; font-size: 7.5pt; font-weight: 700; opacity: .9; }
+        .lbp-division-body { padding: 2.2mm; display: grid; gap: 2.2mm; background: #f8fafc; }
+        .lbp-cat-card { background: #fff; border: .3mm solid #e2e8f0; border-radius: 2.5mm; padding: 1.8mm 2.4mm 1.4mm; }
+        .lbp-cat-title { font-size: 7.3pt; font-weight: 800; text-transform: uppercase; letter-spacing: .02em; color: #475569; margin-bottom: 1mm; padding-bottom: 1mm; border-bottom: .3mm dashed #e2e8f0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: flex; align-items: center; justify-content: space-between; gap: 1.5mm; }
+        .lbp-cat-total { font-size: 6.4pt; font-weight: 700; color: #94a3b8; text-transform: none; letter-spacing: 0; flex-shrink: 0; }
+        .lbp-cat-row { display: flex; align-items: center; gap: 1.4mm; font-size: 7.6pt; padding: .7mm 1.2mm; border-radius: 1.3mm; border-left: .8mm solid transparent; }
+        .lbp-zone-green { background: rgba(16,185,129,.08); border-left-color: #10b981; }
+        .lbp-zone-red { background: rgba(244,63,94,.08); border-left-color: #f43f5e; }
+        .lbp-cat-rank { width: 4.8mm; height: 4.8mm; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-size: 6.5pt; font-weight: 900; color: #fff; flex-shrink: 0; }
+        .lbp-cat-info { flex: 1 1 auto; min-width: 0; line-height: 1.3; }
+        .lbp-cat-name { margin: 0; font-weight: 700; color: #334155; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 7.6pt; }
+        .lbp-cat-meta { margin: 0; font-size: 6.1pt; font-weight: 600; color: #94a3b8; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .lbp-cat-meta i { width: 2.6mm; text-align: center; }
+        .lbp-dot { margin: 0 .6mm; }
+        .lbp-cat-score { font-weight: 900; color: #1e293b; flex-shrink: 0; font-size: 7.6pt; }
+        .lbp-cat-empty { font-size: 7.6pt; color: #94a3b8; font-style: italic; padding: 1mm 0; display: flex; align-items: center; gap: 1mm; margin: 0; }
+        .lbp-cat-fold { font-size: 6.2pt; font-weight: 700; color: #64748b; background: #f1f5f9; border-radius: 1.3mm; padding: .9mm 1.5mm; margin: .6mm 0; display: flex; align-items: center; gap: 1mm; text-align: center; }
+        .lbp-footer { margin-top: auto; display: flex; justify-content: space-between; align-items: center; font-size: 6.8pt; color: #94a3b8; border-top: .3mm solid #e2e8f0; padding-top: 1.8mm; }
+
+        @media print {
+            @page { size: A4 landscape; margin: 0; }
+            html, body { background: #fff; }
+            .lbp-toolbar { display: none !important; }
+            .lbp-canvas { padding: 0; gap: 0; }
+            .lbp-page { width: 297mm; min-height: 210mm; box-shadow: none; margin: 0; page-break-after: always; break-after: page; }
+            .lbp-page:last-child { page-break-after: auto; break-after: auto; }
+            .lbp-division { break-inside: avoid; page-break-inside: avoid; }
+        }
+    </style>
+    </head>
+    <body>
+        <div class="lbp-toolbar">
+            <p><i class="fas fa-eye"></i> Preview Poster Leaderboard &mdash; ${SLIDES.length} Halaman A4 Landscape</p>
+            <div style="display:flex; gap:8px;">
+                <button type="button" class="lbp-btn-print" onclick="window.print()"><i class="fas fa-print"></i> Cetak / Simpan PDF</button>
+                <button type="button" class="lbp-btn-close" onclick="window.close()"><i class="fas fa-xmark"></i> Tutup</button>
+            </div>
+        </div>
+        <div class="lbp-canvas">${pagesHtml}</div>
+    </body></html>`);
+    win.document.close();
+};
+
+window.setLeaderboardView = function (division, category) {
+    leaderboardViewDivision = division;
+    const divDef = window.LEADERBOARD_DIVISIONS.find(d => d.key === division);
+    leaderboardViewCategory = category || (divDef ? divDef.categories[0].key : null);
+    leaderboardFolded = true;
+    renderLeaderboardPage();
+};
+window.setLeaderboardMonth = function (val) {
+    leaderboardViewMonth = val === "" ? null : parseInt(val, 10);
+    renderLeaderboardPage();
+};
+// Filter baris leaderboard yang lagi ditampilkan secara live (DOM show/hide via data-lbsearch,
+// BUKAN full re-render) supaya fokus input pencarian tidak hilang tiap ketik satu huruf.
+window.filterLeaderboardRows = function (query) {
+    leaderboardSearchQuery = String(query || "");
+    const q = leaderboardSearchQuery.trim().toLowerCase();
+    const container = document.getElementById("leaderboard-rows-list");
+    if (!container) return;
+    const rowEls = [...container.querySelectorAll("[data-lbsearch]")];
+    let visibleCount = 0;
+    rowEls.forEach(el => {
+        const searchMatch = !q || el.getAttribute("data-lbsearch").includes(q);
+        const foldHidden = !q && leaderboardFolded && el.getAttribute("data-lbfold") === "1";
+        const match = searchMatch && !foldHidden;
+        el.style.display = match ? "" : "none";
+        if (match) visibleCount++;
+    });
+    const foldToggleRow = document.getElementById("leaderboard-fold-toggle-row");
+    if (foldToggleRow) foldToggleRow.style.display = q ? "none" : "";
+    const countBadge = document.getElementById("leaderboard-count-badge");
+    if (countBadge) countBadge.textContent = `${visibleCount} karyawan${leaderboardViewMonth ? ` • KPI ${KPI_MONTH_NAMES_FULL[leaderboardViewMonth - 1]}` : ""}`;
+    const emptyEl = document.getElementById("leaderboard-search-empty");
+    if (emptyEl) emptyEl.classList.toggle("hide", !(rowEls.length > 0 && visibleCount === 0));
+};
+// Lipat/buka baris tengah klasemen (di luar top 5 & 3 terbawah) tanpa full re-render, biar
+// gak reset posisi scroll/fokus pencarian pas dipencet.
+window.toggleLeaderboardFold = function () {
+    leaderboardFolded = !leaderboardFolded;
+    const container = document.getElementById("leaderboard-rows-list");
+    if (container) {
+        container.querySelectorAll('[data-lbfold="1"]').forEach(el => {
+            el.style.display = leaderboardFolded ? "none" : "";
+        });
+    }
+    const btn = document.getElementById("leaderboard-fold-btn");
+    if (btn) {
+        const hiddenCount = btn.getAttribute("data-hidden-count") || "0";
+        btn.innerHTML = leaderboardFolded
+            ? `<i class="fas fa-chevron-down mr-1"></i>Tampilkan ${hiddenCount} lainnya`
+            : `<i class="fas fa-chevron-up mr-1"></i>Sembunyikan`;
+    }
+};
 
 window.addEventListener("lms-firebase-ready", async () => {
     window.startLiveListeners();
