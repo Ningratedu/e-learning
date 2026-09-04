@@ -557,7 +557,7 @@ html.dark .corevalue-wire { background: rgba(96, 165, 250, .2); }
     <div class="boot-error-icon"><i class="fas fa-triangle-exclamation"></i></div>
     <h2>Gagal Terhubung ke Server</h2>
     <p>Koneksi internet kamu kurang stabil. Periksa sinyal/WiFi kamu, lalu coba lagi.</p>
-    <button onclick="window.location.reload()"><i class="fas fa-rotate-right mr-1.5"></i>Coba Lagi</button>
+    <button onclick="window.bootHardRetry(this)"><i class="fas fa-rotate-right mr-1.5"></i>Coba Lagi</button>
 </div>
 
 <!-- ================= TOAST ================= -->
@@ -2569,7 +2569,21 @@ window.tryRestoreSession = async function () {
     if (!id) return false;
     const { getDoc, ref } = window.LMS_DB;
     try {
-        const d = await getDoc(ref("users", id));
+        // 📱 FIX "GAK BISA DIBUKA LAGI DI HP SETELAH BEBERAPA JAM": getDoc() ke Firestore
+        // normalnya cepat, TAPI kalau koneksi realtime-nya lagi stale/mati diam-diam (umum
+        // terjadi di browser mobile setelah tab di-background lama — radio jaringan tidur,
+        // socket lama masih "kelihatan" konek padahal sudah putus, dsb), getDoc() ini bisa
+        // nge-hang TANPA PERNAH resolve/reject sama sekali. Kalau itu terjadi, layar "Gagal
+        // Terhubung" tetap muncul (lewat safety-net 8 detik di bawah), TAPI promise getDoc
+        // yang nyangkut ini masih hidup di background — dan begitu user pencet "Coba Lagi"
+        // (reload), kalau device-nya balik ke state jaringan yang sama, siklusnya bisa
+        // berulang. Race dengan timeout di sini memastikan tryRestoreSession SELALU selesai
+        // dalam waktu wajar, apapun kondisi jaringannya.
+        const RESTORE_TIMEOUT_MS = 7000;
+        const d = await Promise.race([
+            getDoc(ref("users", id)),
+            new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout saat memuat sesi (koneksi lambat/stale).")), RESTORE_TIMEOUT_MS)),
+        ]);
         if (!d.exists()) { localStorage.removeItem(SESSION_KEY); return false; }
         const data = d.data();
         // Kalau akunnya dinonaktifkan (karyawan resign) SETELAH sesi login-nya tersimpan di
@@ -16701,6 +16715,74 @@ window.addEventListener("lms-firebase-ready", async () => {
         }
     });
 });
+
+// 📱 FIX "GAK BISA DIBUKA LAGI DI HP SETELAH BEBERAPA JAM": tombol "Coba Lagi" di layar
+// Gagal Terhubung DULU cuma window.location.reload() biasa. Kalau akar masalahnya adalah
+// cache Firestore (IndexedDB persistentLocalCache) atau service worker yang "macet"/nyangkut
+// di device itu (khas terjadi setelah tab di-background lama di browser mobile — lease/lock
+// multi-tab jadi basi, atau cache service worker nge-serve versi app yang sudah stale),
+// reload biasa BALIK LAGI ke state rusak yang sama persis → makanya kerasa "gak bisa-bisa
+// dibuka". Fungsi ini bersihin semua state lokal yang berpotensi jadi biang keroknya
+// (unregister service worker, hapus semua Cache Storage, hapus semua database IndexedDB)
+// SEBELUM reload, supaya boot berikutnya benar-benar mulai dari nol seperti pertama kali
+// install — tanpa harus user tahu istilah-istilah teknis ini atau uninstall app manual.
+window.bootHardRetry = async function (btn) {
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1.5"></i>Membersihkan cache...';
+    }
+    try {
+        if ("serviceWorker" in navigator) {
+            const regs = await navigator.serviceWorker.getRegistrations();
+            await Promise.all(regs.map(r => r.unregister()));
+        }
+    } catch (e) { console.warn("Gagal unregister service worker:", e); }
+    try {
+        if ("caches" in window) {
+            const keys = await caches.keys();
+            await Promise.all(keys.map(k => caches.delete(k)));
+        }
+    } catch (e) { console.warn("Gagal hapus Cache Storage:", e); }
+    try {
+        if (indexedDB.databases) {
+            const dbs = await indexedDB.databases();
+            await Promise.all(dbs.map(d => d.name ? new Promise((resolve) => {
+                const req = indexedDB.deleteDatabase(d.name);
+                req.onsuccess = req.onerror = req.onblocked = () => resolve();
+            }) : Promise.resolve()));
+        }
+    } catch (e) { console.warn("Gagal hapus IndexedDB:", e); }
+    // Cache-busting query param supaya index.html sendiri juga ditarik ulang dari jaringan,
+    // bukan dari cache HTTP browser biasa (di luar Cache Storage/service worker di atas).
+    const url = new URL(window.location.href);
+    url.searchParams.set("_retry", Date.now().toString());
+    window.location.replace(url.toString());
+};
+
+// 📱 FIX "GAK BISA DIBUKA LAGI DI HP SETELAH BEBERAPA JAM": browser mobile (terutama Safari
+// iOS & versi "Tambah ke Layar Utama") sering nge-suspend total eksekusi JS begitu tab/app
+// di-background, TANPA benar-benar menutup halamannya. Efeknya koneksi realtime ke Firestore
+// bisa diam-diam putus/basi selama disuspend, tapi begitu dibuka lagi halamannya "kelihatan"
+// masih hidup (bukan reload dari nol) — jadi app-nya nyangkut di state lama yang sudah gak
+// nyambung ke server, dan user ngerasa "gak kebuka-buka". Fix-nya: catat kapan halaman
+// disembunyikan (document.hidden true), dan kalau begitu terlihat lagi setelah lebih dari
+// 20 menit, langsung reload halaman dari awal — jauh lebih ringan & cepat daripada nunggu
+// user sadar sendiri harus manual refresh (yang di hp sering gak kepikiran).
+(function () {
+    const STALE_THRESHOLD_MS = 20 * 60 * 1000; // 20 menit
+    let hiddenAt = null;
+    document.addEventListener("visibilitychange", () => {
+        if (document.hidden) {
+            hiddenAt = Date.now();
+        } else if (hiddenAt) {
+            const elapsed = Date.now() - hiddenAt;
+            hiddenAt = null;
+            if (elapsed > STALE_THRESHOLD_MS) {
+                window.location.reload();
+            }
+        }
+    });
+})();
 
 function hideBootLoader() {
     const el = document.getElementById("boot-loader");
