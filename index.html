@@ -273,6 +273,16 @@ button:disabled, input[type="submit"]:disabled {
 }
 #sidebar .brand-label, #sidebar .nav-label { transition: opacity .12s ease; white-space: nowrap; }
 #sidebar-nav { scrollbar-width: thin; }
+/* Tinggi baris logo (brand) dipaksa SAMA PERSIS dengan tinggi header halaman
+   (#app-topbar) — nilainya diukur & di-set otomatis lewat JS (lihat
+   window.syncSidebarTopOffset), soalnya tinggi header bisa beda-beda (mis. wrap
+   2 baris di layar sempit) jadi ga bisa di-hardcode angka tetap. Karena kontennya
+   sudah "flex items-center" (lihat class di HTML), logo & teks brand otomatis
+   kesentering vertikal pas sejajar sama ikon toggle garis-3 di header. Habis itu
+   #sidebar-nav (menu "Dashboard" dst) langsung nempel PERSIS di bawah baris ini,
+   yang berarti pas sejajar sama garis bawah header — bukan menu-nya yang ikut
+   diturunin, cuma baris logo-nya aja yang disamain tingginya. */
+#sidebar-brand { box-sizing: border-box; height: var(--sidebar-brand-h, auto); }
 
 /* Tooltip nama menu saat sidebar dilipat (mini). Elemen mengambang terpisah, ditempel
    ke <body> & posisinya dihitung lewat JS saat hover, supaya tidak ke-clip oleh
@@ -704,7 +714,7 @@ html.dark .corevalue-wire { background: rgba(96, 165, 250, .2); }
 
     <!-- Main -->
     <div id="main-wrapper" class="flex-1 min-w-0 flex flex-col">
-        <header class="bg-white border-b border-slate-100 px-4 lg:px-5 py-3 flex items-center justify-between sticky top-0 z-40">
+        <header id="app-topbar" class="bg-white border-b border-slate-100 px-4 lg:px-5 py-3 flex items-center justify-between sticky top-0 z-40">
             <button id="sidebar-toggle-btn" class="text-slate-500 hover:text-indigo-600 transition flex items-center gap-1.5" onclick="window.toggleSidebar()" title="Buka/tutup menu">
                 <i class="fas fa-bars text-lg"></i>
                 <i id="sidebar-toggle-arrow" class="fas fa-chevron-left text-[10px] text-slate-300"></i>
@@ -2276,6 +2286,23 @@ window.runConfirmedDelete = async function () {
     if (typeof action === "function") await action();
 };
 
+// ================= SINKRON TINGGI HEADER -> TINGGI BARIS LOGO SIDEBAR =================
+// Biar baris logo+teks brand di sidebar TINGGINYA SAMA PERSIS kayak header halaman
+// (#app-topbar), sehingga logo & teks otomatis kesentering vertikal sejajar sama
+// ikon toggle garis-3 di header. Menu "Dashboard" dst (#sidebar-nav) nempel
+// langsung di bawah baris logo ini, jadi otomatis pas sejajar sama garis bawah
+// header juga. Diukur pakai JS (bukan angka tetap) karena tinggi header bisa
+// berubah-ubah (mis. wrap 2 baris di layar sempit, atau font baru selesai load).
+window.syncSidebarTopOffset = function () {
+    const header = document.getElementById("app-topbar");
+    const brand = document.getElementById("sidebar-brand");
+    if (!header || !brand) return;
+    const h = Math.round(header.getBoundingClientRect().height);
+    if (h > 0) brand.style.setProperty("--sidebar-brand-h", h + "px");
+};
+window.addEventListener("resize", window.syncSidebarTopOffset);
+window.addEventListener("load", window.syncSidebarTopOffset);
+
 // ================= TOGGLE SIDEBAR (garis tiga) =================
 // Sidebar selalu fixed nempel di kiri sehingga tidak pernah ikut ke-scroll walau
 // halaman panjang. Perilakunya beda per layar:
@@ -2672,6 +2699,7 @@ window.enterApp = function () {
     window.renderSidebar();
     window.renderTopbar();
     window.resolveRoute();
+    requestAnimationFrame(function () { window.syncSidebarTopOffset && window.syncSidebarTopOffset(); });
     // Sidebar WAJIB kondisi terbuka penuh setiap kali masuk aplikasi (baru login,
     // register, atau refresh halaman lalu sesi ke-restore) — baik di laptop
     // maupun di hp, meskipun sebelumnya sempat dilipat/ditutup atau user tadinya
@@ -2740,7 +2768,47 @@ window.renderSidebar = function () {
     document.getElementById("sidebar-nav").innerHTML =
         nav.map(item).join("") +
         (isAdmin ? `<div class="nav-section-label px-4 pt-5 pb-2 text-[10px] font-black uppercase tracking-wider text-indigo-300/60">Admin</div>` + adminNav.map(item).join("") : "");
+    window.syncSidebarWidth && window.syncSidebarWidth();
 };
+
+// ================= SIDEBAR AUTO-WIDTH (secukupnya, ngikutin teks menu terpanjang) =================
+// Lebar sidebar TIDAK di-hardcode 260px lagi — dihitung otomatis ngikutin menu dengan
+// LABEL TERPANJANG yang lagi tampil (beda-beda tergantung role: admin/peserta/dst, dan bisa
+// berubah tiap kali renderSidebar() dipanggil ulang mis. pas ada live update data), supaya
+// gak ada ruang kosong mubazir di kanan pas semua label sebenernya pendek-pendek.
+// Diukur pakai canvas measureText (bukan DOM getBoundingClientRect) SENGAJA, karena
+// pengukuran ini harus tetap akurat meskipun sidebar SEDANG dalam mode mini (label
+// disembunyikan via display:none, jadi kalau diukur dari DOM langsung hasilnya 0).
+window.syncSidebarWidth = function () {
+    const labels = Array.from(document.querySelectorAll("#sidebar-nav .nav-label")).map(el => el.textContent || "");
+    if (!labels.length) return;
+    const canvas = window._sidebarMeasureCanvas || (window._sidebarMeasureCanvas = document.createElement("canvas"));
+    const ctx = canvas.getContext("2d");
+    // Font dicocokkan persis sama style asli teks menu (lihat CSS .nav-item: font-weight 700,
+    // font-size 12.5px, font family ikut body/Plus Jakarta Sans).
+    ctx.font = "700 12.5px 'Plus Jakarta Sans', sans-serif";
+    let maxTextWidth = 0;
+    labels.forEach(label => {
+        const w = ctx.measureText(label).width;
+        if (w > maxTextWidth) maxTextWidth = w;
+    });
+    const itemPaddingX = 28; // .nav-item padding: 8px 14px (kiri+kanan)
+    const iconWidth = 20;    // ikon pakai class w-5 (1.25rem)
+    const gap = 10;          // .nav-item gap: 10px (antara ikon & label)
+    const navPaddingX = 24;  // #sidebar-nav px-3 (kiri+kanan)
+    const breathingRoom = 12; // sedikit napas biar teks gak mepet ke tepi
+    const needed = itemPaddingX + iconWidth + gap + maxTextWidth + navPaddingX + breathingRoom;
+    // Dibatasi min 200px (biar tetep proporsional & gak kecempit) dan max 260px (lebar
+    // bawaan lama) — jadi cuma bisa menyempit secukupnya, gak akan melebar dari sebelumnya.
+    const width = Math.max(200, Math.min(260, Math.round(needed)));
+    document.documentElement.style.setProperty("--sidebar-w", width + "px");
+};
+// Font custom (Plus Jakarta Sans) bisa masih belum selesai load pas pertama kali
+// dipanggil (dari enterApp sebelum font-face siap) — hitung ulang begitu beneran
+// selesai load supaya metrik teksnya akurat (bukan fallback font sementara browser).
+if (document.fonts && document.fonts.ready) {
+    document.fonts.ready.then(() => window.syncSidebarWidth && window.syncSidebarWidth());
+}
 
 // Avatar: foto profil kalau ada (photoUrl), fallback ke inisial nama.
 window.avatarInnerHTML = function (u) {
@@ -16281,7 +16349,7 @@ function renderLeaderboardPage() {
             <div class="rounded-full ${medal.av} ring-2 ${isMe ? 'ring-offset-2 ' + medal.ring : medal.ring} flex items-center justify-center font-black text-white overflow-hidden shrink-0 mx-auto" style="aspect-ratio:1/1;${meta.gradient}">${lbAvatarHtml(x, "text-3xl")}</div>
             <p class="text-[10px] font-black text-slate-700 truncate max-w-[92px] text-center mt-1.5">${window.escapeHtml(displayName)}</p>
             ${isMe ? `<span class="text-[7px] font-black ${meta.text}">(KAMU)</span>` : ''}
-            <p class="text-[7px] max-w-[92px] text-center leading-tight break-words"><span class="font-bold ${meta.text}">${window.escapeHtml(x.emp.dept || '-')}</span><br><span class="font-bold ${meta.text} opacity-80">${window.escapeHtml(x.emp.designation || '-')}</span></p>
+            <p class="text-[7px] max-w-[92px] text-center leading-tight break-words"><span class="font-bold ${meta.text} opacity-80">${window.escapeHtml(x.emp.designation || '-')}</span></p>
             <p class="text-[11px] font-black text-slate-800 mt-0.5">${x.kpi ? `${x.kpi.pct}<span class="text-[8px] font-bold text-slate-400">%</span>` : `<span class="text-[9px] font-bold text-slate-300">-</span>`}</p>
             <div class="relative w-full mt-6 ${medal.h} rounded-t-lg shadow-inner" style="background:linear-gradient(180deg,#bf9b4a,#8a6b26)">
                 <div class="absolute left-1/2 -translate-x-1/2 -top-6">${podiumCertBadge(rank, medal)}</div>
@@ -16364,13 +16432,13 @@ function renderLeaderboardPage() {
             </div>
             ${podiumHtml ? `<div class="pt-3 ${rowsHtml ? "border-b border-slate-50" : ""}">${podiumHtml}</div>` : ""}
             <div class="overflow-x-auto">
-                <table class="w-full border-collapse text-[12px]">
+                <table class="w-full border-collapse text-[12px] table-fixed">
                     <thead>
                         <tr class="text-[9px] font-black text-slate-400 uppercase tracking-wider border-b border-slate-100">
-                            <th class="w-[18px]"></th>
-                            <th class="py-2 text-center w-9">#</th>
+                            <th class="w-[14px]"></th>
+                            <th class="py-2 text-center w-7">#</th>
                             <th class="py-2 px-2 text-left">Nama</th>
-                            <th class="py-2 pr-3 text-right w-20">KPI</th>
+                            <th class="py-2 pl-1.5 pr-2 text-right w-16">KPI</th>
                         </tr>
                     </thead>
                     <tbody id="leaderboard-rows-list">${rowsHtml}</tbody>
