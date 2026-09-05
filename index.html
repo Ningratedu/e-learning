@@ -2,7 +2,7 @@
 <html lang="id">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>NingratEdu - Learning Management System</title>
 
 
@@ -11,7 +11,7 @@
 <meta http-equiv="Expires" content="0">
 
 <link rel="manifest" href="manifest.json">
-<link rel="icon" type="image/png" sizes="192x192" href="https://raw.githubusercontent.com/Ningratedu/asset-foto/refs/heads/main/icon-192.png">
+<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
 <meta name="theme-color" content="#4338ca">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -185,6 +185,8 @@ body {
 /* Posisi panel login: di laptop/desktop digeser ke kanan-bawah layar; di HP tetap
    normal di tengah seperti sebelumnya (di-override lewat media query di bawah). */
 #auth-screen.auth-screen-video { align-items: center; justify-content: center; }
+/* Dorong konten turun sejauh tinggi status bar HP saat dibuka sebagai PWA terinstal, biar logo tidak kepotong */
+#auth-screen { padding-top: calc(1rem + env(safe-area-inset-top)); }
 @media (min-width: 1024px) {
     #auth-screen.auth-screen-video {
         align-items: flex-end;
