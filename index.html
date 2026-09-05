@@ -5,7 +5,17 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>NingratEdu - Learning Management System</title>
 
-<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<!-- PERF FIX: sebelumnya "no-cache, no-store, must-revalidate" -> "no-store" maksa browser
+     re-download SELURUH 1.8MB file ini dari nol tiap kali dibuka, walau isinya sama persis
+     dengan kunjungan sebelumnya. Cukup "no-cache" (tanpa no-store): browser tetap WAJIB
+     nanya ke server dulu sebelum pakai versi lokal (jadi begitu lo deploy update, semua
+     orang otomatis dapet versi terbaru, gak ada yang nyangkut di versi lama) — tapi kalau
+     server bilang "isinya sama" (304 Not Modified), browser cukup pakai yang sudah ada di
+     HP tanpa re-download apa pun. CATATAN: meta tag ini cuma berlaku kalau hosting-nya emang
+     ngirim response header yang selaras (banyak static host modern nge-override ini dengan
+     header HTTP asli) — kalau masih berasa berat, cek juga Cache-Control header dari hosting
+     tempat file ini di-serve.-->
+<meta http-equiv="Cache-Control" content="no-cache, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
 
@@ -34,8 +44,13 @@ tailwind.config = { darkMode: "class" };
 <!-- Chart.js 4.4.4 di-host sendiri (inline), bukan dari CDN luar (cdnjs/jsDelivr dll) — biar
      chart KPI di dashboard gak pernah gagal tayang gara-gara CDN diblokir/lambat di jaringan
      manapun. Kode di bawah ini adalah build resmi "chart.umd.js" dari paket npm chart.js@4.4.4,
-     apa adanya (cuma dibuang komentar sourcemap-nya), lisensi MIT (chartjs.org). -->
-<script>
+     apa adanya (cuma dibuang komentar sourcemap-nya), lisensi MIT (chartjs.org).
+     PERF FIX: dulu ini <script> biasa (bukan file eksternal, jadi atribut defer gak ngefek),
+     jadi browser wajib parse+eksekusi ~200KB JS ini duluan sebelum lanjut ke apa pun di
+     bawahnya — termasuk render layar login. Paling berasa di HP low-end/sinyal jelek. Ganti
+     ke type="module" karena script module otomatis deferred (dieksekusi setelah HTML selesai
+     di-parse, gak blocking), tanpa perlu ubah isi library sama sekali. -->
+<script type="module">
 window.__chartJsLoadFailed = false;
 /*!
  * Chart.js v4.4.4
@@ -1482,10 +1497,17 @@ function startUserScopedListeners() {
     const { col, onSnapshot, query, where } = window.LMS_DB;
     const isAdmin = window.sel && window.sel.isAdmin && window.sel.isAdmin();
     const bindScoped = (name, key) => {
-        // Admin/superadmin butuh lihat data SEMUA orang (buat laporan, penilaian,
-        // rekap kehadiran, dsb) jadi tetap full collection. User biasa cukup
-        // datanya sendiri saja — inilah yang paling banyak motong jumlah reads.
-        const ref = isAdmin ? col(name) : query(col(name), where("userId", "==", u.id));
+        // PERF FIX: dulu admin/superadmin di sini langsung subscribe onSnapshot() TANPA
+        // filter ke 4 collection ini (butuh buat laporan/penilaian/rekap), padahal isinya
+        // menumpuk terus tiap hari (histori aktivitas SEMUA karyawan). Efeknya, SETIAP KALI
+        // admin login, HP-nya wajib narik & mem-parsing ulang seluruh histori itu dari awal —
+        // inilah kenapa akun admin kerasa jauh lebih berat dibanding user biasa. Sekarang
+        // admin TIDAK auto-subscribe collection ini lagi pas login; baru ditarik on-demand
+        // lewat ensureAdminReportsData() di bawah, saat admin BENERAN buka halaman laporan/
+        // rekap yang butuh (lihat resolveRoute()). User biasa tetap seperti semula: scoped ke
+        // uid sendiri, datanya kecil, aman untuk tetap realtime dari awal.
+        if (isAdmin) return;
+        const ref = query(col(name), where("userId", "==", u.id));
         const unsub = onSnapshot(ref, (snap) => {
             window.STATE[key] = snap.docs.map(d => ({ id: d.id, ...d.data() }));
             window.dispatchEvent(new CustomEvent("lms-state-changed", { detail: key }));
@@ -1498,6 +1520,32 @@ function startUserScopedListeners() {
     bindScoped("assignmentSubmissions", "assignmentSubmissions");
 }
 window.startUserScopedListeners = startUserScopedListeners;
+
+// PERF FIX (lanjutan catatan di atas): narik 4 collection berat itu FULL (tanpa filter)
+// khusus buat admin, tapi ON-DEMAND — dipanggil dari resolveRoute() cuma waktu admin buka
+// halaman yang benar-benar butuh (Laporan, Penilaian Tugas, Percobaan Kuis, Leaderboard,
+// Rekap Feedback, dsb). idempotent: kalau sudah pernah dipanggil di sesi ini, gak subscribe
+// ulang (biar gak numpuk listener tiap pindah-pindah halaman laporan).
+window._adminReportsDataLoaded = false;
+function ensureAdminReportsData() {
+    if (window._adminReportsDataLoaded) return;
+    const isAdmin = window.sel && window.sel.isAdmin && window.sel.isAdmin();
+    if (!isAdmin) return;
+    window._adminReportsDataLoaded = true;
+    const { col, onSnapshot } = window.LMS_DB;
+    const bindFull = (name, key) => {
+        const unsub = onSnapshot(col(name), (snap) => {
+            window.STATE[key] = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+            window.dispatchEvent(new CustomEvent("lms-state-changed", { detail: key }));
+        }, (err) => console.error("Admin reports listener error " + name, err));
+        window._userScopedUnsubs.push(unsub);
+    };
+    bindFull("quizAttempts", "quizAttempts");
+    bindFull("attendance", "attendance");
+    bindFull("evaluations", "evaluations");
+    bindFull("assignmentSubmissions", "assignmentSubmissions");
+}
+window.ensureAdminReportsData = ensureAdminReportsData;
 
 // ================= HELPER SELECTOR =================
 window.sel = {
@@ -2414,6 +2462,23 @@ function resolveRoute() {
         id = segs[1] || null;
     }
     setActiveNav(segs[0] === "admin" ? adminSidebarKeyFor(segs[1] || "courses") : (segs[0] || "dashboard"));
+    // PERF FIX: halaman-halaman ini baca STATE.quizAttempts/attendance/evaluations/
+    // assignmentSubmissions versi FULL (semua karyawan) buat laporan/penilaian/rekap — data
+    // itu sengaja gak lagi auto-dimuat pas admin login (lihat startUserScopedListeners()),
+    // jadi baru ditarik on-demand persis sebelum halaman-halaman ini dirender.
+    const ADMIN_ROUTES_NEED_HEAVY_DATA = new Set([
+        "admin/reports", "admin/training-report", "admin/course-report",
+        "admin/assignments", "admin/quiz-attempts", "admin/training-growth",
+        "admin/training-growth-detail", "admin/leaderboard",
+        "admin/onboarding-feedback", "admin/tna-feedback",
+        // admin/employees (statistik "sudah ikut TNA") & admin/trainings (fallback status
+        // sesi utk training lama yg belum punya field sessionStatus) juga baca attendance —
+        // bukan cuma halaman "Laporan" murni, jadi ikut dimasukkan biar angkanya akurat.
+        "admin/employees", "admin/trainings"
+    ]);
+    if (ADMIN_ROUTES_NEED_HEAVY_DATA.has(key) && window.ensureAdminReportsData) {
+        window.ensureAdminReportsData();
+    }
     const fn = window.ROUTES[key];
     if (fn) fn(id);
     else window.ROUTES["dashboard"] && window.ROUTES["dashboard"]();
