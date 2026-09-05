@@ -3118,7 +3118,7 @@ function renderUserDashboard() {
     window.setPage(`
         <div class="mb-3">
             <h1 class="text-base font-black text-slate-800">Halo, ${window.escapeHtml(u.name || u.username)} 👋</h1>
-            <p class="text-sm text-slate-500">Ini ringkasan progres belajar kamu.</p>
+            <p class="text-[10px] text-slate-500">Ini ringkasan progres belajar kamu.</p>
         </div>
         <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
             ${diagramStatCardDark("fa-book-open", "indigo", donutDiagramSvg(onboardingPct, DONUT_STAT_COLORS.indigo.hex, true), "Training Onboarding", `${completedCourses}/${myAssignedCourses.length} selesai`, "window.openDashboardDetail('enrolled')", true)}
