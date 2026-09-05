@@ -453,7 +453,7 @@ html.dark .corevalue-shell {
 .corevalue-cursor { display: inline-block; margin-left: 1px; color: #2563EB; animation: cvBlink 1s steps(1) infinite; }
 @keyframes cvBlink { 50% { opacity: 0; } }
 
-#corevalue-ticker { position: relative; height: 1.5rem; overflow: hidden; }
+#corevalue-ticker { position: relative; height: 1.25rem; overflow: hidden; }
 .corevalue-item {
     position: absolute; inset: 0;
     display: flex; align-items: center; gap: .5rem;
@@ -473,7 +473,7 @@ html.dark .corevalue-shell {
 .corevalue-badge {
     --cv-c: #2563EB;
     position: relative;
-    width: 1.4rem; height: 1.4rem; border-radius: .3rem;
+    width: 1.2rem; height: 1.2rem; border-radius: .28rem;
     background: var(--cv-c); color: #fff;
     font-weight: 900; font-size: 11px;
     display: flex; align-items: center; justify-content: center;
@@ -490,7 +490,7 @@ html.dark .corevalue-shell {
 
 .corevalue-text {
     --cv-g1: #93C5FD; --cv-g2: #1E3A8A;
-    font-weight: 800; font-size: .875rem; letter-spacing: .01em;
+    font-weight: 800; font-size: .8rem; letter-spacing: .01em;
     background-image: linear-gradient(90deg, var(--cv-g1), var(--cv-g2), var(--cv-g1));
     background-size: 200% auto;
     -webkit-background-clip: text; background-clip: text; color: transparent;
@@ -518,10 +518,10 @@ html.dark .corevalue-wire { background: rgba(96, 165, 250, .2); }
    angka & teks poinnya doang yang muncul), disusun 2 baris (label kecil di atas, badge+teks
    ticker di bawah) supaya tetap muat rapi di header yang sempit tanpa kepotong. */
 @media (max-width: 639px) {
-    .corevalue-badge { width: 1.1rem; height: 1.1rem; border-radius: .28rem; font-size: 9px; }
-    .corevalue-text { font-size: .72rem; letter-spacing: 0; }
-    #corevalue-ticker { height: 1.15rem; }
-    .corevalue-item { gap: .35rem; }
+    .corevalue-badge { width: 1rem; height: 1rem; border-radius: .26rem; font-size: 8px; }
+    .corevalue-text { font-size: .68rem; letter-spacing: 0; }
+    #corevalue-ticker { height: 1rem; }
+    .corevalue-item { gap: .3rem; }
     .corevalue-label-row { justify-content: center; }
     .corevalue-label { font-size: 7px !important; letter-spacing: .14em !important; }
 }
@@ -677,13 +677,13 @@ html.dark .corevalue-wire { background: rgba(96, 165, 250, .2); }
 
     
     <div id="main-wrapper" class="flex-1 min-w-0 flex flex-col">
-        <header id="app-topbar" class="bg-white border-b border-slate-100 px-4 lg:px-5 py-3 flex items-center justify-between sticky top-0 z-40">
+        <header id="app-topbar" class="bg-white border-b border-slate-100 px-4 lg:px-5 py-2 flex items-center justify-between sticky top-0 z-40">
             <button id="sidebar-toggle-btn" class="text-slate-500 hover:text-indigo-600 transition flex items-center gap-1.5" onclick="window.toggleSidebar()" title="Buka/tutup menu">
                 <i class="fas fa-bars text-lg"></i>
                 <i id="sidebar-toggle-arrow" class="fas fa-chevron-left text-[10px] text-slate-300"></i>
             </button>
             <div class="flex flex-1 items-center justify-center px-1.5 sm:px-4 min-w-0">
-                <div class="corevalue-shell flex flex-col gap-1 pl-2 pr-2.5 py-1 sm:pl-3.5 sm:pr-4 sm:py-1.5">
+                <div class="corevalue-shell flex flex-col gap-0.5 pl-2 pr-2.5 py-0.5 sm:pl-3.5 sm:pr-4 sm:py-1">
                     <div class="flex flex-col gap-0.5 sm:flex-row sm:items-center sm:gap-3">
                         <div class="corevalue-label-row flex items-center gap-1.5 sm:gap-2 shrink-0">
                             <i class="fas fa-bolt text-[9px] sm:text-[11px] corevalue-icon shrink-0"></i>
@@ -721,7 +721,7 @@ html.dark .corevalue-wire { background: rgba(96, 165, 250, .2); }
                         <p id="topbar-username" class="text-xs font-bold text-slate-700 leading-none"></p>
                         <p id="topbar-role" class="text-[10px] text-indigo-500 font-bold mt-0.5"></p>
                     </div>
-                    <div id="topbar-avatar" class="w-9 h-9 rounded-full bg-indigo-600 text-white flex items-center justify-center font-black text-sm overflow-hidden shrink-0"></div>
+                    <div id="topbar-avatar" class="w-8 h-8 rounded-full bg-indigo-600 text-white flex items-center justify-center font-black text-sm overflow-hidden shrink-0"></div>
                 </button>
                 
                 <div id="profile-menu" class="hide absolute right-0 top-full pt-2 w-56 z-[60]">
