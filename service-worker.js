@@ -2,7 +2,7 @@
 // Minimal SW: cuma buat memenuhi syarat PWA (installable),
 // tanpa caching agresif karena app ini sengaja no-cache (data selalu fresh dari Firestore).
 
-const SW_VERSION = 'ningratedu-v1';
+const SW_VERSION = 'ningratedu-v2';
 
 self.addEventListener('install', (event) => {
   self.skipWaiting();
