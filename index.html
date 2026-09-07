@@ -1737,13 +1737,13 @@ function statChart3DValueBarSvg(items,maxValue){
 }
 function statChart3DHBarSvg(items,maxValue){
     if(!items||!items.length)return `<div class="h-40 flex items-center justify-center text-slate-300 text-xs">Belum ada data</div>`;
-    const n=items.length;const width=390;const rowH=44;const height=n*rowH+20;
-    const mv=maxValue||5;const leftPad=98;const maxBarW=width-leftPad-64;const depth=9;
+    const n=items.length;const width=380;const rowH=42;const height=n*rowH+20;
+    const mv=maxValue||5;const leftPad=88;const maxBarW=width-leftPad-64;const depth=9;
     let y=16;let bars="";
     items.forEach(function(it){
         const val=it.value||0;const w=Math.max(6,Math.round(val/mv*maxBarW));
         const hex=it.hex;const light=shadeHexColor(hex,22);const dark=shadeHexColor(hex,-25);
-        bars+=`<g class="hbar3d-item" style="transition:transform .18s ease" onmouseenter="this.style.transform=\'translateX(6px)\'" onmouseleave="this.style.transform=\'\'"><text x="${leftPad-10}" y="${y+17}" text-anchor="end" font-size="14" font-weight="800" fill="#475569">${it.label}</text><path d="M${leftPad},${y+2} L${leftPad+w},${y+2} L${leftPad+w},${y+20} L${leftPad},${y+20} Z" fill="${hex}"></path><path d="M${leftPad+w},${y+2} L${leftPad+w+depth},${y+2-depth} L${leftPad+w+depth},${y+20-depth} L${leftPad+w},${y+20} Z" fill="${dark}"></path><path d="M${leftPad},${y+2} L${leftPad+depth},${y+2-depth} L${leftPad+w+depth},${y+2-depth} L${leftPad+w},${y+2} Z" fill="${light}"></path><text x="${leftPad+w+depth+6}" y="${y+17}" font-size="14" font-weight="900" fill="${hex}">${it.value!==null&&it.value!==undefined?it.value+"/5":"-"}</text></g>`;
+        bars+=`<g class="hbar3d-item" style="transition:transform .18s ease" onmouseenter="this.style.transform=\'translateX(6px)\'" onmouseleave="this.style.transform=\'\'"><text x="${leftPad-10}" y="${y+16}" text-anchor="end" font-size="11" font-weight="700" fill="#475569">${it.label}</text><path d="M${leftPad},${y+2} L${leftPad+w},${y+2} L${leftPad+w},${y+20} L${leftPad},${y+20} Z" fill="${hex}"></path><path d="M${leftPad+w},${y+2} L${leftPad+w+depth},${y+2-depth} L${leftPad+w+depth},${y+20-depth} L${leftPad+w},${y+20} Z" fill="${dark}"></path><path d="M${leftPad},${y+2} L${leftPad+depth},${y+2-depth} L${leftPad+w+depth},${y+2-depth} L${leftPad+w},${y+2} Z" fill="${light}"></path><text x="${leftPad+w+depth+6}" y="${y+16}" font-size="11" font-weight="900" fill="${hex}">${it.value!==null&&it.value!==undefined?it.value+"/5":"-"}</text></g>`;
         y+=rowH;
     });
     return `<svg viewBox="0 0 ${width} ${height}" class="w-full h-auto" style="overflow:visible">${bars}</svg>`;
@@ -1813,11 +1813,11 @@ return `
                     <p class="text-[11px] font-black text-slate-500 mb-2"><i class="fas fa-star mr-1" style="color:#6366f1"></i> Rating Evaluasi</p>
                     <div class="flex-1 flex flex-col justify-center">
                         <div class="flex flex-col items-center mb-2">
-                            <span class="relative inline-flex items-center justify-center shrink-0 w-16 h-16 sm:w-20 sm:h-20">
+                            <span class="relative inline-flex items-center justify-center shrink-0 w-12 h-12 sm:w-14 sm:h-14">
                                 <svg viewBox="0 0 100 100" class="w-full h-full drop-shadow" style="filter:drop-shadow(0 1px 2px rgba(0,0,0,.25))"><polygon points="50.0,2.0 61.17,34.63 95.65,35.17 68.07,55.87 78.21,88.83 50.0,69.0 21.79,88.83 31.93,55.87 4.35,35.17 38.83,34.63" fill="#6366f1"></polygon></svg>
                                 <span class="absolute inset-0 flex flex-col items-center justify-center leading-none" style="font-family:'Plus Jakarta Sans', sans-serif;">
-                                    <span class="font-black text-white" style="font-size:20px; line-height:1;">${ratingOverall!==null?ratingOverall:"-"}</span>
-                                    <span class="font-bold text-white/85" style="font-size:10px; line-height:1; margin-top:2px;">dari 5</span>
+                                    <span class="font-black text-white" style="font-size:13px; line-height:1;">${ratingOverall!==null?ratingOverall:"-"}</span>
+                                    <span class="font-bold text-white/85" style="font-size:7px; line-height:1; margin-top:1px;">dari 5</span>
                                 </span>
                             </span>
                             <p class="text-[9px] sm:text-[10px] text-slate-400 font-semibold mt-1.5 text-center">Rata&sup2; rating evaluasi peserta</p>
