@@ -1667,15 +1667,18 @@ function statChart3DPieSvg(items){
     if(!items||!items.length)return `<div class="h-40 flex items-center justify-center text-slate-300 text-xs">Belum ada data</div>`;
     const total=items.reduce(function(s,it){return s+(it.pct||0)},0)||1;
     const cx=165,cy=132,rx=100,ry=64,depth=16;
-    let angleStart=-90;let slicesHtml="";let labels="";
+    const uid="p3d"+Math.random().toString(36).slice(2,8);
+    let angleStart=-90;let sidesHtml="";let topsHtml="";let labels="";
     items.forEach(function(it,i){
         const angle=(it.pct||0)/total*360;const angleEnd=angleStart+angle;const largeArc=angle>180?1:0;
         const darkHex=shadeHexColor(it.hex,-25);
         const clickAttr=it.key?` onclick="window.openOnboardingScheduleDetail('${it.key}')"`:"";
         const detailLabel=it.label?`${window.escapeHtml(it.label)} : ${it.count}/${it.total}`:"";
         const isFullCircle=angle>=359.99;
+        const sideId=`${uid}-side-${i}`;
         if(isFullCircle){
-            slicesHtml+=`<g class="pie3d-slice" style="cursor:${it.key?"pointer":"default"}"${clickAttr}><path d="M${cx-rx},${cy} A${rx},${ry} 0 1 1 ${cx+rx},${cy} L${cx+rx},${cy+depth} A${rx},${ry} 0 1 1 ${cx-rx},${cy+depth} Z" fill="${darkHex}"></path><ellipse cx="${cx}" cy="${cy}" rx="${rx}" ry="${ry}" fill="${it.hex}" stroke="#fff" stroke-width="1.5"></ellipse></g>`;
+            sidesHtml+=`<path id="${sideId}" d="M${cx-rx},${cy} A${rx},${ry} 0 1 1 ${cx+rx},${cy} L${cx+rx},${cy+depth} A${rx},${ry} 0 1 1 ${cx-rx},${cy+depth} Z" fill="${darkHex}"></path>`;
+            topsHtml+=`<g class="pie3d-slice" style="cursor:${it.key?"pointer":"default"}"${clickAttr}><ellipse cx="${cx}" cy="${cy}" rx="${rx}" ry="${ry}" fill="${it.hex}" stroke="#fff" stroke-width="1.5"></ellipse></g>`;
             labels+=`<text x="${cx}" y="${cy-4}" text-anchor="middle" font-size="22" font-weight="900" fill="#fff">${it.pct}%</text>`+(detailLabel?`<text x="${cx}" y="${cy+18}" text-anchor="middle" font-size="12" font-weight="700" fill="#fff">${detailLabel}</text>`:"");
         }else{
             const startRad=angleStart*Math.PI/180,endRad=angleEnd*Math.PI/180;
@@ -1683,7 +1686,8 @@ function statChart3DPieSvg(items){
             const x2=cx+rx*Math.cos(endRad),y2=cy+ry*Math.sin(endRad);
             const midAngle=(angleStart+angleEnd)/2;const midRad=midAngle*Math.PI/180;
             const offX=(Math.cos(midRad)*10).toFixed(2);const offY=(Math.sin(midRad)*10-6).toFixed(2);
-            slicesHtml+=`<g class="pie3d-slice" style="cursor:${it.key?"pointer":"default"};transition:transform .18s ease" onmouseenter="this.style.transform='translate(${offX}px,${offY}px)'" onmouseleave="this.style.transform=''"${clickAttr}><path d="M${cx},${cy} L${x1},${y1+depth} A${rx},${ry} 0 ${largeArc} 1 ${x2},${y2+depth} Z" fill="${darkHex}"></path><path d="M${cx},${cy} L${x1},${y1} A${rx},${ry} 0 ${largeArc} 1 ${x2},${y2} Z" fill="${it.hex}" stroke="#fff" stroke-width="1.5"></path></g>`;
+            sidesHtml+=`<path id="${sideId}" style="transition:transform .18s ease" d="M${cx},${cy} L${x1},${y1+depth} A${rx},${ry} 0 ${largeArc} 1 ${x2},${y2+depth} Z" fill="${darkHex}"></path>`;
+            topsHtml+=`<g class="pie3d-slice" style="cursor:${it.key?"pointer":"default"};transition:transform .18s ease" onmouseenter="this.style.transform='translate(${offX}px,${offY}px)';var s=document.getElementById('${sideId}');if(s)s.style.transform='translate(${offX}px,${offY}px)';" onmouseleave="this.style.transform='';var s=document.getElementById('${sideId}');if(s)s.style.transform='';"${clickAttr}><path d="M${cx},${cy} L${x1},${y1} A${rx},${ry} 0 ${largeArc} 1 ${x2},${y2} Z" fill="${it.hex}" stroke="#fff" stroke-width="1.5"></path></g>`;
             if((it.pct||0)>0){
                 const extra=i%2===0?38:58;
                 const dotx=cx+rx*0.98*Math.cos(midRad),doty=cy+ry*0.98*Math.sin(midRad);
@@ -1694,7 +1698,7 @@ function statChart3DPieSvg(items){
         }
         angleStart=angleEnd;
     });
-    return `<svg viewBox="0 0 340 280" class="w-full h-auto" style="overflow:visible">${slicesHtml}${labels}</svg>`;
+    return `<svg viewBox="0 0 340 280" class="w-full h-auto" style="overflow:visible">${sidesHtml}${topsHtml}${labels}</svg>`;
 }
 function statChart3DValueBarSvg(items,maxValue){
     if(!items||!items.length)return `<div class="h-40 flex items-center justify-center text-slate-300 text-xs">Belum ada data</div>`;
