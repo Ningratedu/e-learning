@@ -478,6 +478,162 @@ html.dark .text-teal-600:not([class*="bg-teal-50"]):not([class*="bg-teal-100"]),
 html.dark .text-teal-700:not([class*="bg-teal-50"]):not([class*="bg-teal-100"]) { color: #2dd4bf !important; }
 html.dark .shadow-sm, html.dark .shadow, html.dark .shadow-md, html.dark .shadow-lg, html.dark .shadow-xl, html.dark .shadow-2xl { box-shadow: 0 4px 18px rgba(0,0,0,.45) !important; }
 
+
+/* ===== DARK: kotak/panel pastel BESAR =====
+   Remap bg-*-50/100 sebelumnya cuma ada untuk indigo & slate, jadi kotak besar
+   (rounded-xl/2xl/3xl, header modal berwarna) tetap pastel terang di dark mode.
+   Yang diubah HANYA kotak besar; badge kecil (rounded-full/lg/md) sengaja dibiarkan.
+   Pakai [class~=...] (token persis) supaya bg-amber-50 tidak ikut menangkap bg-amber-500.
+   Teks di elemen yang sama (text-*-600 dst) ikut dinaikkan terang, karena aturan
+   teks aksen di atas sengaja mengecualikan elemen ber-bg-*-50. */
+html.dark .rounded-xl[class~="bg-amber-50"],
+html.dark .rounded-xl[class~="bg-amber-100"],
+html.dark .rounded-xl[class*="bg-amber-50/"],
+html.dark .rounded-2xl[class~="bg-amber-50"],
+html.dark .rounded-2xl[class~="bg-amber-100"],
+html.dark .rounded-2xl[class*="bg-amber-50/"],
+html.dark .rounded-3xl[class~="bg-amber-50"],
+html.dark .rounded-3xl[class~="bg-amber-100"],
+html.dark .rounded-3xl[class*="bg-amber-50/"],
+html.dark .border-b[class~="bg-amber-50"] { background-color: rgba(245,158,11,.13) !important; }
+html.dark .rounded-xl[class~="bg-amber-50"][class*="text-amber-"],
+html.dark .rounded-xl[class~="bg-amber-100"][class*="text-amber-"],
+html.dark .rounded-xl[class*="bg-amber-50/"][class*="text-amber-"],
+html.dark .rounded-2xl[class~="bg-amber-50"][class*="text-amber-"],
+html.dark .rounded-2xl[class~="bg-amber-100"][class*="text-amber-"],
+html.dark .rounded-2xl[class*="bg-amber-50/"][class*="text-amber-"],
+html.dark .rounded-3xl[class~="bg-amber-50"][class*="text-amber-"],
+html.dark .rounded-3xl[class~="bg-amber-100"][class*="text-amber-"],
+html.dark .rounded-3xl[class*="bg-amber-50/"][class*="text-amber-"],
+html.dark .border-b[class~="bg-amber-50"][class*="text-amber-"] { color: #fbbf24 !important; }
+html.dark [class*="border-amber-100"], html.dark [class*="border-amber-200"] { border-color: rgba(245,158,11,.3) !important; }
+html.dark .rounded-xl[class~="bg-emerald-50"],
+html.dark .rounded-xl[class~="bg-emerald-100"],
+html.dark .rounded-xl[class*="bg-emerald-50/"],
+html.dark .rounded-2xl[class~="bg-emerald-50"],
+html.dark .rounded-2xl[class~="bg-emerald-100"],
+html.dark .rounded-2xl[class*="bg-emerald-50/"],
+html.dark .rounded-3xl[class~="bg-emerald-50"],
+html.dark .rounded-3xl[class~="bg-emerald-100"],
+html.dark .rounded-3xl[class*="bg-emerald-50/"],
+html.dark .border-b[class~="bg-emerald-50"] { background-color: rgba(16,185,129,.13) !important; }
+html.dark .rounded-xl[class~="bg-emerald-50"][class*="text-emerald-"],
+html.dark .rounded-xl[class~="bg-emerald-100"][class*="text-emerald-"],
+html.dark .rounded-xl[class*="bg-emerald-50/"][class*="text-emerald-"],
+html.dark .rounded-2xl[class~="bg-emerald-50"][class*="text-emerald-"],
+html.dark .rounded-2xl[class~="bg-emerald-100"][class*="text-emerald-"],
+html.dark .rounded-2xl[class*="bg-emerald-50/"][class*="text-emerald-"],
+html.dark .rounded-3xl[class~="bg-emerald-50"][class*="text-emerald-"],
+html.dark .rounded-3xl[class~="bg-emerald-100"][class*="text-emerald-"],
+html.dark .rounded-3xl[class*="bg-emerald-50/"][class*="text-emerald-"],
+html.dark .border-b[class~="bg-emerald-50"][class*="text-emerald-"] { color: #34d399 !important; }
+html.dark [class*="border-emerald-100"], html.dark [class*="border-emerald-200"] { border-color: rgba(16,185,129,.3) !important; }
+html.dark .rounded-xl[class~="bg-rose-50"],
+html.dark .rounded-xl[class~="bg-rose-100"],
+html.dark .rounded-xl[class*="bg-rose-50/"],
+html.dark .rounded-2xl[class~="bg-rose-50"],
+html.dark .rounded-2xl[class~="bg-rose-100"],
+html.dark .rounded-2xl[class*="bg-rose-50/"],
+html.dark .rounded-3xl[class~="bg-rose-50"],
+html.dark .rounded-3xl[class~="bg-rose-100"],
+html.dark .rounded-3xl[class*="bg-rose-50/"],
+html.dark .border-b[class~="bg-rose-50"] { background-color: rgba(244,63,94,.13) !important; }
+html.dark .rounded-xl[class~="bg-rose-50"][class*="text-rose-"],
+html.dark .rounded-xl[class~="bg-rose-100"][class*="text-rose-"],
+html.dark .rounded-xl[class*="bg-rose-50/"][class*="text-rose-"],
+html.dark .rounded-2xl[class~="bg-rose-50"][class*="text-rose-"],
+html.dark .rounded-2xl[class~="bg-rose-100"][class*="text-rose-"],
+html.dark .rounded-2xl[class*="bg-rose-50/"][class*="text-rose-"],
+html.dark .rounded-3xl[class~="bg-rose-50"][class*="text-rose-"],
+html.dark .rounded-3xl[class~="bg-rose-100"][class*="text-rose-"],
+html.dark .rounded-3xl[class*="bg-rose-50/"][class*="text-rose-"],
+html.dark .border-b[class~="bg-rose-50"][class*="text-rose-"] { color: #fb7185 !important; }
+html.dark [class*="border-rose-100"], html.dark [class*="border-rose-200"] { border-color: rgba(244,63,94,.3) !important; }
+html.dark .rounded-xl[class~="bg-sky-50"],
+html.dark .rounded-xl[class~="bg-sky-100"],
+html.dark .rounded-xl[class*="bg-sky-50/"],
+html.dark .rounded-2xl[class~="bg-sky-50"],
+html.dark .rounded-2xl[class~="bg-sky-100"],
+html.dark .rounded-2xl[class*="bg-sky-50/"],
+html.dark .rounded-3xl[class~="bg-sky-50"],
+html.dark .rounded-3xl[class~="bg-sky-100"],
+html.dark .rounded-3xl[class*="bg-sky-50/"],
+html.dark .border-b[class~="bg-sky-50"] { background-color: rgba(14,165,233,.13) !important; }
+html.dark .rounded-xl[class~="bg-sky-50"][class*="text-sky-"],
+html.dark .rounded-xl[class~="bg-sky-100"][class*="text-sky-"],
+html.dark .rounded-xl[class*="bg-sky-50/"][class*="text-sky-"],
+html.dark .rounded-2xl[class~="bg-sky-50"][class*="text-sky-"],
+html.dark .rounded-2xl[class~="bg-sky-100"][class*="text-sky-"],
+html.dark .rounded-2xl[class*="bg-sky-50/"][class*="text-sky-"],
+html.dark .rounded-3xl[class~="bg-sky-50"][class*="text-sky-"],
+html.dark .rounded-3xl[class~="bg-sky-100"][class*="text-sky-"],
+html.dark .rounded-3xl[class*="bg-sky-50/"][class*="text-sky-"],
+html.dark .border-b[class~="bg-sky-50"][class*="text-sky-"] { color: #38bdf8 !important; }
+html.dark [class*="border-sky-100"], html.dark [class*="border-sky-200"] { border-color: rgba(14,165,233,.3) !important; }
+html.dark .rounded-xl[class~="bg-violet-50"],
+html.dark .rounded-xl[class~="bg-violet-100"],
+html.dark .rounded-xl[class*="bg-violet-50/"],
+html.dark .rounded-2xl[class~="bg-violet-50"],
+html.dark .rounded-2xl[class~="bg-violet-100"],
+html.dark .rounded-2xl[class*="bg-violet-50/"],
+html.dark .rounded-3xl[class~="bg-violet-50"],
+html.dark .rounded-3xl[class~="bg-violet-100"],
+html.dark .rounded-3xl[class*="bg-violet-50/"],
+html.dark .border-b[class~="bg-violet-50"] { background-color: rgba(139,92,246,.13) !important; }
+html.dark .rounded-xl[class~="bg-violet-50"][class*="text-violet-"],
+html.dark .rounded-xl[class~="bg-violet-100"][class*="text-violet-"],
+html.dark .rounded-xl[class*="bg-violet-50/"][class*="text-violet-"],
+html.dark .rounded-2xl[class~="bg-violet-50"][class*="text-violet-"],
+html.dark .rounded-2xl[class~="bg-violet-100"][class*="text-violet-"],
+html.dark .rounded-2xl[class*="bg-violet-50/"][class*="text-violet-"],
+html.dark .rounded-3xl[class~="bg-violet-50"][class*="text-violet-"],
+html.dark .rounded-3xl[class~="bg-violet-100"][class*="text-violet-"],
+html.dark .rounded-3xl[class*="bg-violet-50/"][class*="text-violet-"],
+html.dark .border-b[class~="bg-violet-50"][class*="text-violet-"] { color: #a78bfa !important; }
+html.dark [class*="border-violet-100"], html.dark [class*="border-violet-200"] { border-color: rgba(139,92,246,.3) !important; }
+html.dark .rounded-xl[class~="bg-orange-50"],
+html.dark .rounded-xl[class~="bg-orange-100"],
+html.dark .rounded-xl[class*="bg-orange-50/"],
+html.dark .rounded-2xl[class~="bg-orange-50"],
+html.dark .rounded-2xl[class~="bg-orange-100"],
+html.dark .rounded-2xl[class*="bg-orange-50/"],
+html.dark .rounded-3xl[class~="bg-orange-50"],
+html.dark .rounded-3xl[class~="bg-orange-100"],
+html.dark .rounded-3xl[class*="bg-orange-50/"],
+html.dark .border-b[class~="bg-orange-50"] { background-color: rgba(249,115,22,.13) !important; }
+html.dark .rounded-xl[class~="bg-orange-50"][class*="text-orange-"],
+html.dark .rounded-xl[class~="bg-orange-100"][class*="text-orange-"],
+html.dark .rounded-xl[class*="bg-orange-50/"][class*="text-orange-"],
+html.dark .rounded-2xl[class~="bg-orange-50"][class*="text-orange-"],
+html.dark .rounded-2xl[class~="bg-orange-100"][class*="text-orange-"],
+html.dark .rounded-2xl[class*="bg-orange-50/"][class*="text-orange-"],
+html.dark .rounded-3xl[class~="bg-orange-50"][class*="text-orange-"],
+html.dark .rounded-3xl[class~="bg-orange-100"][class*="text-orange-"],
+html.dark .rounded-3xl[class*="bg-orange-50/"][class*="text-orange-"],
+html.dark .border-b[class~="bg-orange-50"][class*="text-orange-"] { color: #fb923c !important; }
+html.dark [class*="border-orange-100"], html.dark [class*="border-orange-200"] { border-color: rgba(249,115,22,.3) !important; }
+html.dark .rounded-xl[class~="bg-teal-50"],
+html.dark .rounded-xl[class~="bg-teal-100"],
+html.dark .rounded-xl[class*="bg-teal-50/"],
+html.dark .rounded-2xl[class~="bg-teal-50"],
+html.dark .rounded-2xl[class~="bg-teal-100"],
+html.dark .rounded-2xl[class*="bg-teal-50/"],
+html.dark .rounded-3xl[class~="bg-teal-50"],
+html.dark .rounded-3xl[class~="bg-teal-100"],
+html.dark .rounded-3xl[class*="bg-teal-50/"],
+html.dark .border-b[class~="bg-teal-50"] { background-color: rgba(20,184,166,.13) !important; }
+html.dark .rounded-xl[class~="bg-teal-50"][class*="text-teal-"],
+html.dark .rounded-xl[class~="bg-teal-100"][class*="text-teal-"],
+html.dark .rounded-xl[class*="bg-teal-50/"][class*="text-teal-"],
+html.dark .rounded-2xl[class~="bg-teal-50"][class*="text-teal-"],
+html.dark .rounded-2xl[class~="bg-teal-100"][class*="text-teal-"],
+html.dark .rounded-2xl[class*="bg-teal-50/"][class*="text-teal-"],
+html.dark .rounded-3xl[class~="bg-teal-50"][class*="text-teal-"],
+html.dark .rounded-3xl[class~="bg-teal-100"][class*="text-teal-"],
+html.dark .rounded-3xl[class*="bg-teal-50/"][class*="text-teal-"],
+html.dark .border-b[class~="bg-teal-50"][class*="text-teal-"] { color: #2dd4bf !important; }
+html.dark [class*="border-teal-100"], html.dark [class*="border-teal-200"] { border-color: rgba(20,184,166,.3) !important; }
+
 /* ================= HEADER: TICKER BUDAYA KERJA / CORE VALUE (versi "electric circuit") =================
    Kartu persegi (bukan pill) dengan border yang keliling "arus listrik" biru (comet
    light rotating pakai conic-gradient + @property), badge angka kotak dengan spark
