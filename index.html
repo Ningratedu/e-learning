@@ -5836,7 +5836,9 @@ window.kpiSalesSave=async function(){const r=compute();if(!r)return;const m=S.pe
   for(let i=0;i<list.length;i+=200){const b=wbt(db);
    list.slice(i,i+200).forEach(x=>{const e=x.e,by=e.kpiByYear=e.kpiByYear||{};
     let base=by[Y]||by[String(Y)];if(!base&&Y===cy&&e.kpi)base={...e.kpi};base=base||{};base[M]=x.kpi;by[Y]=base;
-    b.set(ref("employees",e.id),{kpiByYear:{[Y]:base}},{merge:true})});
+    const payload={kpiByYear:{[Y]:base}};
+    if(Y===cy){e.kpi={...(e.kpi||{}),[M]:x.kpi};payload.kpi={[M]:x.kpi}}
+    b.set(ref("employees",e.id),payload,{merge:true})});
    await b.commit()}
   window.toast(`KPI ${MN[M-1]} ${Y} tersimpan untuk ${list.length} karyawan.`,"success")}
  catch(err){console.error(err);window.toast(err.message||"Gagal menyimpan","error")}};
