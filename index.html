@@ -5928,7 +5928,7 @@ function renderRes(){const el=document.getElementById("ks-res");if(!el)return;
 window.ROUTES["admin/kpi-sales"]=function(){
  window.adminNavContext="tna";
  if(!isAdm()){window.setPage('<p class="text-center text-rose-400 py-20 font-bold">Akses ditolak. Halaman ini khusus admin.</p>');return}
- if(!S.desig&&allDesigs().length)S.desig=new Set(allDesigs().filter(d=>/sales/i.test(d)));
+ if(!S.desig&&allDesigs().length){const def=["sales","sales counter","sales counter strategic","commercial marketing"];S.desig=new Set(allDesigs().filter(d=>def.includes(d.toLowerCase().replace(/\s+/g," ").trim())))}
  window.setPage(`${window.renderAdminSectionTabs("admin/kpi-sales")}
  <div class="mb-3"><h1 class="text-base font-black text-slate-800"><i class="fas fa-bullseye text-indigo-500 mr-1.5"></i>KPI Sales &amp; Sales Counter (Otomatis dari Booking)</h1><p class="text-[10px] text-slate-500">Upload report GCI. Jumlah booking = baris dengan username sales tersebut yang Status Proses-nya bukan "Leads". Usia join dihitung dari tanggal bergabung karyawan sampai akhir periode. Filter dropdown kosong = semua.</p></div>
  <div id="ks-top"></div><div id="ks-res"></div>`);
