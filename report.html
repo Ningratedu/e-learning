@@ -6170,18 +6170,22 @@ var ALLOWED={
   /* Kelola Training By TNA */
   "admin/trainings":1,"admin/training-report":1,"admin/material-bank":1,"admin/tna-results":1,
   "admin/competencies":1,"admin/assessment-cycles":1,"admin/competency-results":1,
-  "admin/tna-feedback":1,"admin/employee-analysis":1,"admin/kpi-sales":1
-  /* sengaja TIDAK dibuka: admin/psychtests, admin/employees, admin/users, admin/leaderboard, dev-programs, import, dll */
+  "admin/tna-feedback":1,"admin/employee-analysis":1,"admin/kpi-sales":1,
+  /* Kelola Development Program */
+  "admin/dev-programs":1,"admin/dev-programs-progress":1
+  /* sengaja TIDAK dibuka: admin/psychtests, admin/employees, admin/users, admin/leaderboard, import, dll */
 };
 /* Route ini kalau dikasih /id atau /new = buka form edit -> diblok, balik ke list */
-var BUILDER={"admin/courses":1,"admin/trainings":1,"admin/tna-results":1,"admin/material-bank":1,"admin/assessment-cycles":1,"admin/competencies":1};
+var BUILDER={"admin/courses":1,"admin/trainings":1,"admin/tna-results":1,"admin/material-bank":1,"admin/assessment-cycles":1,"admin/competencies":1,"admin/dev-programs":1};
 
 var NAV=[
   {key:"admin/reports",icon:"fa-chart-simple",label:"Dashboard"},
   {key:"admin/onboarding-schedule",icon:"fa-layer-group",label:"Kelola Onboarding Training"},
-  {key:"admin/trainings",icon:"fa-calendar-days",label:"Kelola Training By TNA"}
+  {key:"admin/trainings",icon:"fa-calendar-days",label:"Kelola Training By TNA"},
+  {key:"admin/dev-programs",icon:"fa-arrow-trend-up",label:"Kelola Development Program"}
 ];
 var ONB={"admin/courses":1,"admin/onboarding-schedule":1,"admin/onboarding-feedback":1,"admin/course-report":1};
+var DEV={"admin/dev-programs":1,"admin/dev-programs-progress":1};
 var TNA={"admin/trainings":1,"admin/training-report":1,"admin/material-bank":1,"admin/tna-results":1,"admin/competencies":1,"admin/assessment-cycles":1,"admin/competency-results":1,"admin/tna-feedback":1,"admin/employee-analysis":1,"admin/kpi-sales":1};
 
 function parseHash(h){
@@ -6247,6 +6251,7 @@ window.addEventListener("hashchange",function(ev){
 function sidebarKeyForHash(){
   var r=parseHash();if(!r.ok)return"admin/reports";
   if(ONB[r.key])return"admin/onboarding-schedule";
+  if(DEV[r.key])return"admin/dev-programs";
   if(TNA[r.key])return"admin/trainings";
   if(r.key==="admin/assignments"||r.key==="admin/quiz-attempts")return window.adminNavContext==="tna"?"admin/trainings":"admin/onboarding-schedule";
   return"admin/reports";
@@ -6268,7 +6273,7 @@ window.renderTopbar=function(){
 };
 
 /* ---- 5. Sembunyikan tombol tambah / edit / hapus / import / export / kirim, dst ---- */
-var DENY=/delete|remove|save|upload|commit|decide|enroll|register|checkin|grade|submit|send|extend|moveCourse|moveDev|bulk|tmdelete|pull|createTraining|generate|markTna|TargetSettings|openTrainingInvite|openTrainingQr|openCourseReminder|openAssignmentForm|openEmployeeEdit|openEmployeeWhatsApp|openFillAssessment|openQrScan|openMaterialPicker|openResetEmployee|openQuizExcelInfo|openAssessmentReviewersModal|openEditProfile|openTnaApprovalRequest|rerenderTrainingBuilder|download|export|import|confirm|runConfirmed|changePassword|doLogout|doLogin|doRegister|mkOpenCompModal|resetUserPassword|applyMaterialToTraining|pickTnaLink|setEval|setLeaderboard(Dept|Designation)|setTrainingSession|setTrainingTarget|toggleAssessmentCycleActive|toggleCompetencyTraining|toggleDevProgramParticipant|toggleTrainingDevProgramOnly|toggleTnaModInlineMode|addDev|addComp|__assess(Add|Delete|Edit)|devEvToggleDone|legacyRun|psych(Upload|Delete|SaveMap|Template)/i;
+var DENY=/delete|remove|save|upload|commit|decide|enroll|register|checkin|grade|submit|send|extend|moveCourse|moveDev|bulk|tmdelete|pull|createTraining|generate|markTna|TargetSettings|openTrainingInvite|openTrainingQr|openCourseReminder|openAssignmentForm|openEmployeeEdit|openEmployeeWhatsApp|openFillAssessment|openQrScan|openMaterialPicker|openResetEmployee|openQuizExcelInfo|openAssessmentReviewersModal|openEditProfile|openTnaApprovalRequest|rerenderTrainingBuilder|download|export|import|confirm|runConfirmed|changePassword|doLogout|doLogin|doRegister|mkOpenCompModal|resetUserPassword|applyMaterialToTraining|pickTnaLink|setEval|setLeaderboard(Dept|Designation)|setTrainingSession|setTrainingTarget|toggleAssessmentCycleActive|toggleCompetencyTraining|toggleDevProgramParticipant|toggleTrainingDevProgramOnly|toggleTnaModInlineMode|addDev|addComp|__assess(Add|Delete|Edit)|devEvToggleDone|legacyRun|psych(Upload|Delete|SaveMap|Template)|reviewDevProgram|toggleDevProgramManualDone|syncDevProgramCertificate|openDevProgramPanel|rerenderDevProgram|closeDevProgramBuilder/i;
 var LABEL=/(^|[^a-z])(tambah|baru|hapus|edit|ubah|simpan|unggah|upload|import|kirim|undang|setujui|tolak|revisi|buat training|generate|reminder|pengingat|export|unduh|download|template|keluar|logout)([^a-z]|$)/i;
 var seen=new WeakSet();
 function lockEl(el){
