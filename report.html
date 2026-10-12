@@ -61,6 +61,11 @@ window.addEventListener("load",function(){
 @media (min-width:720px){.dash-comp{flex-direction:row;align-items:flex-start}.dash-comp-radar{width:42%;flex-shrink:0}.dash-comp-body{flex:1}.dash-comp-list{max-height:240px;overflow-y:auto;padding-right:.25rem}}
 .tna-summary-grid{display:grid;grid-template-columns:repeat(1,minmax(0,1fr));gap:.5rem}
 @media (min-width:640px){.tna-summary-grid{grid-template-columns:repeat(5,minmax(0,1fr))}}
+/* Card statistik seragam: area chart/nilai sama tinggi & lebar antar card */
+@media (min-width:720px) and (max-width:1279px){.dash-stat5>*>div:first-child{min-height:5.5rem;display:flex;align-items:center;justify-content:center}}
+@media (min-width:1280px){.dash-stat5>*>div:first-child{min-height:5.5rem;box-sizing:border-box}}
+@media (min-width:640px) and (max-width:1279px){.tna-summary-grid>*{flex-direction:column}.tna-summary-grid>*>div:first-child{width:100%!important;min-height:5rem;padding:.6rem 0!important;justify-content:center}.tna-summary-grid>*>div:last-child{padding:.5rem .65rem .65rem!important}}
+@media (min-width:1280px){.tna-summary-grid>*>div:first-child{width:96px!important;min-height:5rem;box-sizing:border-box}}
 
 #boot-loader {
     position: fixed; inset: 0; z-index: 99999;
@@ -6813,7 +6818,7 @@ function render(){
    +'<div class="trs-top"><div><h2 class="trs-title"><i class="fas fa-user-graduate"></i> Summary Trainer</h2><p class="trs-mut">Trainer tersertifikasi = lulus program sertifikasi trainer. Learning hour = total durasi (jam mulai–selesai) training yang sudah terlaksana.'+(window.__divFilter&&window.__divFilter.active()?'<br><b style="color:#4338ca">Filter divisi: '+window.__divFilter.label()+'</b> — hanya trainer divisi ini; sesi = training yang ditujukan ke divisi ini; peserta hadir &amp; rating dari peserta divisi ini.':'')+'</p></div>'
    +'<div class="trs-tools">'+periodHtml+'<input class="trs-in" data-trs="search" placeholder="Cari trainer / dept..." type="search"><button class="trs-btn" data-trs="export"><i class="fas fa-file-excel"></i> Export</button></div></div>'
    +'<details class="trs-card trs-prog"><summary><i class="fas fa-certificate"></i> Program Sertifikasi <span class="trs-mut">('+D.pids.length+' dipilih)</span></summary><div class="trs-chks">'+(progOpts||'<span class="trs-mut">Belum ada Development Program.</span>')+'</div></details>'
-   +'<div class="grid grid-cols-1 md:grid-cols-5 gap-3 mt-3">'+cardsHtml+'</div>'+empty
+   +'<div class="dash-stat5 mt-3">'+cardsHtml+'</div>'+empty
    +'<div class="trs-card" style="margin-top:16px;padding:0"><div class="trs-scroll"><table class="trs-t"><thead><tr>'+th("name","Trainer")+'<th class="trs-th">Sertifikasi</th>'+th("sessions","Sesi",1)+th("hours","Learning Hour",1)+th("hadir","Peserta Hadir",1)+th("rating","Rating",1)+th("last","Terakhir Mengajar",1)+'</tr></thead><tbody>'+(body||'<tr><td colspan="7" class="trs-mut" style="text-align:center;padding:24px">Belum ada data.</td></tr>')+'</tbody></table></div></div>'
    +otherHtml+'</div>');
   var q=document.querySelector('[data-trs="search"]');if(q&&window.__trsQ){q.value=window.__trsQ;filter(window.__trsQ)}
