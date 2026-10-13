@@ -1072,10 +1072,8 @@ html.dark .corevalue-wire { background: rgba(96, 165, 250, .2); }
                 <div id="profile-menu" class="hide absolute right-0 top-full pt-2 w-56 z-[60]">
                 <div class="bg-white rounded-2xl shadow-xl border border-slate-100 overflow-hidden">
                     <div class="p-4 border-b border-slate-100 relative">
-                        <button id="profile-menu-refresh-btn" onclick="event.stopPropagation(); window.refreshAdminReportsData()" title="Refresh Data Laporan" style="position:absolute;top:0.75rem;right:0.75rem;left:auto;" class="hide w-6 h-6 rounded-full flex items-center justify-center text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 transition"><i class="fas fa-rotate-right text-[11px]"></i></button>
-                        <p id="profile-menu-name" class="text-xs font-black text-slate-800 pr-6"></p>
+                        <p id="profile-menu-name" class="text-xs font-black text-slate-800"></p>
                         <p id="profile-menu-role" class="text-[10px] text-indigo-500 font-bold mt-0.5"></p>
-                        <p id="profile-menu-last-sync" class="text-[9px] text-slate-400 mt-1"></p>
                     </div>
                     
                     <div class="flex flex-col items-center gap-1.5 px-4 py-3 border-b border-slate-100">
@@ -1095,6 +1093,17 @@ html.dark .corevalue-wire { background: rgba(96, 165, 250, .2); }
                 </div>
             </div>
         </header>
+        <style id="refresh-fab-css">
+        #profile-menu-refresh-btn{position:fixed;top:64px;right:16px;z-index:30;height:36px;min-width:36px;padding:0 10px;border-radius:999px;display:flex;align-items:center;justify-content:center;gap:0;overflow:hidden;cursor:pointer;transition:background .15s,box-shadow .15s,gap .2s}
+        #profile-menu-refresh-btn.hide{display:none}
+        #profile-menu-refresh-btn:hover,#profile-menu-refresh-btn:focus-visible{gap:6px}
+        #profile-menu-refresh-btn:disabled{opacity:.7;cursor:wait}
+        #profile-menu-refresh-btn #profile-menu-last-sync{max-width:0;opacity:0;white-space:nowrap;font-size:10px;font-weight:700;transition:max-width .25s,opacity .2s}
+        #profile-menu-refresh-btn:hover #profile-menu-last-sync,#profile-menu-refresh-btn:focus-visible #profile-menu-last-sync{max-width:220px;opacity:1}
+        #profile-menu-refresh-btn #profile-menu-last-sync:empty{display:none}
+        html.dark #profile-menu-refresh-btn{background:#1e293b;border-color:#334155;color:#a5b4fc}
+        </style>
+        <button id="profile-menu-refresh-btn" type="button" onclick="event.stopPropagation(); window.refreshAdminReportsData()" title="Perbarui data laporan" aria-label="Perbarui data laporan" class="hide bg-white border border-slate-200 shadow-lg text-indigo-600 hover:bg-indigo-50 hover:shadow-xl"><i class="fas fa-rotate-right text-[13px]"></i><span id="profile-menu-last-sync" class="text-slate-500"></span></button>
         <main id="page-content" class="flex-1 p-4 lg:p-5"></main>
     </div>
 </div>
@@ -6953,6 +6962,17 @@ window.addEventListener("lms-state-changed",function(){
 })();
 </script>
 
+<script>
+/* Tombol perbarui data mengambang: selalu tepat di bawah topbar (dan bar filter divisi di mobile) */
+(function(){
+function pos(){var b=document.getElementById("profile-menu-refresh-btn"),h=document.getElementById("app-topbar");if(!b||!h)return;
+var bottom=h.getBoundingClientRect().bottom,bar=document.getElementById("div-filter-bar");
+if(bar&&bar.offsetParent!==null)bottom=Math.max(bottom,bar.getBoundingClientRect().bottom);
+b.style.top=Math.round(Math.max(bottom,0)+10)+"px"}
+window.addEventListener("resize",pos);window.addEventListener("hashchange",function(){setTimeout(pos,200)});
+window.addEventListener("load",pos);setInterval(pos,2500);setTimeout(pos,300);
+})();
+</script>
 <script>
 /* ===== Filter Divisi global (admin) =====
    Divisi karyawan diambil dari mapping Kelola Leaderboard (departemen -> divisi + override designation).
