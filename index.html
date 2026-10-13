@@ -7292,5 +7292,552 @@ window.closeQuizResult=function(){
 })();
 </script>
 
+<script>
+/* ============================================================
+   FAQ & BANTUAN — menu baru NingratEdu
+   - Route   : #/faq  (deep link ke 1 pertanyaan: #/faq/<id>)
+   - Sidebar : item "FAQ & Bantuan" ditempel di akhir menu (user & admin)
+   - Isi     : pencarian, filter kategori, accordion, kartu bantuan cepat,
+               FAQ khusus admin hanya tampil untuk admin
+   ============================================================ */
+(function(){
+if(window.__faqInstalled)return;window.__faqInstalled=true;
+
+/* ---------- CSS ---------- */
+var css=`
+.faq-wrap{max-width:920px;margin:0 auto;padding-bottom:2rem}
+.faq-wrap *{box-sizing:border-box}
+.faq-hero{position:relative;overflow:hidden;border-radius:28px;padding:26px 22px 22px;color:#fff;
+  background:linear-gradient(135deg,#4338ca 0%,#5b21b6 55%,#7c3aed 100%);box-shadow:0 14px 34px -14px rgba(79,70,229,.55)}
+.faq-hero::before,.faq-hero::after{content:"";position:absolute;border-radius:999px;background:rgba(255,255,255,.08);pointer-events:none}
+.faq-hero::before{width:220px;height:220px;right:-70px;top:-90px}
+.faq-hero::after{width:140px;height:140px;right:70px;bottom:-80px;background:rgba(255,255,255,.06)}
+.faq-hero-badge{display:inline-flex;align-items:center;gap:6px;font-size:10px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;
+  background:rgba(255,255,255,.16);padding:4px 10px;border-radius:999px}
+.faq-hero h1{font-size:20px;line-height:1.25;font-weight:900;margin:10px 0 4px}
+.faq-hero p{font-size:12px;line-height:1.55;opacity:.85;max-width:520px}
+.faq-search{position:relative;margin-top:16px}
+.faq-search i.faq-s-ico{position:absolute;left:14px;top:50%;transform:translateY(-50%);color:#94a3b8;font-size:13px;pointer-events:none}
+.faq-search input{width:100%;border:0;outline:0;border-radius:16px;padding:13px 40px 13px 38px;font-size:13px;font-weight:600;
+  background:#fff;color:#1e293b;box-shadow:0 6px 18px -8px rgba(15,23,42,.35)}
+.faq-search input::placeholder{color:#94a3b8;font-weight:500}
+.faq-search input:focus{box-shadow:0 0 0 3px rgba(255,255,255,.45),0 6px 18px -8px rgba(15,23,42,.35)}
+.faq-clear{position:absolute;right:8px;top:50%;transform:translateY(-50%);width:28px;height:28px;border-radius:999px;border:0;cursor:pointer;
+  background:#f1f5f9;color:#64748b;font-size:11px;display:none;align-items:center;justify-content:center}
+.faq-clear.show{display:flex}
+.faq-clear:hover{background:#e2e8f0}
+
+.faq-sec-title{font-size:10px;font-weight:900;letter-spacing:.08em;text-transform:uppercase;color:#94a3b8;margin:20px 2px 8px;display:flex;align-items:center;gap:6px}
+.faq-quick{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+@media(min-width:720px){.faq-quick{grid-template-columns:repeat(3,minmax(0,1fr))}}
+.faq-qcard{display:flex;align-items:flex-start;gap:10px;text-align:left;padding:11px 12px;border-radius:18px;cursor:pointer;
+  background:#fff;border:1px solid #e2e8f0;transition:transform .12s ease,box-shadow .15s ease,border-color .15s ease}
+.faq-qcard:hover{border-color:#a5b4fc;box-shadow:0 8px 20px -12px rgba(79,70,229,.45);transform:translateY(-1px)}
+.faq-qcard:active{transform:scale(.97)}
+.faq-qico{flex:0 0 auto;width:32px;height:32px;border-radius:11px;display:flex;align-items:center;justify-content:center;font-size:13px;background:#eef2ff;color:#4f46e5}
+.faq-qcard b{display:block;font-size:11.5px;font-weight:800;color:#1e293b;line-height:1.3}
+.faq-qcard span{display:block;font-size:10px;color:#94a3b8;margin-top:2px;line-height:1.35}
+
+.faq-toolbar{position:sticky;top:var(--faq-top,56px);z-index:5;margin:14px -4px 0;padding:8px 4px 2px;background:#e4e6f0}
+.faq-chips{display:flex;gap:6px;overflow-x:auto;padding:2px 2px 6px;scrollbar-width:none;-webkit-overflow-scrolling:touch}
+.faq-chips::-webkit-scrollbar{display:none}
+.faq-chip{flex:0 0 auto;display:inline-flex;align-items:center;gap:6px;border-radius:999px;padding:7px 12px;font-size:11px;font-weight:800;cursor:pointer;
+  background:#fff;color:#475569;border:1px solid #e2e8f0;transition:background .12s ease,color .12s ease,border-color .12s ease;white-space:nowrap}
+.faq-chip:hover{border-color:#a5b4fc;color:#4338ca}
+.faq-chip.active{background:#4f46e5;color:#fff;border-color:#4f46e5;box-shadow:0 6px 14px -8px rgba(79,70,229,.8)}
+.faq-chip em{font-style:normal;font-size:9.5px;font-weight:900;padding:1px 6px;border-radius:999px;background:rgba(100,116,139,.14)}
+.faq-chip.active em{background:rgba(255,255,255,.24)}
+.faq-meta{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:2px 2px 0;font-size:11px;color:#94a3b8;font-weight:600}
+.faq-meta button{border:0;background:none;cursor:pointer;font-size:11px;font-weight:800;color:#4f46e5;padding:4px 6px;border-radius:8px}
+.faq-meta button:hover{background:#eef2ff}
+
+.faq-group-title{display:flex;align-items:center;gap:8px;font-size:12px;font-weight:900;color:#334155;margin:18px 2px 8px}
+.faq-group-title .faq-gico{width:24px;height:24px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:11px;background:#eef2ff;color:#4f46e5}
+.faq-list{display:flex;flex-direction:column;gap:8px}
+.faq-item{border-radius:18px;background:#fff;border:1px solid #e2e8f0;transition:border-color .15s ease,box-shadow .2s ease;scroll-margin-top:calc(var(--faq-top,56px) + 70px)}
+.faq-item:hover{border-color:#c7d2fe}
+.faq-item.open{border-color:#a5b4fc;box-shadow:0 10px 26px -18px rgba(79,70,229,.6)}
+.faq-item.flash{animation:faqFlash 1.4s ease}
+@keyframes faqFlash{0%,100%{box-shadow:0 0 0 0 rgba(99,102,241,0)}30%{box-shadow:0 0 0 4px rgba(99,102,241,.35)}}
+.faq-q{width:100%;display:flex;align-items:center;gap:10px;padding:13px 14px;border:0;background:none;cursor:pointer;text-align:left;border-radius:18px}
+.faq-q:focus-visible{outline:2px solid #6366f1;outline-offset:2px}
+.faq-q-txt{flex:1;min-width:0;font-size:12.5px;line-height:1.45;font-weight:800;color:#1e293b}
+.faq-q-ico{flex:0 0 auto;width:28px;height:28px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:11px;background:#f1f5f9;color:#64748b;transition:background .15s,color .15s}
+.faq-item.open .faq-q-ico{background:#4f46e5;color:#fff}
+.faq-chev{flex:0 0 auto;font-size:11px;color:#94a3b8;transition:transform .22s ease}
+.faq-item.open .faq-chev{transform:rotate(180deg);color:#4f46e5}
+.faq-a{display:grid;grid-template-rows:0fr;transition:grid-template-rows .26s ease}
+.faq-item.open .faq-a{grid-template-rows:1fr}
+.faq-a>div{overflow:hidden;min-height:0}
+.faq-a-body{padding:0 16px 16px 52px;font-size:12px;line-height:1.7;color:#475569}
+@media(max-width:480px){.faq-a-body{padding-left:16px}}
+.faq-a-body p{margin:0 0 8px}
+.faq-a-body p:last-child{margin-bottom:0}
+.faq-a-body ul,.faq-a-body ol{margin:4px 0 8px;padding-left:18px}
+.faq-a-body ul{list-style:disc}
+.faq-a-body ol{list-style:decimal}
+.faq-a-body li{margin:3px 0;padding-left:2px}
+.faq-a-body b{color:#1e293b;font-weight:800}
+.faq-a-body a{color:#4f46e5;font-weight:700;text-decoration:underline;text-underline-offset:2px}
+.faq-a-body code{font-size:11px;background:#f1f5f9;border-radius:6px;padding:1px 6px;color:#4338ca;font-weight:700}
+.faq-tip,.faq-warn{display:flex;gap:8px;border-radius:12px;padding:9px 11px;margin:8px 0 2px;font-size:11.5px;line-height:1.55}
+.faq-tip{background:#eef2ff;color:#3730a3}
+.faq-warn{background:#fffbeb;color:#92400e}
+.faq-tip i,.faq-warn i{margin-top:3px;flex:0 0 auto}
+.faq-steps{counter-reset:s;list-style:none!important;padding-left:0!important}
+.faq-steps li{counter-increment:s;position:relative;padding-left:28px!important;margin:6px 0!important}
+.faq-steps li::before{content:counter(s);position:absolute;left:0;top:1px;width:19px;height:19px;border-radius:999px;background:#eef2ff;color:#4f46e5;
+  font-size:10px;font-weight:900;display:flex;align-items:center;justify-content:center}
+mark.faq-hl{background:#fde68a;color:#78350f;border-radius:4px;padding:0 2px}
+
+.faq-empty{text-align:center;padding:34px 18px;border-radius:22px;background:#fff;border:1px dashed #cbd5e1;margin-top:10px}
+.faq-empty .faq-e-ico{width:52px;height:52px;border-radius:18px;margin:0 auto 10px;display:flex;align-items:center;justify-content:center;font-size:20px;background:#eef2ff;color:#6366f1}
+.faq-empty b{display:block;font-size:13px;color:#1e293b;font-weight:900}
+.faq-empty p{font-size:11.5px;color:#94a3b8;margin:4px 0 12px}
+.faq-btn{display:inline-flex;align-items:center;gap:6px;border:0;cursor:pointer;border-radius:12px;padding:9px 14px;font-size:11.5px;font-weight:800;background:#4f46e5;color:#fff;text-decoration:none}
+.faq-btn:hover{background:#4338ca}
+.faq-btn.ghost{background:#eef2ff;color:#4338ca}
+.faq-btn.ghost:hover{background:#e0e7ff}
+
+.faq-help{margin-top:22px;border-radius:24px;padding:18px;display:flex;gap:14px;align-items:center;flex-wrap:wrap;
+  background:linear-gradient(135deg,#eef2ff,#f5f3ff);border:1px solid #e0e7ff}
+.faq-help .faq-h-ico{width:44px;height:44px;border-radius:15px;display:flex;align-items:center;justify-content:center;font-size:18px;background:#4f46e5;color:#fff;flex:0 0 auto}
+.faq-help b{display:block;font-size:13px;font-weight:900;color:#1e293b}
+.faq-help p{font-size:11.5px;color:#64748b;margin-top:2px;line-height:1.5}
+.faq-help-txt{flex:1;min-width:200px}
+
+/* ===== Mode gelap ===== */
+.dark .faq-toolbar{background:#0b1220}
+.dark .faq-qcard,.dark .faq-chip,.dark .faq-item,.dark .faq-empty{background:#1e293b;border-color:rgba(148,163,184,.2)}
+.dark .faq-qcard b,.dark .faq-q-txt,.dark .faq-a-body b,.dark .faq-group-title,.dark .faq-empty b,.dark .faq-help b{color:#e2e8f0}
+.dark .faq-qcard span,.dark .faq-meta,.dark .faq-sec-title,.dark .faq-empty p,.dark .faq-help p{color:#94a3b8}
+.dark .faq-chip{color:#cbd5e1}
+.dark .faq-chip:hover{color:#c7d2fe;border-color:#6366f1}
+.dark .faq-chip.active{background:#4f46e5;color:#fff;border-color:#4f46e5}
+.dark .faq-chip em{background:rgba(148,163,184,.2)}
+.dark .faq-item:hover{border-color:#4f46e5}
+.dark .faq-item.open{border-color:#6366f1;box-shadow:0 10px 26px -18px rgba(99,102,241,.8)}
+.dark .faq-q-ico{background:#334155;color:#94a3b8}
+.dark .faq-item.open .faq-q-ico{background:#4f46e5;color:#fff}
+.dark .faq-qico,.dark .faq-group-title .faq-gico{background:rgba(99,102,241,.2);color:#a5b4fc}
+.dark .faq-a-body{color:#cbd5e1}
+.dark .faq-a-body a,.dark .faq-meta button{color:#a5b4fc}
+.dark .faq-meta button:hover{background:rgba(99,102,241,.18)}
+.dark .faq-a-body code{background:#0f172a;color:#a5b4fc}
+.dark .faq-tip{background:rgba(99,102,241,.16);color:#c7d2fe}
+.dark .faq-warn{background:rgba(245,158,11,.14);color:#fcd34d}
+.dark .faq-steps li::before{background:rgba(99,102,241,.25);color:#c7d2fe}
+.dark .faq-empty .faq-e-ico{background:rgba(99,102,241,.2);color:#a5b4fc}
+.dark .faq-help{background:linear-gradient(135deg,rgba(79,70,229,.18),rgba(124,58,237,.14));border-color:rgba(99,102,241,.3)}
+.dark .faq-btn.ghost{background:rgba(99,102,241,.2);color:#c7d2fe}
+.dark mark.faq-hl{background:#a16207;color:#fef3c7}
+@media(prefers-reduced-motion:reduce){.faq-a,.faq-chev,.faq-item,.faq-qcard{transition:none}.faq-item.flash{animation:none}}
+`;
+var st=document.createElement("style");st.id="faq-style";st.textContent=css;document.head.appendChild(st);
+
+/* ---------- Data ---------- */
+var CATS=[
+ {id:"akun",    label:"Akun & Login",         icon:"fa-user-lock"},
+ {id:"onboard", label:"Onboarding Training",  icon:"fa-book-open"},
+ {id:"tna",     label:"Training By TNA",      icon:"fa-chalkboard-user"},
+ {id:"dev",     label:"Development Program",  icon:"fa-arrow-trend-up"},
+ {id:"nilai",   label:"Nilai, Sertifikat & KPI", icon:"fa-award"},
+ {id:"teknis",  label:"Aplikasi & Kendala Teknis", icon:"fa-screwdriver-wrench"},
+ {id:"admin",   label:"Khusus Admin",         icon:"fa-user-shield", adminOnly:true}
+];
+
+var ITEMS=[
+/* ===== AKUN ===== */
+{id:"cara-login",cat:"akun",q:"Bagaimana cara login ke NingratEdu?",a:`
+<p>Masukkan <b>username</b> dan <b>password</b> yang diberikan oleh Admin HR Training &amp; Development, lalu tekan tombol masuk. Ikon mata di kolom password bisa dipakai untuk melihat apa yang kamu ketik.</p>
+<ul><li>Pastikan huruf besar/kecil sesuai.</li><li>Kalau muncul <i>"Username tidak ditemukan"</i>, cek ejaan username atau tanyakan ke admin.</li><li>Kalau muncul <i>"Password salah"</i>, coba ketik ulang pelan-pelan, atau minta reset ke admin.</li></ul>`},
+{id:"lupa-password",cat:"akun",q:"Saya lupa password. Bagaimana cara resetnya?",a:`
+<p>Saat ini belum ada fitur reset mandiri di halaman login. Hubungi <b>Admin HR Training &amp; Development</b> supaya passwordmu diatur ulang.</p>
+<div class="faq-tip"><i class="fas fa-lightbulb"></i><div>Setelah berhasil login dengan password dari admin, segera ganti ke password pilihanmu sendiri. Caranya ada di pertanyaan <a href="#/faq/ganti-password">Cara ganti password</a>.</div></div>`},
+{id:"ganti-password",cat:"akun",q:"Cara mengganti password dan foto profil?",a:`
+<ol class="faq-steps"><li>Klik <b>foto/nama profil</b> di pojok kanan atas, lalu pilih <b>Edit Profil</b>.</li>
+<li>Untuk password: buka bagian ganti password, isi <b>password lama</b>, <b>password baru</b>, dan <b>konfirmasi password baru</b>, lalu simpan.</li>
+<li>Untuk foto: pilih file gambar dari perangkatmu, foto akan langsung tampil di profil.</li></ol>
+<ul><li>Password baru minimal <b>6 karakter</b> dan harus berbeda dari yang lama.</li><li>Foto profil berupa gambar dengan ukuran maksimal <b>5 MB</b>.</li></ul>`},
+{id:"akun-nonaktif",cat:"akun",q:"Muncul pesan \"Akun ini sudah non-aktif\". Apa artinya?",a:`
+<p>Artinya akunmu sedang dinonaktifkan oleh admin sehingga tidak bisa dipakai login. Kalau menurutmu ini keliru, hubungi Admin HR Training &amp; Development untuk dicek dan diaktifkan kembali.</p>`},
+{id:"mode-gelap",cat:"akun",q:"Bagaimana cara pindah ke mode gelap / terang?",a:`
+<p>Buka <b>Edit Profil</b> (lewat foto/nama profil di kanan atas), lalu gunakan saklar <b>Tema</b> untuk memilih Terang atau Gelap. Pilihanmu tersimpan di perangkat yang sedang dipakai, jadi otomatis aktif lagi saat kamu membuka aplikasi berikutnya.</p>`},
+{id:"menu-beda",cat:"akun",q:"Kenapa menu di sidebar saya berbeda dengan teman?",a:`
+<p>Menu menyesuaikan peran dan penugasanmu:</p>
+<ul><li><b>Request Training</b> hanya muncul untuk level jabatan yang diizinkan (Supervisor ke atas).</li>
+<li><b>Asesmen Kompetensi</b> hanya muncul kalau kamu sedang ditugaskan di sebuah siklus asesmen.</li>
+<li>Daftar course dan training yang tampil mengikuti <b>departemen/target peserta</b> yang ditentukan admin.</li>
+<li>Menu <b>Kelola ...</b> hanya untuk akun Admin.</li></ul>
+<p>Kalau ada menu yang menurutmu seharusnya muncul tapi tidak ada, kabari admin.</p>`},
+{id:"logout",cat:"akun",q:"Bagaimana cara logout?",a:`
+<p>Klik foto/nama profil di kanan atas, lalu pilih <b>Keluar</b>. Disarankan logout kalau kamu memakai perangkat bersama, karena sesi login tersimpan di perangkat sampai kamu keluar.</p>`},
+
+/* ===== ONBOARDING ===== */
+{id:"alur-onboarding",cat:"onboard",q:"Bagaimana alur belajar di Onboarding Training?",a:`
+<p>Buka menu <a href="#/courses">Onboarding Training</a>, pilih course, lalu ikuti urutan ini:</p>
+<ol class="faq-steps"><li>Pelajari <b>materi</b> satu per satu secara berurutan.</li>
+<li>Kerjakan <b>Pre-test</b> (kalau disediakan) untuk mengukur pemahaman awal.</li>
+<li>Isi <b>Rating &amp; Feedback</b> (evaluasi) untuk course tersebut.</li>
+<li>Kerjakan <b>Post-test</b> sampai mencapai nilai minimum lulus.</li>
+<li>Kumpulkan <b>Tugas</b> kalau course memilikinya.</li>
+<li><b>Sertifikat</b> terbit setelah semua syarat selesai.</li></ol>
+<div class="faq-tip"><i class="fas fa-lightbulb"></i><div>Progres tiap course terlihat berupa persentase di halaman course dan di Dashboard-mu.</div></div>`},
+{id:"materi-terkunci",cat:"onboard",q:"Kenapa materi atau course saya terkunci?",a:`
+<p>Pembelajaran dibuat <b>berurutan</b>, jadi ada beberapa penyebab umum:</p>
+<ul><li>Materi sebelumnya belum selesai. Selesaikan dulu sesuai urutan.</li>
+<li>Course sebelumnya belum tuntas, karena admin bisa mengatur urutan course.</li>
+<li>Course belum dipublikasikan atau tidak ditujukan untuk departemenmu.</li></ul>
+<p>Kalau sudah yakin semua syarat terpenuhi tapi masih terkunci, hubungi admin.</p>`},
+{id:"materi-selesai",cat:"onboard",q:"Kapan sebuah materi dianggap selesai?",a:`
+<ul><li><b>Video YouTube</b>: harus ditonton sampai tuntas. Menggeser video ke bagian akhir tidak dihitung selesai.</li>
+<li><b>Slide PPT</b>: dihitung selesai setelah kamu membukanya selama waktu minimal yang ditentukan, jadi baca slide dengan tenang.</li>
+<li>Materi lain dihitung selesai ketika kamu menandainya selesai di halaman materi.</li></ul>
+<div class="faq-warn"><i class="fas fa-triangle-exclamation"></i><div>Jangan tutup halaman sebelum materi benar-benar selesai, supaya progresmu tersimpan.</div></div>`},
+{id:"pretest",cat:"onboard",q:"Apakah nilai Pre-test mempengaruhi kelulusan?",a:`
+<p><b>Tidak.</b> Pre-test hanya mengukur pemahaman awalmu sebelum belajar. Nilainya dibandingkan dengan Post-test untuk melihat seberapa besar peningkatan yang kamu dapat. Kerjakan dengan jujur dan tidak perlu takut salah.</p>`},
+{id:"posttest-lulus",cat:"onboard",q:"Berapa nilai minimum lulus Post-test, dan berapa kali boleh mengulang?",a:`
+<ul><li>Standarnya nilai minimum <b>80</b>. Nilai minimum course tertentu bisa berbeda, dan angkanya selalu ditampilkan di hasil Post-test.</li>
+<li>Kamu punya maksimal <b>3 kali percobaan</b> Post-test per course.</li>
+<li>Kalau 3 percobaan sudah terpakai dan belum lulus, hubungi admin untuk membuka kesempatan lagi.</li></ul>
+<div class="faq-tip"><i class="fas fa-lightbulb"></i><div>Sebelum mencoba lagi, pelajari ulang materi yang terasa kurang dikuasai supaya percobaan tidak terbuang.</div></div>`},
+{id:"posttest-terkunci",cat:"onboard",q:"Post-test atau tugas saya masih terkunci, kenapa?",a:`
+<ul><li><b>Post-test</b> terbuka setelah semua materi selesai dan kamu mengisi <b>Rating &amp; Feedback</b>.</li>
+<li><b>Tugas</b> terbuka setelah Rating &amp; Feedback terisi dan Post-test dinyatakan <b>lulus</b>.</li></ul>
+<p>Cek halaman course, tombol yang abu-abu biasanya menjelaskan syarat apa yang belum terpenuhi.</p>`},
+{id:"tugas",cat:"onboard",q:"Bagaimana cara mengumpulkan tugas dan melihat nilainya?",a:`
+<p>Setelah tugas terbuka, kumpulkan jawabannya langsung di halaman course atau training terkait, mengikuti petunjuk dan batas waktu yang tertera. Tugas kemudian dinilai oleh admin/trainer, dan statusnya bisa kamu lihat di halaman yang sama.</p>
+<div class="faq-warn"><i class="fas fa-triangle-exclamation"></i><div>Perhatikan tenggat pengumpulan. Kalau terlewat, hubungi admin.</div></div>`},
+
+/* ===== TNA ===== */
+{id:"beda-program",cat:"tna",q:"Apa bedanya Onboarding Training dan Training By TNA?",a:`
+<ul><li><b>Onboarding Training</b>: program pembekalan untuk karyawan baru yang dipelajari mandiri lewat course (materi, Post-test, dst).</li>
+<li><b>Training By TNA</b>: training yang disusun dari hasil <i>Training Need Analysis</i> (analisis kebutuhan), bisa berupa sesi tatap muka maupun online, dengan jadwal dan target peserta tertentu.</li></ul>
+<p>Keduanya punya Post-test dan sertifikat sendiri.</p>`},
+{id:"ikut-training",cat:"tna",q:"Bagaimana cara mengikuti Training By TNA?",a:`
+<ol class="faq-steps"><li>Buka menu <a href="#/trainings">Training By TNA</a> dan pilih training yang tersedia.</li>
+<li>Tekan <b>Daftar Training</b> untuk membuka akses materi.</li>
+<li>Pada hari pelaksanaan, lakukan <b>presensi</b> lewat <b>Scan QR Code Presensi</b>.</li>
+<li>Kerjakan <b>Pre-test</b> lalu ikuti sesi/materi training.</li>
+<li>Isi <b>evaluasi</b> training, lalu kerjakan <b>Post-test</b>.</li>
+<li>Setelah semua selesai, status berubah menjadi <b>Menunggu Sertifikat</b> hingga sertifikat diterbitkan.</li></ol>`},
+{id:"training-terkunci",cat:"tna",q:"Training tidak muncul atau muncul pesan \"tidak tersedia untuk departemen kamu\"",a:`
+<p>Setiap training punya target peserta (misalnya departemen tertentu), jadi training yang bukan untukmu tidak bisa dibuka. Kalau menurutmu ini keliru, atau kamu memang ditugaskan ikut, hubungi admin supaya target pesertanya disesuaikan.</p>
+<p>Untuk training yang tampil <b>"masih terkunci"</b>, biasanya karena kamu belum menekan <b>Daftar Training</b> atau sesinya belum dimulai.</p>`},
+{id:"scan-qr",cat:"tna",q:"Scan QR presensi tidak berhasil, apa yang harus dicek?",a:`
+<ul><li>Izinkan <b>akses kamera</b> untuk browser/aplikasi saat diminta.</li>
+<li>Pastikan kamu sudah <b>Daftar Training</b> dan sesinya sudah dimulai oleh trainer.</li>
+<li>Arahkan kamera ke QR dengan jarak yang pas dan pencahayaan cukup, tahan sampai terbaca.</li>
+<li>Coba muat ulang halaman, lalu scan lagi.</li></ul>
+<p>Kalau tetap gagal, sampaikan ke trainer atau admin di lokasi agar kehadiranmu dicatat dengan cara lain.</p>`},
+{id:"tab-status",cat:"tna",q:"Apa arti tab \"Belum Diikuti\", \"Sudah Diikuti\", dan status \"Menunggu Sertifikat\"?",a:`
+<ul><li><b>Belum Diikuti</b>: training yang prosesnya belum tuntas.</li>
+<li><b>Sudah Diikuti</b>: training yang sudah kamu selesaikan.</li>
+<li><b>Menunggu Sertifikat</b>: evaluasimu sudah masuk, tinggal menunggu sertifikat diterbitkan.</li></ul>
+<p>Angka kecil di tab menunjukkan jumlah training di dalamnya.</p>`},
+{id:"request-training",cat:"tna",q:"Bagaimana cara mengajukan Request Training?",a:`
+<p>Menu <a href="#/tna-input">Request Training</a> tersedia untuk level jabatan yang diizinkan (Supervisor ke atas). Kamu mengisi hasil analisis kebutuhan dengan pola <b>P-I-C-A</b>:</p>
+<ul><li><b>Problem/Kondisi</b>: masalah yang terjadi di tim.</li><li><b>Identifikasi Gap</b>: kesenjangan kompetensi penyebabnya.</li><li><b>Corrective Action</b>: tindakan perbaikan.</li><li><b>Action/Rekomendasi Training</b>: training yang diusulkan.</li></ul>
+<p>Alurnya: request diajukan, admin <b>menerima/menolak</b>, modul/materi diunggah dan kamu sebagai pemohon memberi <b>approval modul</b>, lalu admin membuat training dari hasil TNA tersebut. Isi juga tenggat modul dan pelaksanaan agar jadwal jelas.</p>`},
+
+/* ===== DEV PROGRAM ===== */
+{id:"apa-devprog",cat:"dev",q:"Apa itu Development Program?",a:`
+<p>Program pengembangan karier terarah, misalnya persiapan naik jenjang (Staff ke Supervisor, Supervisor ke Manager, dst) atau program seperti Management Trainee. Setiap program terdiri dari beberapa <b>journey</b> yang dikerjakan satu per satu. Buka lewat menu <a href="#/dev-programs">Development Program</a>.</p>
+<p>Kamu hanya melihat program yang <b>mendaftarkanmu sebagai peserta</b>. Kalau merasa harus ikut tapi belum tampil, hubungi admin.</p>`},
+{id:"journey-urut",cat:"dev",q:"Apakah journey harus dikerjakan berurutan?",a:`
+<p><b>Ya.</b> Journey berikutnya baru terbuka setelah journey sebelumnya selesai. Tombol di kartu program akan menampilkan journey ke berapa yang perlu kamu kerjakan sekarang, dan persentase progres tampil di Dashboard serta profilmu.</p>`},
+{id:"journey-manual",cat:"dev",q:"Journey OJT, mentoring, atau project tidak punya materi di aplikasi. Bagaimana menyelesaikannya?",a:`
+<p>Journey jenis ini (OJT, mentoring, project, assessment, dll) dijalankan di luar LMS, jadi tidak punya halaman belajar. Caranya:</p>
+<ol class="faq-steps"><li>Jalankan kegiatannya sesuai arahan atasan/mentor.</li>
+<li>Unggah <b>laporan atau evidence</b> (bukti kegiatan) pada journey tersebut.</li>
+<li>Tunggu <b>konfirmasi admin/HR</b>. Journey dianggap selesai setelah dikonfirmasi.</li></ol>`},
+{id:"kelulusan-devprog",cat:"dev",q:"Siapa yang menentukan program saya lulus?",a:`
+<p>Setelah seluruh journey beres, kelulusan program melalui proses <b>approval</b> oleh admin/HR. Progres journey bisa kamu pantau kapan saja, sedangkan keputusan akhir mengikuti hasil approval tersebut.</p>`},
+
+/* ===== NILAI ===== */
+{id:"lihat-sertifikat",cat:"nilai",q:"Di mana saya melihat sertifikat?",a:`
+<p>Semua sertifikat yang sudah terbit (dari Onboarding maupun Training By TNA) ada di menu <a href="#/certificates">Sertifikat Saya</a>. Jumlahnya juga tampil sebagai kartu <b>Sertifikat</b> di Dashboard.</p>`},
+{id:"sertifikat-belum",cat:"nilai",q:"Sertifikat saya belum muncul, kenapa?",a:`
+<p>Cek dulu apakah semua syarat sudah lengkap:</p>
+<ul><li><b>Onboarding</b>: semua materi selesai, Rating &amp; Feedback terisi, Post-test lulus, dan tugas terkumpul (kalau ada).</li>
+<li><b>Training By TNA</b>: presensi tercatat, evaluasi terisi, dan Post-test selesai. Statusnya akan <b>Menunggu Sertifikat</b> sampai diterbitkan.</li></ul>
+<p>Kalau semua sudah lengkap tapi sertifikat belum juga muncul beberapa hari, hubungi admin.</p>`},
+{id:"leaderboard",cat:"nilai",q:"Bagaimana cara kerja Leaderboard KPI?",a:`
+<p>Menu <a href="#/leaderboard">Leaderboard KPI</a> menampilkan peringkat karyawan berdasarkan <b>nilai KPI</b> pada kategorinya masing-masing. Kamu bisa melihat periode bulan tertentu, dan bila tidak dipilih yang tampil adalah data bulan terakhir.</p>
+<p>Peringkat dihitung dari data KPI yang diinput admin, bukan dari aktivitas belajar di aplikasi.</p>`},
+{id:"kpi-salah",cat:"nilai",q:"Data KPI saya belum muncul atau terlihat salah",a:`
+<p>Data KPI dimasukkan admin secara berkala (misalnya tiap bulan lewat import Excel), jadi bisa ada jeda sampai data terbaru tampil. Kalau angka bulan yang seharusnya sudah ada belum muncul atau kamu menemukan data yang janggal, sampaikan ke admin HR beserta bulan dan nilainya agar dicek.</p>
+<p>Grafik tren KPI-mu bisa dilihat di <a href="#/dashboard">Dashboard</a>.</p>`},
+{id:"asesmen",cat:"nilai",q:"Bagaimana mengisi Asesmen Kompetensi?",a:`
+<p>Menu <a href="#/my-assessments">Asesmen Kompetensi</a> muncul kalau kamu ditugaskan dalam sebuah siklus asesmen. Di dalamnya kamu mengisi penilaian sesuai penugasan, yaitu <b>penilaian diri</b>, <b>penilaian atasan</b>, dan/atau <b>penilaian rekan kerja</b>.</p>
+<ul><li>Perhatikan batas waktu siklus, pengingat akan tampil saat kamu login.</li><li>Hasil kompetensi ditampilkan sebagai grafik radar di Dashboard dan profilmu.</li></ul>`},
+{id:"pengingat",cat:"nilai",q:"Kenapa muncul popup pengingat saat saya login?",a:`
+<p>Itu pengingat otomatis untuk hal yang perlu segera kamu tindak lanjuti, misalnya training yang berlangsung hari ini atau asesmen yang mendekati tenggat. Cukup tutup popup setelah membacanya, atau langsung buka halaman terkait dari sana.</p>`},
+
+/* ===== TEKNIS ===== */
+{id:"install-hp",cat:"teknis",q:"Bagaimana cara memasang NingratEdu seperti aplikasi di HP?",a:`
+<p>NingratEdu bisa dipasang ke layar utama (PWA) tanpa lewat toko aplikasi:</p>
+<ul><li><b>Android (Chrome)</b>: buka menu titik tiga, pilih <b>Instal aplikasi</b> atau <b>Tambahkan ke layar utama</b>.</li>
+<li><b>iPhone (Safari)</b>: ketuk tombol <b>Bagikan</b>, lalu pilih <b>Tambah ke Layar Utama</b>.</li></ul>
+<p>Setelah terpasang, kamu bisa membukanya langsung dari ikon di layar utama.</p>`},
+{id:"lambat",cat:"teknis",q:"Halaman lambat, data tidak muncul, atau loading terus",a:`
+<ol class="faq-steps"><li>Cek koneksi internetmu, aplikasi butuh internet untuk memuat dan menyimpan data.</li>
+<li>Muat ulang halaman, tunggu beberapa detik.</li>
+<li>Kalau masih bermasalah, tutup lalu buka lagi aplikasinya (atau lakukan <i>hard refresh</i> di browser, <code>Ctrl</code> + <code>Shift</code> + <code>R</code>).</li>
+<li>Coba pindah jaringan (Wi-Fi ke data seluler atau sebaliknya).</li>
+<li>Bila terus berulang, kirim tangkapan layar dan jam kejadiannya ke admin.</li></ol>`},
+{id:"video-ppt",cat:"teknis",q:"Video atau slide PPT tidak tampil",a:`
+<ul><li>Pastikan internet stabil, terutama untuk video YouTube.</li>
+<li>Matikan mode hemat data/pemblokir iklan sementara, karena kadang ikut memblokir pemutar video.</li>
+<li>Gunakan browser versi terbaru (Chrome, Edge, atau Safari).</li>
+<li>Muat ulang halaman materi, lalu coba putar kembali.</li></ul>`},
+{id:"browser",cat:"teknis",q:"Browser dan perangkat apa yang disarankan?",a:`
+<p>Gunakan <b>Google Chrome, Microsoft Edge, atau Safari versi terbaru</b> di laptop maupun HP. Tampilan menyesuaikan ukuran layar, dan di HP kamu bisa membuka menu lewat tombol di kiri atas.</p>`},
+{id:"upload-gagal",cat:"teknis",q:"Upload file atau foto gagal",a:`
+<ul><li>Periksa koneksi internet, karena upload memakai jaringan dan bisa gagal kalau sinyal putus-putus.</li>
+<li>Pastikan formatnya sesuai (foto profil harus gambar, maksimal 5 MB).</li>
+<li>Coba kecilkan ukuran file lalu unggah ulang.</li></ul>`},
+
+/* ===== ADMIN ===== */
+{id:"admin-akun",cat:"admin",admin:true,q:"Bagaimana mengelola akun dan mereset password peserta?",a:`
+<p>Gunakan menu <a href="#/admin/users">Kelola Akun</a> untuk menambah akun, mengubah data, mengatur status aktif/non-aktif, dan membantu peserta yang lupa password. Data profil karyawan (departemen, jabatan, mentor/SPV, dst) dikelola di <a href="#/admin/employees">Data Karyawan</a>.</p>`},
+{id:"admin-unlock",cat:"admin",admin:true,q:"Peserta sudah 3x percobaan Post-test, bagaimana membuka kesempatan lagi?",a:`
+<p>Admin bisa membuka kembali kesempatan lewat halaman percobaan kuis di area Kelola. Setelah dibuka, peserta bisa mengerjakan Post-test lagi. Sebaiknya pastikan dulu peserta sudah mempelajari ulang materinya.</p>`},
+{id:"admin-status-sesi",cat:"admin",admin:true,q:"Bagaimana mengatur status sesi Training By TNA?",a:`
+<p>Di <a href="#/admin/trainings">Kelola Training By TNA</a>, status sesi dikontrol bertahap: <b>belum dimulai</b>, <b>berlangsung</b>, lalu <b>selesai</b>. Status ini mempengaruhi alur peserta seperti presensi dan pengerjaan tes, jadi ubah sesuai kondisi sesi sebenarnya.</p>`},
+{id:"admin-tna",cat:"admin",admin:true,q:"Bagaimana alur memproses Request TNA dari pemohon?",a:`
+<ol class="faq-steps"><li>Di halaman <b>Hasil TNA</b>, tinjau request yang masuk lalu <b>Terima</b> atau <b>Tolak</b> (dengan catatan).</li>
+<li>Modul/materi diunggah (file atau link), lalu notifikasi approval dikirim ke pemohon.</li>
+<li>Pemohon menyetujui atau meminta revisi. Admin juga bisa melakukan override bila diperlukan.</li>
+<li>Setelah modul disetujui, buat training lewat aksi <b>Buat Training dari TNA</b>.</li></ol>
+<p>Gunakan filter departemen, filter bulan pelaksanaan, dan pencarian untuk mempersempit daftar.</p>`},
+{id:"admin-import",cat:"admin",admin:true,q:"Data apa saja yang bisa diimport lewat Excel?",a:`
+<p>Beberapa modul menyediakan tombol <b>Template</b>, <b>Import Excel</b>, dan <b>Export Excel</b> di halamannya, seperti Hasil TNA, Data Karyawan, data KPI bulanan, dan import training lama. Unduh template dulu, isi sesuai kolomnya, lalu import. Cek ringkasan konfirmasi sebelum melanjutkan karena import dapat memperbarui data yang sudah ada.</p>`},
+{id:"admin-refresh",cat:"admin",admin:true,q:"Angka di Dashboard admin belum terbaru, bagaimana menyegarkannya?",a:`
+<p>Data laporan dimuat dengan cache supaya cepat. Gunakan tombol <b>segarkan/perbarui data</b> di bagian bawah sidebar untuk menarik data terbaru. Keterangan waktu pembaruan terakhir juga tampil di menu profil.</p>`}
+];
+
+var QUICK=[
+ {id:"lupa-password",icon:"fa-key",t:"Lupa password",s:"Cara minta reset akun"},
+ {id:"posttest-lulus",icon:"fa-clipboard-question",t:"Post-test belum lulus",s:"Nilai minimum & percobaan"},
+ {id:"sertifikat-belum",icon:"fa-award",t:"Sertifikat belum muncul",s:"Cek syarat penerbitan"},
+ {id:"training-terkunci",icon:"fa-lock",t:"Training terkunci",s:"Daftar & target peserta"},
+ {id:"scan-qr",icon:"fa-qrcode",t:"Scan QR gagal",s:"Presensi training"},
+ {id:"install-hp",icon:"fa-mobile-screen",t:"Pasang di HP",s:"Instal sebagai aplikasi"}
+];
+
+/* ---------- Util ---------- */
+function esc(s){return String(s).replace(/[&<>"']/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]})}
+function strip(h){return String(h).replace(/<[^>]+>/g," ").replace(/&amp;/g,"&").replace(/\s+/g," ").trim()}
+function norm(s){return String(s||"").toLowerCase()}
+function isAdmin(){try{return !!(window.sel&&window.sel.isAdmin&&window.sel.isAdmin())}catch(e){return false}}
+function hl(text,q){
+  var safe=esc(text);if(!q)return safe;
+  var terms=q.split(/\s+/).filter(function(t){return t.length>1});if(!terms.length)return safe;
+  var re=new RegExp("("+terms.map(function(t){return esc(t).replace(/[.*+?^${}()|[\]\\]/g,"\\$&")}).join("|")+")","gi");
+  return safe.replace(re,'<mark class="faq-hl">$1</mark>');
+}
+ITEMS.forEach(function(it){it._t=norm(it.q+" "+strip(it.a))});
+function catById(id){for(var i=0;i<CATS.length;i++)if(CATS[i].id===id)return CATS[i];return null}
+
+/* ---------- Render ---------- */
+var S={cat:"all",q:"",open:{}};
+
+function visibleItems(){
+  var adm=isAdmin();
+  var terms=norm(S.q).split(/\s+/).filter(Boolean);
+  return ITEMS.filter(function(it){
+    if(it.admin&&!adm)return false;
+    if(S.cat!=="all"&&it.cat!==S.cat)return false;
+    for(var i=0;i<terms.length;i++)if(it._t.indexOf(terms[i])<0)return false;
+    return true;
+  });
+}
+function allowedCats(){var adm=isAdmin();return CATS.filter(function(c){return !c.adminOnly||adm})}
+function countFor(catId){
+  var adm=isAdmin();
+  return ITEMS.filter(function(it){return (!it.admin||adm)&&(catId==="all"||it.cat===catId)}).length;
+}
+function itemHtml(it){
+  var c=catById(it.cat);var open=!!S.open[it.id];
+  return '<div class="faq-item'+(open?' open':'')+'" id="faq-'+it.id+'" data-id="'+it.id+'">'
+   +'<button type="button" class="faq-q" data-act="toggle" data-id="'+it.id+'" aria-expanded="'+open+'" aria-controls="faq-a-'+it.id+'">'
+   +'<span class="faq-q-ico"><i class="fas '+(c?c.icon:"fa-circle-question")+'"></i></span>'
+   +'<span class="faq-q-txt">'+hl(it.q,S.q.trim())+'</span>'
+   +'<i class="fas fa-chevron-down faq-chev"></i></button>'
+   +'<div class="faq-a" id="faq-a-'+it.id+'" role="region"><div><div class="faq-a-body">'+it.a+'</div></div></div></div>';
+}
+function listHtml(){
+  var items=visibleItems();
+  if(!items.length){
+    return '<div class="faq-empty"><div class="faq-e-ico"><i class="fas fa-magnifying-glass"></i></div>'
+     +'<b>Belum ada jawaban yang cocok</b>'
+     +'<p>Coba kata kunci yang lebih singkat atau ganti kategori.</p>'
+     +'<button type="button" class="faq-btn ghost" data-act="reset"><i class="fas fa-rotate-left"></i> Reset pencarian</button></div>';
+  }
+  if(S.cat!=="all"||S.q.trim()){
+    return '<div class="faq-list" style="margin-top:10px">'+items.map(itemHtml).join("")+'</div>';
+  }
+  var out="";
+  allowedCats().forEach(function(c){
+    var g=items.filter(function(it){return it.cat===c.id});
+    if(!g.length)return;
+    out+='<div class="faq-group-title"><span class="faq-gico"><i class="fas '+c.icon+'"></i></span>'+esc(c.label)+'</div>'
+       +'<div class="faq-list">'+g.map(itemHtml).join("")+'</div>';
+  });
+  return out;
+}
+function metaHtml(){
+  var n=visibleItems().length;
+  var anyOpen=Object.keys(S.open).some(function(k){return S.open[k]});
+  var txt=S.q.trim()?(n+' hasil untuk "'+esc(S.q.trim())+'"'):(n+' pertanyaan');
+  return '<span>'+txt+'</span><button type="button" data-act="toggleAll">'+(anyOpen?"Tutup semua":"Buka semua")+'</button>';
+}
+function chipsHtml(){
+  var cs=[{id:"all",label:"Semua",icon:"fa-layer-group"}].concat(allowedCats());
+  return cs.map(function(c){
+    return '<button type="button" class="faq-chip'+(S.cat===c.id?' active':'')+'" data-act="cat" data-cat="'+c.id+'">'
+      +'<i class="fas '+c.icon+'"></i>'+esc(c.label)+'<em>'+countFor(c.id)+'</em></button>';
+  }).join("");
+}
+function quickHtml(){
+  return QUICK.map(function(q){
+    return '<button type="button" class="faq-qcard" data-act="jump" data-id="'+q.id+'"><span class="faq-qico"><i class="fas '+q.icon+'"></i></span>'
+      +'<span><b>'+esc(q.t)+'</b><span>'+esc(q.s)+'</span></span></button>';
+  }).join("");
+}
+
+function pageHtml(){
+  return '<div class="faq-wrap" id="faq-root">'
+   +'<div class="faq-hero"><span class="faq-hero-badge"><i class="fas fa-life-ring"></i> Pusat Bantuan</span>'
+   +'<h1>Ada yang bisa kami bantu?</h1>'
+   +'<p>Cari jawaban seputar akun, training, sertifikat, dan kendala teknis di NingratEdu. Ketik kata kunci atau pilih kategori di bawah.</p>'
+   +'<div class="faq-search"><i class="fas fa-magnifying-glass faq-s-ico"></i>'
+   +'<input id="faq-search" type="search" autocomplete="off" placeholder="Contoh: lupa password, post-test, sertifikat..." aria-label="Cari pertanyaan" value="'+esc(S.q)+'">'
+   +'<button type="button" class="faq-clear'+(S.q?' show':'')+'" id="faq-clear" data-act="clear" aria-label="Hapus pencarian"><i class="fas fa-xmark"></i></button></div></div>'
+   +'<div id="faq-quick-wrap"><div class="faq-sec-title"><i class="fas fa-bolt"></i> Bantuan cepat</div><div class="faq-quick">'+quickHtml()+'</div></div>'
+   +'<div class="faq-toolbar"><div class="faq-chips" id="faq-chips">'+chipsHtml()+'</div></div>'
+   +'<div class="faq-meta" id="faq-meta">'+metaHtml()+'</div>'
+   +'<div id="faq-results">'+listHtml()+'</div>'
+   +'<div class="faq-help"><div class="faq-h-ico"><i class="fas fa-headset"></i></div>'
+   +'<div class="faq-help-txt"><b>Belum menemukan jawabannya?</b>'
+   +'<p>Hubungi Admin HR Training &amp; Development. Sertakan nama, username, dan tangkapan layar kendalamu supaya lebih cepat ditangani.</p></div>'
+   +'<a class="faq-btn" href="#/dashboard"><i class="fas fa-house"></i> Ke Dashboard</a></div>'
+   +'</div>';
+}
+
+function refresh(){
+  var r=document.getElementById("faq-results");if(!r)return;
+  r.innerHTML=listHtml();
+  var m=document.getElementById("faq-meta");if(m)m.innerHTML=metaHtml();
+  var c=document.getElementById("faq-chips");if(c)c.innerHTML=chipsHtml();
+  var cl=document.getElementById("faq-clear");if(cl)cl.classList.toggle("show",!!S.q);
+  var qw=document.getElementById("faq-quick-wrap");if(qw)qw.style.display=(S.q.trim()||S.cat!=="all")?"none":"";
+}
+function syncTop(){
+  var root=document.getElementById("faq-root");if(!root)return;
+  var tb=document.getElementById("app-topbar");
+  var h=tb?Math.round(tb.getBoundingClientRect().height):56;
+  root.style.setProperty("--faq-top",h+"px");
+}
+function setOpen(id,on,el){
+  S.open[id]=on;
+  var item=el||document.getElementById("faq-"+id);if(!item)return;
+  item.classList.toggle("open",on);
+  var b=item.querySelector(".faq-q");if(b)b.setAttribute("aria-expanded",on?"true":"false");
+}
+function updateMeta(){var m=document.getElementById("faq-meta");if(m)m.innerHTML=metaHtml()}
+function jumpTo(id,smooth){
+  var it=null;ITEMS.forEach(function(x){if(x.id===id)it=x});
+  if(!it||(it.admin&&!isAdmin()))return;
+  if(S.cat!=="all"&&S.cat!==it.cat)S.cat="all";
+  if(S.q&&visibleItems().every(function(x){return x.id!==id}))S.q="";
+  var inp=document.getElementById("faq-search");if(inp)inp.value=S.q;
+  S.open[id]=true;refresh();
+  var el=document.getElementById("faq-"+id);if(!el)return;
+  setTimeout(function(){
+    el.scrollIntoView({behavior:smooth===false?"auto":"smooth",block:"center"});
+    el.classList.remove("flash");void el.offsetWidth;el.classList.add("flash");
+  },60);
+}
+
+function bind(){
+  var root=document.getElementById("faq-root");if(!root)return;
+  root.addEventListener("click",function(e){
+    var t=e.target.closest("[data-act]");
+    if(!t){return}
+    var act=t.getAttribute("data-act");
+    if(act==="toggle"){var id=t.getAttribute("data-id");setOpen(id,!S.open[id]);updateMeta()}
+    else if(act==="cat"){S.cat=t.getAttribute("data-cat");refresh()}
+    else if(act==="jump"){jumpTo(t.getAttribute("data-id"))}
+    else if(act==="toggleAll"){
+      var anyOpen=Object.keys(S.open).some(function(k){return S.open[k]});
+      var vis=visibleItems();
+      if(anyOpen){S.open={}}else{vis.forEach(function(it){S.open[it.id]=true})}
+      refresh();
+    }
+    else if(act==="clear"||act==="reset"){
+      S.q="";if(act==="reset")S.cat="all";
+      var inp=document.getElementById("faq-search");if(inp){inp.value="";inp.focus()}
+      refresh();
+    }
+  });
+  var inp=document.getElementById("faq-search");
+  if(inp){
+    var tmr=null;
+    inp.addEventListener("input",function(){
+      S.q=inp.value;clearTimeout(tmr);
+      tmr=setTimeout(function(){
+        if(S.q.trim()){
+          var vis=visibleItems();S.open={};
+          if(vis.length&&vis.length<=3)vis.forEach(function(it){S.open[it.id]=true});
+        }
+        refresh();
+      },120);
+    });
+    inp.addEventListener("keydown",function(e){if(e.key==="Escape"&&S.q){S.q="";inp.value="";refresh()}});
+  }
+}
+
+/* ---------- Route ---------- */
+window.ROUTES=window.ROUTES||{};
+window.ROUTES["faq"]=function(id){
+  if(!isAdmin()&&S.cat==="admin")S.cat="all";
+  window.setPage(pageHtml());
+  syncTop();
+  bind();
+  if(id){jumpTo(id,false)}
+  else{window.scrollTo(0,0)}
+};
+
+window.addEventListener("resize",function(){syncTop()});
+
+/* ---------- Sidebar: tempel menu FAQ ---------- */
+function addFaqNav(){
+  var nav=document.getElementById("sidebar-nav");
+  if(!nav||nav.querySelector('[data-nav="faq"]'))return;
+  if(isAdmin()){
+    var d=document.createElement("div");d.className="mx-3 my-3";d.style.borderTop="1px solid rgba(165,180,252,.18)";nav.appendChild(d);
+  }
+  var a=document.createElement("a");
+  a.href="#/faq";a.setAttribute("data-nav","faq");a.className="nav-item";
+  a.setAttribute("data-tooltip","FAQ & Bantuan");a.setAttribute("aria-label","FAQ & Bantuan");
+  a.innerHTML='<i class="fas fa-circle-question w-5 text-center shrink-0"></i><span class="nav-label">FAQ &amp; Bantuan</span>';
+  nav.appendChild(a);
+  if(/^#\/faq/.test(location.hash))a.classList.add("nav-active");
+}
+var prevRS=window.renderSidebar;
+if(typeof prevRS==="function"){
+  window.renderSidebar=function(){
+    var r=prevRS.apply(this,arguments);
+    try{addFaqNav();window.syncSidebarWidth&&window.syncSidebarWidth()}catch(e){console.warn("FAQ nav gagal dipasang",e)}
+    return r;
+  };
+  if(document.querySelector("#sidebar-nav a"))window.renderSidebar();
+}
+})();
+
+</script>
+
 </body>
 </html>
