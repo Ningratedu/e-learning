@@ -8210,7 +8210,7 @@ window.dashHeroUser=function(){
       t2='<a class="dh-tile" href="#/trainings"><span class="dh-ico"><i class="fas fa-calendar-check"></i></span><span class="dh-body"><span class="dh-k">Jadwal terdekat</span><span class="dh-v">'+esc(nx.title||nx.name||"Training")+'</span><span class="dh-s">'+esc(fmtShort(nx.date))+' · '+rel+'</span></span></a>'}
     else t2='<a class="dh-tile" href="#/trainings"><span class="dh-ico"><i class="fas fa-calendar-check"></i></span><span class="dh-body"><span class="dh-k">Jadwal terdekat</span><span class="dh-v">Belum ada jadwal</span><span class="dh-s">Lihat jadwal →</span></span></a>';
     var t3='<div class="dh-tile"><span class="dh-ico"><i class="fas fa-chart-pie"></i></span><span class="dh-body"><span class="dh-k">Progres keseluruhan</span><span class="dh-v">'+pct+'%</span><span class="dh-bar"><i style="width:'+pct+'%"></i></span><span class="dh-s">'+done+'/'+total+' training selesai · '+certs.length+' sertifikat</span></span></div>';
-    return '<div class="dh-hero"><span class="dh-badge"><i class="fas fa-graduation-cap"></i> Ruang Belajarku</span>'
+    return '<div class="dh-hero"><span class="dh-badge"><i class="fas fa-graduation-cap"></i> Ruang Pembelajar</span>'
       +'<h1>'+greet()+', '+esc(firstName(u))+' 👋</h1><p class="dh-sub">'+esc(sub)+'</p>'
       +'<div class="dh-actions"><a class="dh-pill" href="#/profile"><i class="fas fa-id-badge"></i> Profil &amp; kompetensiku</a></div>'
       +'<div class="dh-sec"><i class="fas fa-bullseye"></i> Fokus kamu</div><div class="dh-tiles t3">'+t1+t2+t3+'</div></div>';
