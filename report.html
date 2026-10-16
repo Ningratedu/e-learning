@@ -8201,7 +8201,7 @@ var st=document.createElement("style");st.id="dh-hero-css";st.textContent=css;do
 
 function esc(x){return window.escapeHtml?window.escapeHtml(String(x==null?"":x)):String(x==null?"":x).replace(/[&<>"']/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]})}
 function greet(){var h=new Date().getHours();return h>=4&&h<11?"Selamat pagi":h<15?"Selamat siang":h<18?"Selamat sore":"Selamat malam"}
-function firstName(u){var n=String((u&&(u.name||u.username))||"").trim();return n.split(/\s+/)[0]||"kamu"}
+function fullName(u){var n=String((u&&(u.name||u.username))||"").trim().replace(/\s+/g," ");return n||"kamu"}
 function dayStart(d){var x=new Date(d);x.setHours(0,0,0,0);return x.getTime()}
 function fmtShort(d){try{return new Date(d).toLocaleDateString("id-ID",{day:"numeric",month:"short"})}catch(e){return""}}
 
@@ -8232,7 +8232,7 @@ window.dashHeroUser=function(){
     else t2='<a class="dh-tile" href="#/trainings"><span class="dh-ico"><i class="fas fa-calendar-check"></i></span><span class="dh-body"><span class="dh-k">Jadwal terdekat</span><span class="dh-v">Belum ada jadwal</span><span class="dh-s">Lihat jadwal →</span></span></a>';
     var t3='<div class="dh-tile"><span class="dh-ico"><i class="fas fa-chart-pie"></i></span><span class="dh-body"><span class="dh-k">Progres keseluruhan</span><span class="dh-v">'+pct+'%</span><span class="dh-bar"><i style="width:'+pct+'%"></i></span><span class="dh-s">'+done+'/'+total+' training selesai · '+certs.length+' sertifikat</span></span></div>';
     return '<div class="dh-hero"><span class="dh-badge"><i class="fas fa-graduation-cap"></i> Ruang Pembelajar</span>'
-      +'<h1>'+greet()+', '+esc(firstName(u))+' 👋</h1><p class="dh-sub">'+esc(sub)+'</p>'
+      +'<h1>'+greet()+', '+esc(fullName(u))+' 👋</h1><p class="dh-sub">'+esc(sub)+'</p>'
       +'<div class="dh-actions"><a class="dh-pill" href="#/profile"><i class="fas fa-id-badge"></i> Profil &amp; kompetensiku</a></div>'
       +'<div class="dh-sec"><i class="fas fa-bullseye"></i> Fokus kamu</div><div class="dh-tiles t3">'+t1+t2+t3+'</div></div>';
   }catch(e){console.warn("[dashHeroUser]",e);return""}
@@ -8250,7 +8250,7 @@ window.dashHeroAdmin=function(){
     var dateTxt="";try{dateTxt=new Date().toLocaleDateString("id-ID",{weekday:"long",day:"numeric",month:"long",year:"numeric"})}catch(e){}
     function tile(href,ico,k,n,sub,warn){return '<a class="dh-tile" href="'+href+'"><span class="dh-ico"><i class="fas '+ico+'"></i></span><span class="dh-body"><span class="dh-k">'+k+'</span><span class="dh-n">'+n+(warn&&n>0?'<i class="dh-dot"></i>':'')+'</span><span class="dh-s">'+sub+'</span></span></a>'}
     return '<div class="dh-hero"><span class="dh-badge"><i class="fas fa-gauge-high"></i> Dashboard Admin</span>'
-      +'<h1>'+greet()+', '+esc(firstName(u))+' 👋</h1>'
+      +'<h1>'+greet()+', '+esc(fullName(u))+' 👋</h1>'
       +'<p class="dh-sub">'+esc(dateTxt)+'</p>'
       +'<div class="dh-sec"><i class="fas fa-bell"></i> Perlu perhatian</div><div class="dh-tiles t4">'
       +tile("#/admin/assignments","fa-file-pen","Tugas masuk",toGrade,toGrade?"menunggu penilaian":"semua sudah dinilai ✓",true)
