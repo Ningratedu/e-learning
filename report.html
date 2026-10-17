@@ -755,15 +755,15 @@ html.dark .corevalue-shell {
     white-space: nowrap;
     opacity: 0;
     transform: translateX(-6px);
-    animation: cvCycle 15s cubic-bezier(.22, 1, .36, 1) infinite;
+    animation: cvCycle 30s cubic-bezier(.22, 1, .36, 1) infinite;
     will-change: opacity, transform;
 }
 /* Fallback: kalau animasi tidak jalan sama sekali, minimal poin pertama tetap terbaca */
 .corevalue-item:first-child { opacity: 1; transform: none; }
 @keyframes cvCycle {
-    0%, 2% { opacity: 0; transform: translateX(-6px); }
-    6%     { opacity: 1; transform: translateX(0); }
-    15%    { opacity: 1; transform: translateX(0); }
+    0%, 1% { opacity: 0; transform: translateX(-6px); }
+    3%     { opacity: 1; transform: translateX(0); }
+    17%    { opacity: 1; transform: translateX(0); }
     19%    { opacity: 0; transform: translateX(6px); }
     100%   { opacity: 0; }
 }
@@ -798,6 +798,18 @@ html.dark .corevalue-shell {
 }
 @keyframes cvShimmer { to { background-position: -200% center; } }
 
+/* Motto kecil di bawah tiap core value */
+.corevalue-body { display: flex; flex-direction: column; justify-content: center; min-width: 0; flex: 1 1 auto; line-height: 1.1; }
+.corevalue-body .corevalue-text { flex: none; line-height: 1.15; }
+.corevalue-motto { font-size: 6.5px; font-weight: 600; letter-spacing: .01em; color: #64748b; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 1px; }
+html.dark .corevalue-motto { color: #94a3b8; }
+#corevalue-ticker { height: 1.8rem; }
+@media (min-width: 640px) { #corevalue-ticker.sm\:w-\[230px\], #corevalue-ticker { width: 300px; } }
+@media (max-width: 639px) {
+    #corevalue-ticker { height: 1.7rem; }
+    .corevalue-motto { white-space: normal; font-size: 5px; line-height: 1.05; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+}
+
 /* "Kabel" listrik di bawah ticker: percikan cahaya biru jalan terus-menerus */
 .corevalue-wire { position: relative; height: 2px; border-radius: 1px; background: rgb(var(--th-600-rgb) / .16); overflow: hidden; }
 html.dark .corevalue-wire { background: rgb(var(--th-400-rgb) / .2); }
@@ -821,14 +833,14 @@ html.dark .corevalue-wire { background: rgb(var(--th-400-rgb) / .2); }
     .corevalue-item {
         transform: none !important;
         animation-name: cvCycleSoft !important;
-        animation-duration: 15s !important;
+        animation-duration: 30s !important;
         animation-timing-function: linear !important;
     }
 }
 @keyframes cvCycleSoft {
-    0%, 2% { opacity: 0; }
-    6%     { opacity: 1; }
-    15%    { opacity: 1; }
+    0%, 1% { opacity: 0; }
+    3%     { opacity: 1; }
+    17%    { opacity: 1; }
     19%    { opacity: 0; }
     100%   { opacity: 0; }
 }
@@ -862,12 +874,17 @@ html.cv-noprop.dark .corevalue-shell {
    angka & teks poinnya doang yang muncul), disusun 2 baris (label kecil di atas, badge+teks
    ticker di bawah) supaya tetap muat rapi di header yang sempit tanpa kepotong. */
 @media (max-width: 639px) {
-    .corevalue-badge { width: 1rem; height: 1rem; border-radius: .26rem; font-size: 8px; }
-    .corevalue-text { font-size: .68rem; letter-spacing: 0; }
-    #corevalue-ticker { height: 1rem; }
+    .corevalue-badge { width: .9rem; height: .9rem; border-radius: .26rem; font-size: 7px; }
+    .corevalue-text { font-size: .58rem; letter-spacing: 0; }
+    #corevalue-ticker { height: 1.7rem; }
     .corevalue-item { gap: .3rem; }
     .corevalue-label-row { justify-content: center; }
-    .corevalue-label { font-size: 7px !important; letter-spacing: .14em !important; }
+    .corevalue-label { font-size: 7px !important; letter-spacing: .14em !important; }    #app-topbar { padding-top: .25rem !important; padding-bottom: .25rem !important; }
+    .corevalue-shell { padding-top: 1px !important; padding-bottom: 2px !important; gap: 0 !important; }
+    .corevalue-shell > div { gap: 0 !important; }
+    .corevalue-label-row { line-height: 1; }
+    .corevalue-label { line-height: 1 !important; }
+    #corevalue-ticker { height: 1.55rem; }
 }
 
 /* ===== DARK v2: badge, chip, tombol & modul yang masih putih =====
@@ -1010,6 +1027,8 @@ html[data-tc="sage"]{--th-50:#f4faf6;--th-50-rgb:244 250 246;--th-100:#eaf6ee;--
 html[data-tc="peach"]{--th-50:#fcf5f3;--th-50-rgb:252 245 243;--th-100:#f9ebe7;--th-100-rgb:249 235 231;--th-200:#f0d9d0;--th-200-rgb:240 217 208;--th-300:#e4b9aa;--th-300-rgb:228 185 170;--th-400:#d7967f;--th-400-rgb:215 150 127;--th-500:#c97454;--th-500-rgb:201 116 84;--th-600:#b25938;--th-600-rgb:178 89 56;--th-700:#93492f;--th-700-rgb:147 73 47;--th-800:#743a25;--th-800-rgb:116 58 37;--th-900:#592c1c;--th-900-rgb:89 44 28;--th-950:#361b11;--th-950-rgb:54 27 17;--th-h1:#b25938;--th-h3:#d7967f;}
 html[data-tc="debu"]{--th-50:#f4f8fb;--th-50-rgb:244 248 251;--th-100:#e8f0f7;--th-100-rgb:232 240 247;--th-200:#d6e1eb;--th-200-rgb:214 225 235;--th-300:#b4c8da;--th-300-rgb:180 200 218;--th-400:#8eadc7;--th-400-rgb:142 173 199;--th-500:#6991b5;--th-500-rgb:105 145 181;--th-600:#4d789d;--th-600-rgb:77 120 157;--th-700:#406382;--th-700-rgb:64 99 130;--th-800:#324e67;--th-800-rgb:50 78 103;--th-900:#273c4f;--th-900-rgb:39 60 79;--th-950:#182530;--th-950-rgb:24 37 48;--th-h1:#4d789d;--th-h3:#8eadc7;}
 html[data-tc="mauve"]{--th-50:#fbf4f7;--th-50-rgb:251 244 247;--th-100:#f6e9ef;--th-100-rgb:246 233 239;--th-200:#e9d8df;--th-200-rgb:233 216 223;--th-300:#d7b7c4;--th-300-rgb:215 183 196;--th-400:#c293a7;--th-400-rgb:194 147 167;--th-500:#ae6f8a;--th-500-rgb:174 111 138;--th-600:#965470;--th-600-rgb:150 84 112;--th-700:#7c465c;--th-700-rgb:124 70 92;--th-800:#623749;--th-800-rgb:98 55 73;--th-900:#4b2a38;--th-900-rgb:75 42 56;--th-950:#2e1a22;--th-950-rgb:46 26 34;--th-h1:#965470;--th-h3:#c293a7;}
+#sidebar{background-color:var(--th-950)!important;transition:background-color .2s ease}
+#sidebar-footer{border-top-color:rgb(var(--th-700-rgb) / .35)!important}
 .tc-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px}.tc-item{display:flex;flex-direction:column;align-items:center;gap:4px;padding:6px 2px;border-radius:14px;border:2px solid transparent;background:transparent;cursor:pointer;transition:all .15s}.tc-item:hover{background:rgba(148,163,184,.12)}.tc-item.on{border-color:var(--th-500);background:rgb(var(--th-500-rgb) / .08)}.tc-dot{width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-size:12px;box-shadow:0 4px 10px -4px rgba(15,23,42,.45)}.tc-item span.tc-n{font-size:10px;font-weight:700;color:#64748b}html.dark .tc-item span.tc-n{color:#cbd5e1}
 </style>
 <style id="dpx-css">
@@ -1821,23 +1840,23 @@ html.dark .hover\:border-dpv-200:hover,html.dark .hover\:border-dpv-400:hover{bo
                         <div id="corevalue-ticker" class="relative w-[212px] sm:w-[230px] shrink min-w-0">
                             <span class="corevalue-item" style="animation-delay:0s">
                                 <span class="corevalue-badge" style="--cv-c:var(--th-600)">1</span>
-                                <span class="corevalue-text" style="--cv-g1:var(--th-300);--cv-g2:var(--th-900)">PROAKTIF</span>
-                            </span>
-                            <span class="corevalue-item" style="animation-delay:3s">
-                                <span class="corevalue-badge" style="--cv-c:var(--th-700)">2</span>
-                                <span class="corevalue-text" style="--cv-g1:var(--th-400);--cv-g2:var(--th-900)">PEMBELAJAR</span>
+                                <span class="corevalue-body"><span class="corevalue-text" style="--cv-g1:var(--th-300);--cv-g2:var(--th-900)">PROAKTIF</span><span class="corevalue-motto">Pasti Bisa Mencapai Target, Dengan Selalu Proaktif</span></span>
                             </span>
                             <span class="corevalue-item" style="animation-delay:6s">
-                                <span class="corevalue-badge" style="--cv-c:var(--th-500)">3</span>
-                                <span class="corevalue-text" style="--cv-g1:var(--th-300);--cv-g2:var(--th-800)">PENEBAR ENERGI POSITIF</span>
-                            </span>
-                            <span class="corevalue-item" style="animation-delay:9s">
-                                <span class="corevalue-badge" style="--cv-c:var(--th-600)">4</span>
-                                <span class="corevalue-text" style="--cv-g1:var(--th-400);--cv-g2:var(--th-900)">CEPAT</span>
+                                <span class="corevalue-badge" style="--cv-c:var(--th-700)">2</span>
+                                <span class="corevalue-body"><span class="corevalue-text" style="--cv-g1:var(--th-400);--cv-g2:var(--th-900)">PEMBELAJAR</span><span class="corevalue-motto">Belajarlah Setiap Hari, Tidak Ada Kesejahteraan Bagi Yang Tidak Berkembang</span></span>
                             </span>
                             <span class="corevalue-item" style="animation-delay:12s">
+                                <span class="corevalue-badge" style="--cv-c:var(--th-500)">3</span>
+                                <span class="corevalue-body"><span class="corevalue-text" style="--cv-g1:var(--th-300);--cv-g2:var(--th-800)">PENEBAR ENERGI POSITIF</span><span class="corevalue-motto">Pasti Bisa Mencapai Target, Dengan Selalu Positif</span></span>
+                            </span>
+                            <span class="corevalue-item" style="animation-delay:18s">
+                                <span class="corevalue-badge" style="--cv-c:var(--th-600)">4</span>
+                                <span class="corevalue-body"><span class="corevalue-text" style="--cv-g1:var(--th-400);--cv-g2:var(--th-900)">CEPAT</span><span class="corevalue-motto">Tidak Ada Masa Depan, Bagi Mereka Yang Lambat</span></span>
+                            </span>
+                            <span class="corevalue-item" style="animation-delay:24s">
                                 <span class="corevalue-badge" style="--cv-c:var(--th-800)">5</span>
-                                <span class="corevalue-text" style="--cv-g1:var(--th-500);--cv-g2:var(--th-950)">DISIPLIN</span>
+                                <span class="corevalue-body"><span class="corevalue-text" style="--cv-g1:var(--th-500);--cv-g2:var(--th-950)">DISIPLIN</span><span class="corevalue-motto">Disiplin Dan Konsisten, Adalah Jati Diri Kita</span></span>
                             </span>
                         </div>
                     </div>
@@ -10283,6 +10302,38 @@ window.__trsOnbHtml=function(period){
 })();
 </script>
 
+<script>
+/* Tab bar yang bisa digeser (.tab-scroll, mis. Kelola Onboarding / Kelola TNA di HP):
+   otomatis geser supaya tab yang sedang aktif terlihat di tengah, termasuk kalau halaman
+   dibuka lewat fitur/link lain. */
+(function(){
+  var raf=0;
+  function isActive(el){var c=el.className||"";return typeof c==="string"&&/bg-indigo-600|nav-active/.test(c)}
+  function fix(){
+    raf=0;
+    var bars=document.querySelectorAll(".tab-scroll");
+    for(var i=0;i<bars.length;i++){
+      var bar=bars[i];
+      if(bar.scrollWidth<=bar.clientWidth+2)continue;
+      var act=null,kids=bar.children;
+      for(var j=0;j<kids.length;j++){if(isActive(kids[j])){act=kids[j];break}}
+      if(!act)continue;
+      var key=act.textContent.trim()+"|"+bar.scrollWidth;
+      if(bar.__tabFixed===key)continue;
+      bar.__tabFixed=key;
+      var target=act.offsetLeft-(bar.clientWidth-act.offsetWidth)/2;
+      target=Math.max(0,Math.min(target,bar.scrollWidth-bar.clientWidth));
+      try{bar.scrollTo({left:target,behavior:"auto"})}catch(e){bar.scrollLeft=target}
+    }
+  }
+  function sched(){if(!raf)raf=requestAnimationFrame(fix)}
+  function start(){
+    try{new MutationObserver(sched).observe(document.body,{childList:true,subtree:true})}catch(e){}
+    window.addEventListener("hashchange",sched);window.addEventListener("resize",sched);sched();
+  }
+  if(document.body)start();else document.addEventListener("DOMContentLoaded",start);
+})();
+</script>
 
 <script id="view-only-mode">
 /* ===== MODE LIHAT SAJA (tanpa login, tanpa aksi) ===== */
