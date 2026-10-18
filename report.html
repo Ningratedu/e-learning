@@ -7697,11 +7697,17 @@ window.renderLegacyCompletePage=renderLegacyCompletePage;
   const A = window.__ASSESSMENT_V2__ = window.__ASSESSMENT_V2__ || {};
   const esc = v => window.escapeHtml ? window.escapeHtml(String(v==null?"":v)) : String(v==null?"":v).replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[m]));
   const norm = v => String(v||"").trim().toLowerCase();
+  let uidC=null;
+  const uidMap = () => {
+    const us=window.STATE.users||[];
+    if(uidC&&uidC.u===us&&uidC.n===us.length)return uidC.m;
+    const m=new Map();
+    us.forEach(z=>{const k=norm(z.username);if(k&&!m.has(k))m.set(k,z.id)});
+    uidC={u:us,n:us.length,m};return m;
+  };
   const uidForEmp = emp => {
     if(!emp) return null;
-    const u=norm(emp.username);
-    const x=(window.STATE.users||[]).find(z=>norm(z.username)===u);
-    return x?x.id:null;
+    return uidMap().get(norm(emp.username))||null;
   };
   const empForUid = id => {
     if(!id) return null;
@@ -7926,90 +7932,124 @@ window.renderLegacyCompletePage=renderLegacyCompletePage;
     editingEmployeeUid="";
     draft._id=id||null;
   }
-  window.setAssessmentCycleWeight=function(k,v){if(!draft.weights)draft.weights={};draft.weights[k]=Math.max(0,Math.min(100,parseInt(v)||0));renderBuilder()};
-  function reviewerCandidates(target){
-    const targetUid=uidForEmp(target);
-    return allEmps().map(e=>{
-      const id=uidForEmp(e);
-      if(!id || id===targetUid)return null;
-      return {id,employee:e};
-    }).filter(Boolean).sort((a,b)=>String(a.employee.nama||a.employee.username||"").localeCompare(String(b.employee.nama||b.employee.username||""),"id"));
+  window.setAssessmentCycleWeight=function(k,v){
+    if(!draft)return;if(!draft.weights)draft.weights={};
+    draft.weights[k]=Math.max(0,Math.min(100,parseInt(v)||0));
+    const w=draft.weights,sum=(w.self||0)+(w.atasan||0)+(w.bawahan||0)+(w.rekan||0),el=document.getElementById("assess-weight-sum");
+    if(el){el.textContent="Total bobot: "+sum+"%";el.className="text-[11px] font-bold "+(sum===100?"text-emerald-600":"text-amber-600")}
+  };
+  // ---- Mapping penilai lintas departemen ----
+  // Cache kandidat: dihitung SEKALI per perubahan data karyawan/akun (bukan per dropdown per karyawan).
+  let candC=null;
+  function candidateList(){
+    const emps=window.STATE.employees||[],users=window.STATE.users||[];
+    if(candC&&candC.e===emps&&candC.u===users&&candC.en===emps.length&&candC.un===users.length)return candC;
+    const list=allEmps().map(e=>{const id=uidForEmp(e);return id?{id,employee:e,key:norm((e.nama||e.username||"")+" "+(e.dept||""))}:null}).filter(Boolean)
+      .sort((a,b)=>String(a.employee.nama||a.employee.username||"").localeCompare(String(b.employee.nama||b.employee.username||""),"id"));
+    candC={e:emps,u:users,en:emps.length,un:users.length,list,byId:new Map(list.map(x=>[x.id,x]))};
+    return candC;
   }
-  function reviewerDropdown(targetUid,role,label,selected){
-    const selectedSet=new Set(selected||[]);
-    const candidates=reviewerCandidates(empForUid(targetUid)||{});
-    const count=[...selectedSet].filter(Boolean).length;
-    const selectedNames=candidates.filter(x=>selectedSet.has(x.id)).map(x=>x.employee.nama||x.employee.username).filter(Boolean);
-    const summary=selectedNames.length?selectedNames.slice(0,2).join(", ")+(selectedNames.length>2?` +${selectedNames.length-2}`:""):"Belum dipilih";
-    return `<div class="relative" data-reviewer-wrap="${esc(targetUid)}-${role}">
-      <label class="text-[9px] font-black uppercase text-slate-400">${label}</label>
-      <button type="button" class="w-full mt-1 flex items-center justify-between gap-2 border border-slate-200 rounded-xl px-3 py-2 text-left bg-white hover:border-indigo-300" onclick="window.__toggleReviewerDropdown('${esc(targetUid)}','${role}')">
-        <span class="min-w-0"><span class="block text-xs font-bold text-slate-700 truncate">${esc(summary)}</span><span class="block text-[9px] text-slate-400">${count} dipilih${role==='rekan'?" • maksimal 2":""}</span></span>
+  const ROLE_LABEL={atasan:"Atasan yang menilai",bawahan:"Bawahan yang menilai",rekan:"Rekan yang menilai"};
+  function reviewerSummary(role,ids){
+    const sel=Array.isArray(ids)?ids.filter(Boolean):[],by=candidateList().byId;
+    const names=sel.map(id=>{const c=by.get(id);return c?(c.employee.nama||c.employee.username):null}).filter(Boolean);
+    return{title:names.length?names.slice(0,2).join(", ")+(names.length>2?` +${names.length-2}`:""):"Belum dipilih",sub:`${sel.length} dipilih${role==="rekan"?" • maksimal 2":""}`};
+  }
+  // Tombol dropdown ringan. Isi daftar (ratusan karyawan) baru dibuat saat dropdown DIBUKA, bukan untuk semua baris sekaligus.
+  function reviewerTrigger(uid,role,selected){
+    const sm=reviewerSummary(role,selected);
+    return `<div class="relative" data-reviewer-wrap="${esc(uid)}-${role}">
+      <label class="text-[9px] font-black uppercase text-slate-400">${ROLE_LABEL[role]}</label>
+      <button type="button" class="w-full mt-1 flex items-center justify-between gap-2 border border-slate-200 rounded-xl px-3 py-2 text-left bg-white hover:border-indigo-300" onclick="window.__toggleReviewerDropdown('${esc(uid)}','${role}')">
+        <span class="min-w-0"><span data-rv-title class="block text-xs font-bold text-slate-700 truncate">${esc(sm.title)}</span><span data-rv-sub class="block text-[9px] text-slate-400">${esc(sm.sub)}</span></span>
         <i class="fas fa-chevron-down text-[9px] text-slate-400"></i>
       </button>
-      <div id="reviewer-dd-${esc(targetUid)}-${role}" class="hidden absolute z-50 left-0 right-0 mt-1 bg-white border border-slate-200 rounded-2xl shadow-xl p-2">
-        <input type="text" data-reviewer-search="${esc(targetUid)}-${role}" placeholder="Cari nama / departemen..." class="w-full border border-slate-200 rounded-xl px-3 py-2 text-[11px] outline-none focus:ring-2 focus:ring-indigo-200 mb-2" oninput="window.__filterReviewerOptions(this,'${esc(targetUid)}','${role}')">
-        <div class="max-h-56 overflow-y-auto space-y-0.5" id="reviewer-options-${esc(targetUid)}-${role}">
-          ${candidates.map(x=>{
-            const e=x.employee, checked=selectedSet.has(x.id);
-            return `<label data-reviewer-option="${esc((e.nama||e.username||"")+" "+(e.dept||""))}" class="flex items-start gap-2 p-2 rounded-xl hover:bg-slate-50 cursor-pointer">
-              <input type="checkbox" value="${esc(x.id)}" ${checked?"checked":""} onchange="window.__setReviewer('${esc(targetUid)}','${role}',this)" class="mt-0.5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500">
-              <span class="min-w-0"><b class="block text-[11px] text-slate-700 truncate">${esc(e.nama||e.username)}</b><span class="block text-[9px] text-slate-400 truncate">${esc(e.posisi||"-")} • ${esc(e.dept||"-")}</span></span>
-            </label>`;
-          }).join("")||'<p class="text-[10px] text-slate-400 p-2">Tidak ada karyawan dengan akun yang bisa dipilih.</p>'}
-        </div>
-      </div>
+      <div id="reviewer-dd-${esc(uid)}-${role}" class="hidden absolute z-50 left-0 right-0 mt-1 bg-white border border-slate-200 rounded-2xl shadow-xl p-2"></div>
     </div>`;
   }
-  window.__toggleReviewerDropdown=function(targetUid,role){
-    const id=`reviewer-dd-${targetUid}-${role}`;
-    const el=document.getElementById(id);
-    if(!el)return;
-    document.querySelectorAll('[id^="reviewer-dd-"]').forEach(x=>{if(x!==el)x.classList.add('hidden')});
-    el.classList.toggle('hidden');
-    if(!el.classList.contains('hidden')){const s=el.querySelector('input[data-reviewer-search]');if(s){s.value="";s.focus()}}
+  function reviewerPanelHtml(uid,selectedSet){
+    const opts=candidateList().list.filter(x=>x.id!==uid).map(x=>{
+      const e=x.employee;
+      return `<label data-reviewer-option="${esc(x.key)}" class="flex items-start gap-2 p-2 rounded-xl hover:bg-slate-50 cursor-pointer"><input type="checkbox" value="${esc(x.id)}" ${selectedSet.has(x.id)?"checked":""} onchange="window.__stageReviewer(this)" class="mt-0.5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"><span class="min-w-0"><b class="block text-[11px] text-slate-700 truncate">${esc(e.nama||e.username)}</b><span class="block text-[9px] text-slate-400 truncate">${esc(e.posisi||"-")} • ${esc(e.dept||"-")}</span></span></label>`;
+    }).join("")||'<p class="text-[10px] text-slate-400 p-2">Tidak ada karyawan dengan akun yang bisa dipilih.</p>';
+    return `<input type="text" data-reviewer-search placeholder="Cari nama / departemen..." class="w-full border border-slate-200 rounded-xl px-3 py-2 text-[11px] outline-none focus:ring-2 focus:ring-indigo-200 mb-2" oninput="window.__filterReviewerOptions(this)">
+      <div class="max-h-56 overflow-y-auto space-y-0.5" data-reviewer-options>${opts}</div>
+      <div class="border-t border-slate-100 mt-1.5 pt-2 flex items-center justify-between gap-2"><span data-rv-stage class="text-[10px] text-slate-400"></span><div class="flex items-center gap-1.5"><button type="button" onclick="window.__cancelReviewer()" class="text-[11px] font-bold text-slate-400 hover:text-slate-600 px-2 py-1.5">Batal</button><button type="button" onclick="window.__applyReviewer()" class="text-[11px] font-black text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg px-3 py-1.5 transition">Terapkan<span data-rv-apply-n class="ml-1 font-bold opacity-80"></span></button></div></div>`;
+  }
+  // Pilihan sementara (staging): centang hanya mengubah `stage`, draft baru berubah saat klik Terapkan.
+  let stage=null;
+  const ddEl=(uid,role)=>document.getElementById(`reviewer-dd-${uid}-${role}`);
+  function stageFoot(){
+    if(!stage)return;const dd=ddEl(stage.uid,stage.role);if(!dd)return;
+    const n=stage.set.size,a=dd.querySelector("[data-rv-stage]"),b=dd.querySelector("[data-rv-apply-n]");
+    if(a)a.textContent=n+" dipilih"+(stage.role==="rekan"?" • maksimal 2":"");
+    if(b)b.textContent=n?"("+n+")":"";
+  }
+  function closeReviewerDropdown(){
+    stage=null;
+    document.querySelectorAll('[id^="reviewer-dd-"]:not(.hidden)').forEach(x=>{x.classList.add("hidden");x.innerHTML=""});
+  }
+  window.__toggleReviewerDropdown=function(uid,role){
+    const el=ddEl(uid,role);if(!el||!draft)return;
+    const wasOpen=!!(stage&&stage.uid===uid&&stage.role===role);
+    closeReviewerDropdown();
+    if(wasOpen)return;
+    stage={uid,role,set:new Set(((draft.reviewerMap[uid]||{})[role])||[])};
+    el.innerHTML=reviewerPanelHtml(uid,stage.set);el.classList.remove("hidden");stageFoot();
+    const s=el.querySelector("[data-reviewer-search]");if(s)s.focus();
   };
-  window.__filterReviewerOptions=function(input,targetUid,role){
-    const q=norm(input.value);
-    const box=document.getElementById(`reviewer-options-${targetUid}-${role}`);
-    if(!box)return;
-    box.querySelectorAll('[data-reviewer-option]').forEach(el=>{el.style.display=!q||norm(el.dataset.reviewerOption).includes(q)?"":"none"});
+  let fqT=null;
+  window.__filterReviewerOptions=function(input){
+    clearTimeout(fqT);
+    fqT=setTimeout(function(){
+      const q=norm(input.value),box=input.parentElement&&input.parentElement.querySelector("[data-reviewer-options]");if(!box)return;
+      box.querySelectorAll("[data-reviewer-option]").forEach(el=>{el.style.display=!q||el.dataset.reviewerOption.includes(q)?"":"none"});
+    },80);
   };
-  window.__setReviewer=function(targetUid,role,checkbox){
-    if(!draft)return;
-    draft.reviewerMap[targetUid]=draft.reviewerMap[targetUid]||{atasan:[],bawahan:[],rekan:[]};
-    const current=new Set(draft.reviewerMap[targetUid][role]||[]);
-    if(checkbox.checked){
-      if(role==='rekan'&&current.size>=2){checkbox.checked=false;window.toast("Maksimal 2 penilai rekan per karyawan","warn");return}
-      current.add(checkbox.value);
-    }else current.delete(checkbox.value);
-    draft.reviewerMap[targetUid][role]=[...current];
-    // Update ringkasan dropdown tanpa me-render seluruh builder.
-    const wrap=checkbox.closest('[data-reviewer-wrap]');
-    if(wrap){
-      const btn=wrap.querySelector('button');
-      const selected=[...wrap.querySelectorAll('input[type="checkbox"]:checked')];
-      const names=selected.map(x=>x.closest('label')?.querySelector('b')?.textContent||"").filter(Boolean);
-      const title=btn?.querySelector('span.block.text-xs');
-      const sub=btn?.querySelector('span.block.text-\[9px\]');
-      if(title)title.textContent=names.length?names.slice(0,2).join(", ")+(names.length>2?` +${names.length-2}`:""):"Belum dipilih";
-      if(sub)sub.textContent=`${names.length} dipilih${role==='rekan'?" • maksimal 2":""}`;
-    }
+  window.__stageReviewer=function(cb){
+    if(!stage)return;
+    if(cb.checked){
+      if(stage.role==="rekan"&&stage.set.size>=2){cb.checked=false;window.toast("Maksimal 2 penilai rekan per karyawan","warn");return}
+      stage.set.add(cb.value);
+    }else stage.set.delete(cb.value);
+    stageFoot();
   };
-  document.addEventListener('click',function(ev){
-    if(ev.target.closest('[data-reviewer-wrap]'))return;
-    document.querySelectorAll('[id^="reviewer-dd-"]').forEach(x=>x.classList.add('hidden'));
+  window.__applyReviewer=function(){
+    if(!stage||!draft)return;
+    const {uid,role,set}=stage;
+    draft.reviewerMap[uid]=draft.reviewerMap[uid]||{atasan:[],bawahan:[],rekan:[]};
+    draft.reviewerMap[uid][role]=[...set];
+    closeReviewerDropdown();
+    const wrap=[...document.querySelectorAll("[data-reviewer-wrap]")].find(x=>x.dataset.reviewerWrap===uid+"-"+role);
+    if(wrap){const sm=reviewerSummary(role,draft.reviewerMap[uid][role]),t=wrap.querySelector("[data-rv-title]"),b=wrap.querySelector("[data-rv-sub]");if(t)t.textContent=sm.title;if(b)b.textContent=sm.sub}
+    const row=findRow(uid),sum=row&&row.querySelector("[data-assess-sum]");if(sum)sum.textContent=rowSummary(uid);
+  };
+  window.__cancelReviewer=function(){closeReviewerDropdown()};
+  // klik di luar / Esc = batal (pilihan sementara dibuang)
+  document.addEventListener("click",function(ev){
+    if(!stage)return;
+    if(ev.target.closest&&ev.target.closest("[data-reviewer-wrap]"))return;
+    closeReviewerDropdown();
   });
+  document.addEventListener("keydown",function(ev){if(ev.key==="Escape"&&stage)closeReviewerDropdown()});
+
+  // Baris karyawan target: ringan (nama + ringkasan). Panel penilai hanya dibuat untuk baris yang sedang dibuka.
+  let rowTargets=new Map(),lastSig=null;
+  const dataSig=()=>{const e=window.STATE.employees||[],u=window.STATE.users||[];return{e,en:e.length,u,un:u.length}};
+  function rowSummary(uid){const m=draft.reviewerMap[uid]||{};return `Atasan ${(m.atasan||[]).length} • Bawahan ${(m.bawahan||[]).length} • Rekan ${(m.rekan||[]).length}`}
+  function findRow(uid){return [...document.querySelectorAll("[data-assess-row]")].find(x=>x.dataset.assessRow===uid)}
   function assignmentRow(target){
     const uid=uidForEmp(target);if(!uid)return"";
-    const m=draft.reviewerMap[uid]||{atasan:[],bawahan:[],rekan:[]};
-    return `<div class="border border-slate-100 rounded-2xl p-3 mb-2"><div class="flex items-center justify-between gap-2"><div><p class="text-xs font-black text-slate-700">${esc(target.nama||target.username)}</p><p class="text-[10px] text-slate-400">${esc(target.posisi||"-")} • ${esc(target.dept||"-")}</p></div><button type="button" class="text-[10px] font-bold text-indigo-600" onclick="window.__assessEditUid='${esc(uid)}';window.__assessRenderBuilder()">${editingEmployeeUid===uid?"Tutup":"Atur Penilai"}</button></div>
-      <div class="${editingEmployeeUid===uid?"mt-3":"hidden"} grid lg:grid-cols-3 gap-2">
-        ${reviewerDropdown(uid,"atasan","Atasan yang menilai",m.atasan)}
-        ${reviewerDropdown(uid,"bawahan","Bawahan yang menilai",m.bawahan)}
-        ${reviewerDropdown(uid,"rekan","Rekan yang menilai",m.rekan)}
-      </div></div>`;
+    const m=draft.reviewerMap[uid]||{atasan:[],bawahan:[],rekan:[]},editing=editingEmployeeUid===uid;
+    return `<div data-assess-row="${esc(uid)}" class="border border-slate-100 rounded-2xl p-3 mb-2"><div class="flex items-center justify-between gap-2"><div class="min-w-0"><p class="text-xs font-black text-slate-700">${esc(target.nama||target.username)}</p><p class="text-[10px] text-slate-400">${esc(target.posisi||"-")} • ${esc(target.dept||"-")}</p><p data-assess-sum class="text-[10px] font-bold text-indigo-500 mt-0.5">${rowSummary(uid)}</p></div><button type="button" class="text-[10px] font-bold text-indigo-600 shrink-0" onclick="window.__assessToggleRow('${esc(uid)}')">${editing?"Tutup":"Atur Penilai"}</button></div>${editing?`<div class="mt-3 grid lg:grid-cols-3 gap-2">${["atasan","bawahan","rekan"].map(r=>reviewerTrigger(uid,r,m[r])).join("")}</div>`:""}</div>`;
   }
+  function refreshRow(uid){if(!uid)return;const el=findRow(uid),t=rowTargets.get(uid);if(el&&t)el.outerHTML=assignmentRow(t)}
+  window.__assessToggleRow=function(uid){
+    closeReviewerDropdown();
+    const prev=editingEmployeeUid;
+    editingEmployeeUid=prev===uid?"":uid;window.__assessEditUid=editingEmployeeUid;
+    refreshRow(prev);if(uid!==prev)refreshRow(uid);
+  };
   function questionRows(){
     const qb=draft.questionBank||[];
     return qb.map((q,i)=>`<tr><td class="px-2 py-2 text-[10px]">${i+1}</td><td class="px-2 py-2 text-[10px] font-bold">${esc(q.role)}</td><td class="px-2 py-2 text-[10px]">${esc(q.competency)}</td><td class="px-2 py-2 text-[10px]">${esc(q.question)}</td><td class="px-2 py-2 text-[10px]"><button type="button" class="text-indigo-500 mr-2" onclick="window.__assessEditQ(${i})"><i class="fas fa-pen"></i></button><button type="button" class="text-rose-500" onclick="window.__assessDeleteQ(${i})"><i class="fas fa-trash"></i></button></td></tr>`).join("");
@@ -8023,7 +8063,7 @@ window.renderLegacyCompletePage=renderLegacyCompletePage;
     const matrix=matrixForDept(d.targetDepartment);
     const selectedUid=window.__assessEditUid||"";
     editingEmployeeUid=selectedUid;
-    const emp=target.find(e=>uidForEmp(e)===selectedUid);
+    closeReviewerDropdown();rowTargets=new Map();target.forEach(e=>{const u=uidForEmp(e);if(u)rowTargets.set(u,e)});lastSig=dataSig();
     const roles=["self","atasan","bawahan","rekan"];
     const qCount=roles.reduce((n,r)=>n+(d.questionBank||[]).filter(q=>q.role===r).length,0);
     const title=document.getElementById("assessment-cycle-builder-title");if(title)title.innerHTML=`<i class="fas fa-rotate mr-1"></i> ${d._id?"Edit Siklus Asesmen":"Siklus Asesmen Baru"}`;
@@ -8031,12 +8071,12 @@ window.renderLegacyCompletePage=renderLegacyCompletePage;
     body.innerHTML=`<div class="space-y-1.5"><label class="text-[10px] font-bold uppercase text-slate-400">Nama Siklus</label><input value="${esc(d.name)}" oninput="window.__assessSetField('name',this.value)" class="w-full border border-slate-200 rounded-lg px-2.5 py-1.5 text-sm"></div>
       <div class="form-grid"><div><label class="text-[10px] font-bold uppercase text-slate-400">Tanggal Mulai</label><input type="date" value="${esc(d.startDate||"")}" oninput="window.__assessSetField('startDate',this.value)" class="w-full border border-slate-200 rounded-lg px-2.5 py-1.5 text-sm mt-1"></div><div><label class="text-[10px] font-bold uppercase text-slate-400">Deadline</label><input type="date" value="${esc(d.deadline||"")}" oninput="window.__assessSetField('deadline',this.value)" class="w-full border border-slate-200 rounded-lg px-2.5 py-1.5 text-sm mt-1"></div></div>
       <div class="border border-slate-100 rounded-2xl p-3 space-y-2"><h3 class="font-black text-xs text-slate-700"><i class="fas fa-building text-indigo-400 mr-1"></i> Target Departemen</h3><select onchange="window.__assessSetField('targetDepartment',this.value);window.__assessEditUid='';window.__assessRenderBuilder()" class="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm"><option value="">Pilih 1 departemen</option>${depts().map(x=>`<option value="${esc(x)}" ${norm(x)===norm(d.targetDepartment)?"selected":""}>${esc(x)}</option>`).join("")}</select><p class="text-[11px] text-indigo-600 bg-indigo-50 rounded-xl px-3 py-2">${target.length} karyawan menjadi target siklus ini.</p></div>
-      <div class="border border-slate-100 rounded-2xl p-3 space-y-2"><h3 class="font-black text-xs text-slate-700"><i class="fas fa-scale-balanced text-indigo-400 mr-1"></i> Bobot Penilaian 360°</h3><div class="grid grid-cols-2 lg:grid-cols-4 gap-2">${roles.map(r=>`<div><label class="text-[9px] font-bold uppercase text-slate-400">${r}</label><input type="number" min="0" max="100" value="${wb[r]||0}" oninput="window.setAssessmentCycleWeight('${r}',this.value)" class="w-full border border-slate-200 rounded-lg px-2 py-1.5 text-sm mt-1"></div>`).join("")}</div><p class="text-[11px] font-bold ${sum===100?"text-emerald-600":"text-amber-600"}">Total bobot: ${sum}%</p><p class="text-[10px] text-slate-400">Kalau untuk karyawan tertentu tidak ada penilai yang dipilih/ditugaskan sama sekali di salah satu role (misalnya nggak dipilih bawahan yang menilai karena karyawan itu memang tidak punya bawahan), bobot role tersebut otomatis dialihkan secara proporsional ke role lain saat penghitungan skor akhir. Tapi kalau penilainya SUDAH ditugaskan (ada di mapping penilai), penilaian itu wajib diisi — bobotnya TIDAK dialihkan, skor kompetensi itu akan menggantung (pending) sampai semua penilai yang ditugaskan selesai mengisi, dan penilai yang belum ngisi akan diingatkan lewat popup reminder tugas.</p></div>
+      <div class="border border-slate-100 rounded-2xl p-3 space-y-2"><h3 class="font-black text-xs text-slate-700"><i class="fas fa-scale-balanced text-indigo-400 mr-1"></i> Bobot Penilaian 360°</h3><div class="grid grid-cols-2 lg:grid-cols-4 gap-2">${roles.map(r=>`<div><label class="text-[9px] font-bold uppercase text-slate-400">${r}</label><input type="number" min="0" max="100" value="${wb[r]||0}" oninput="window.setAssessmentCycleWeight('${r}',this.value)" onchange="this.value=Math.max(0,Math.min(100,parseInt(this.value)||0))" class="w-full border border-slate-200 rounded-lg px-2 py-1.5 text-sm mt-1"></div>`).join("")}</div><p id="assess-weight-sum" class="text-[11px] font-bold ${sum===100?"text-emerald-600":"text-amber-600"}">Total bobot: ${sum}%</p><p class="text-[10px] text-slate-400">Kalau untuk karyawan tertentu tidak ada penilai yang dipilih/ditugaskan sama sekali di salah satu role (misalnya nggak dipilih bawahan yang menilai karena karyawan itu memang tidak punya bawahan), bobot role tersebut otomatis dialihkan secara proporsional ke role lain saat penghitungan skor akhir. Tapi kalau penilainya SUDAH ditugaskan (ada di mapping penilai), penilaian itu wajib diisi — bobotnya TIDAK dialihkan, skor kompetensi itu akan menggantung (pending) sampai semua penilai yang ditugaskan selesai mengisi, dan penilai yang belum ngisi akan diingatkan lewat popup reminder tugas.</p></div>
       <div class="border border-slate-100 rounded-2xl p-3 space-y-2"><div class="flex items-center justify-between gap-2"><div><h3 class="font-black text-xs text-slate-700"><i class="fas fa-file-excel text-emerald-500 mr-1"></i> Bank Soal / Kuesioner</h3><p class="text-[10px] text-slate-400">Sinkron ke kompetensi Matrix departemen ${esc(d.targetDepartment||"-")}.</p></div><div class="flex gap-1.5"><button type="button" class="text-[10px] font-bold px-2.5 py-1.5 rounded-xl bg-white border border-slate-200 text-slate-600" onclick="window.__assessDownloadTemplate()">Template</button><button type="button" class="text-[10px] font-bold px-2.5 py-1.5 rounded-xl bg-emerald-600 text-white" onclick="document.getElementById('assessment-xlsx-input').click()">Import Excel</button><button type="button" class="text-[10px] font-bold px-2.5 py-1.5 rounded-xl bg-indigo-600 text-white" onclick="window.__assessAddQuestion()">Tambah Soal</button></div></div>
       <input id="assessment-xlsx-input" type="file" accept=".xlsx,.xls,.csv" class="hidden" onchange="window.__assessImportExcel(this.files[0])">
       <div class="bg-slate-50 rounded-xl p-2 text-[10px] text-slate-500">Kolom Excel: <b>role</b> (self/atasan/bawahan/rekan), <b>kompetensi</b>, <b>pertanyaan</b>, <b>opsi1</b> s/d <b>opsi5</b>. Opsional: <b>departemen</b>. Satu baris = satu pertanyaan.</div>
       <div class="overflow-auto max-h-48"><table class="w-full"><thead><tr class="text-[9px] uppercase text-slate-400"><th class="text-left px-2">#</th><th class="text-left px-2">Role</th><th class="text-left px-2">Kompetensi</th><th class="text-left px-2">Pertanyaan</th><th></th></tr></thead><tbody>${questionRows()||'<tr><td colspan="5" class="text-center py-4 text-xs text-slate-400">Belum ada soal.</td></tr>'}</tbody></table></div></div>
-      <div class="border border-slate-100 rounded-2xl p-3"><h3 class="font-black text-xs text-slate-700 mb-1"><i class="fas fa-sitemap text-violet-500 mr-1"></i> Mapping Penilai Lintas Departemen</h3><p class="text-[10px] text-slate-400 mb-2">Klik <b>Atur Penilai</b>. Atasan, bawahan, dan rekan dapat berasal dari departemen mana pun. Rekan maksimal 2 orang per karyawan.</p>${target.length?target.map(assignmentRow).join(""):'<p class="text-xs text-slate-400">Pilih departemen terlebih dahulu.</p>'}</div>
+      <div class="border border-slate-100 rounded-2xl p-3"><h3 class="font-black text-xs text-slate-700 mb-1"><i class="fas fa-sitemap text-violet-500 mr-1"></i> Mapping Penilai Lintas Departemen</h3><p class="text-[10px] text-slate-400 mb-2">Klik <b>Atur Penilai</b>. Atasan, bawahan, dan rekan dapat berasal dari departemen mana pun. Rekan maksimal 2 orang per karyawan. Centang penilai lalu klik <b>Terapkan</b> — pilihan baru masuk draft setelah Terapkan.</p>${target.length?target.map(assignmentRow).join(""):'<p class="text-xs text-slate-400">Pilih departemen terlebih dahulu.</p>'}</div>
       <label class="flex items-center justify-between border border-slate-100 rounded-2xl p-3"><span class="text-sm font-bold text-slate-700">Aktifkan Siklus Ini</span><input type="checkbox" ${d.active?"checked":""} onchange="window.__assessSetField('active',this.checked)" class="w-5 h-5 accent-indigo-600"></label>
       <button onclick="window.guardedClick(this,()=>window.saveAssessmentCycleDraft())" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-2xl transition"><i class="fas fa-save mr-1"></i> Simpan Siklus</button>`;
   }
@@ -8123,8 +8163,18 @@ window.renderLegacyCompletePage=renderLegacyCompletePage;
   window.ROUTES["admin/assessment-cycles"]=requireAdmin(function(id){
     window.adminNavContext="tna";
     renderAssessmentCyclesAdminListV2();
-    if(id==="new"||id&&window.STATE.assessmentCycles.some(c=>c.id===id)){ensureDraft(id==="new"?null:id);window.openModal("modal-assessment-cycle-builder");renderBuilder()}
-    else window.closeModal("modal-assessment-cycle-builder");
+    if(id==="new"||id&&window.STATE.assessmentCycles.some(c=>c.id===id)){
+      const key=id==="new"?null:id;
+      if(draft&&draft._id===key){
+        // Builder sudah terbuka: route dipanggil ulang tiap ada snapshot Firestore. Jangan reset draft (mapping yang belum
+        // disimpan bisa hilang) dan jangan render ulang, kecuali data karyawan/akun benar-benar berubah.
+        const d=dataSig();
+        if(!lastSig||lastSig.e!==d.e||lastSig.en!==d.en||lastSig.u!==d.u||lastSig.un!==d.un)renderBuilder();
+        return;
+      }
+      ensureDraft(key);window.openModal("modal-assessment-cycle-builder");renderBuilder();
+    }
+    else{draft=null;window.closeModal("modal-assessment-cycle-builder")}
   });
 
   window.__assessEditUid="";
