@@ -11865,6 +11865,18 @@ window.renderTopbar=function(){
   var rr=document.getElementById("profile-menu-role");if(rr)rr.textContent="Hanya lihat (read-only)";
 };
 
+/* ---- 4b. Chip instruktur onboarding (tiap kartu batch di Penjadwalan Onboarding) ----
+   Aslinya chip ini <button title="Klik untuk ubah instruktur">, sehingga kena sapuan (title mengandung kata "ubah")
+   lalu disembunyikan dan nama instruktur ikut hilang. Di mode lihat saja cukup tampil sebagai TEKS: bukan tombol,
+   tanpa onclick, tanpa ikon pensil. Tombol "+" tambah instruktur tetap disembunyikan oleh sapuan di bawah. */
+var _facilChips=window.onbFacilChips;
+if(typeof _facilChips==="function")window.onbFacilChips=function(){
+  var h=_facilChips.apply(this,arguments)||"";
+  return h.replace(/<button\b[^>]*>/g,'<span class="text-[10px] font-bold text-violet-600 text-left">')
+          .replace(/<\/button>/g,"</span>")
+          .replace(/\s*<i class="fas fa-pen[^"]*"><\/i>/g,"");
+};
+
 /* ---- 5. Sembunyikan tombol tambah / edit / hapus / import / export / kirim, dst ---- */
 var DENY=/delete|remove|save|upload|commit|decide|enroll|register|checkin|grade|submit|send|extend|moveCourse|moveDev|bulk|tmdelete|pull|createTraining|generate|markTna|TargetSettings|openTrainingInvite|openTrainingQr|openCourseReminder|openAssignmentForm|openEmployeeEdit|openEmployeeWhatsApp|openFillAssessment|openQrScan|openMaterialPicker|openResetEmployee|openQuizExcelInfo|openAssessmentReviewersModal|openEditProfile|openTnaApprovalRequest|rerenderTrainingBuilder|download|export|import|confirm|runConfirmed|changePassword|doLogout|doLogin|doRegister|mkOpenCompModal|resetUserPassword|applyMaterialToTraining|pickTnaLink|setEval|setLeaderboard(Dept|Designation)|setTrainingSession|setTrainingTarget|toggleAssessmentCycleActive|toggleCompetencyTraining|toggleDevProgramParticipant|toggleTrainingDevProgramOnly|toggleTnaModInlineMode|addDev|addComp|__assess(Add|Delete|Edit)|devEvToggleDone|legacyRun|psych(Upload|Delete|SaveMap|Template)|reviewDevProgram|toggleDevProgramManualDone|syncDevProgramCertificate|openDevProgramPanel|rerenderDevProgram|closeDevProgramBuilder/i;
 var LABEL=/(^|[^a-z])(tambah|baru|hapus|edit|ubah|simpan|unggah|upload|import|kirim|undang|setujui|tolak|revisi|buat training|generate|reminder|pengingat|export|unduh|download|template|keluar|logout)([^a-z]|$)/i;
