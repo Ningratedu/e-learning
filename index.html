@@ -1071,8 +1071,13 @@ html.dark .dpx-hero.gold{background:linear-gradient(135deg,var(--th-800,#1e40af)
 .dpx-status{display:inline-flex;align-items:center;gap:5px;font-size:10px;font-weight:800;padding:4px 10px;border-radius:999px;background:rgba(255,255,255,.18);border:1px solid rgba(255,255,255,.28);backdrop-filter:blur(4px)}
 .dpx-title{font-size:16px;line-height:1.3;font-weight:900;margin:8px 0 0;word-break:break-word}
 .dpx-desc{font-size:11px;line-height:1.5;margin:4px 0 0;color:rgba(255,255,255,.82);max-width:62ch}
+.dpx-desc-row{display:flex;align-items:baseline;gap:6px;max-width:min(62ch,100%);margin-top:4px}
+.dpx-desc-row .dpx-desc{flex:1 1 0;min-width:0;margin:0;max-width:none}
 .dpx-desc.dpx-clamp:not(.open){white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.dpx-more{background:none;border:0;padding:0;margin:2px 0 0;font-family:inherit;font-size:10.5px;font-weight:800;color:#fff;text-decoration:underline;cursor:pointer;opacity:.95}.dpx-more:hover{opacity:1}
+.dpx-desc-row.is-open{flex-wrap:wrap}
+.dpx-desc-row.is-open .dpx-desc{flex:1 1 100%;white-space:normal}
+.dpx-more{background:none;border:0;padding:0;margin:0;font-family:inherit;font-size:10.5px;font-weight:800;color:#fff;text-decoration:underline;cursor:pointer;opacity:.95;flex:0 0 auto;white-space:nowrap;line-height:1.5}.dpx-more:hover{opacity:1}
+.dpx-hero-main>.dpx-cert{display:inline-flex;margin-top:12px;clear:both}
 .dpx-path{display:flex;align-items:center;gap:8px;margin-top:11px;max-width:380px}
 .dpx-pill{font-size:10px;font-weight:800;padding:4px 10px;border-radius:999px;background:rgba(255,255,255,.16);border:1px solid rgba(255,255,255,.3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:42%}
 .dpx-pill.to{background:#fff;color:var(--th-700,#1d4ed8);border-color:#fff}
@@ -1082,7 +1087,7 @@ html.dark .dpx-hero.gold{background:linear-gradient(135deg,var(--th-800,#1e40af)
 .dpx-chips{display:flex;flex-wrap:wrap;gap:5px;margin-top:11px}
 .dpx-chip{display:inline-flex;align-items:center;gap:5px;font-size:10px;font-weight:700;padding:4px 9px;border-radius:9px;background:rgba(0,0,0,.18);color:rgba(255,255,255,.95)}
 .dpx-chip i{font-size:9px;opacity:.8}
-.dpx-cert{display:inline-flex;align-items:center;gap:8px;margin-top:12px;font-size:11px;font-weight:800;padding:8px 14px;border-radius:12px;background:#fff;color:var(--th-700,#1d4ed8);border:0;cursor:pointer;box-shadow:0 10px 24px -10px rgba(0,0,0,.5)}
+.dpx-cert{display:flex;align-items:center;gap:8px;margin-top:12px;width:fit-content;max-width:100%;font-size:11px;font-weight:800;padding:8px 14px;border-radius:12px;background:#fff;color:var(--th-700,#1d4ed8);border:0;cursor:pointer;box-shadow:0 10px 24px -10px rgba(0,0,0,.5)}
 .dpx-cert:hover{transform:translateY(-1px)}
 .dpx-donut-wrap{position:relative;flex:0 0 auto;width:88px;text-align:center}
 .dpx-donut{display:block;width:88px;height:88px}
@@ -3432,7 +3437,7 @@ window.ROUTES["dev-programs"]=function(){const me=window.STATE.user;const myUser
     const notes=(prog.status==="ditolak"?`<div class="dpx-note bad"><i class="fas fa-circle-info mr-1"></i>Program ini belum diluluskan. Hubungi HR untuk tindak lanjut.</div>`:prog.status==="menunggu_approval"?`<div class="dpx-note wait"><i class="fas fa-hourglass-half mr-1"></i>Semua journey selesai. Menunggu keputusan akhir dari admin.</div>`:"")+(dpBannerHtml(prog)||"");
     return`<section class="dpx-prog"><div class="dpx-hero${lulus?" gold":""}">${lulus?dpHeroConfetti():""}
       <div class="dpx-hero-main"><span class="dpx-status"><i class="fas ${stIc}"></i>${lulus?"Selamat, kamu lulus!":devProgramStatusLabel(prog.status)}</span>
-        <h2 class="dpx-title">${esc(p.title)}</h2>${p.description?`<p class="dpx-desc dpx-clamp">${esc(p.description)}</p>${String(p.description).length>60?`<button type="button" class="dpx-more" onclick="var d=this.previousElementSibling,o=d.classList.toggle('open');this.textContent=o?'Sembunyikan':'Selengkapnya'">Selengkapnya</button>`:""}`:""}${path}${chips?`<div class="dpx-chips">${chips}</div>`:""}${cert}</div>
+        <h2 class="dpx-title">${esc(p.title)}</h2>${p.description?(String(p.description).length>60?`<div class="dpx-desc-row"><p class="dpx-desc dpx-clamp">${esc(p.description)}</p><button type="button" class="dpx-more" onclick="var r=this.parentElement,d=r.querySelector('.dpx-desc'),o=d.classList.toggle('open');r.classList.toggle('is-open',o);this.textContent=o?'Sembunyikan':'Selengkapnya'">Selengkapnya</button></div>`:`<p class="dpx-desc">${esc(p.description)}</p>`):""}${path}${chips?`<div class="dpx-chips">${chips}</div>`:""}${cert}</div>
       <div class="dpx-donut-wrap"><svg class="dpx-donut" viewBox="0 0 100 100" role="img" aria-label="Progres ${pct} persen"><circle class="trk" cx="50" cy="50" r="44"/><circle class="arc" cx="50" cy="50" r="44" transform="rotate(-90 50 50)" style="--o:${off}"/></svg><div class="dpx-pct"><b>${pct}</b><span>%</span></div><div class="dpx-donut-cap">${prog.doneCount} dari ${prog.totalCount} journey</div></div></div>
       ${notes?`<div class="dpx-notes">${notes}</div>`:""}
       <ol class="dpx-tl${prog.stages.length>=3&&prog.stages.length<=5?" h"+(prog.stages.length===5?" h5":""):""}" style="--n:${prog.stages.length}">${prog.stages.map((s,i)=>dpUserJourneyCard(p,me,prog,i)).join("")}</ol></section>`}).join("")||`<div class="dpx-empty"><i class="fas fa-arrow-trend-up text-3xl mb-3 block text-slate-200"></i>Kamu belum terdaftar di Development Program manapun.</div>`;
