@@ -9420,6 +9420,8 @@ function catOf(d,end){if(d>end)return 0;return end>edate(d,12)?4:end>=edate(d,6)
 function periodEnd(){const m=S.period.match(/^(\d{4})-(\d{2})$/);return m?new Date(+m[1],+m[2],0):null}
 const fmt=d=>d?`${String(d.getDate()).padStart(2,"0")}/${String(d.getMonth()+1).padStart(2,"0")}/${d.getFullYear()}`:"-";
 const emps=()=>window.STATE.employees||[];
+/* data booking/leads HANYA untuk bulan periode terpilih (berdasarkan kolom Tanggal GCI). Data lama tanpa c.m dianggap total file. */
+function mo(c){if(!c)return{n:0,all:0,st:{}};if(!c.m)return c;return c.m[S.period]||{n:0,all:0,st:{}}}
 const SALES_DESIG=["sales","sales counter","sales counter strategic","commercial marketing"];
 const isSalesDesig=d=>SALES_DESIG.includes(String(d||"").toLowerCase().replace(/\s+/g," ").trim());
 const desigOk=e=>isSalesDesig(FKEY.desig.f(e))&&(!S.desig||!S.desig.size||S.desig.has(FKEY.desig.f(e)));
@@ -9435,14 +9437,14 @@ function thS(label,key,st,fn){const on=st&&st.key===key;return`<th class="px-3 p
 function compute(){const end=periodEnd();if(!end||!S.rows)return null;
  const T=S.targets.map(x=>+x||0),used=new Set,out=[];
  emps().forEach(e=>{if(e.tglResign||!desigOk(e))return;const u=nu(e.username);used.add(u);
-  const c=S.counts[u]||{n:0,join:null},jd=pd(e.tglBergabung)||c.join,ci=jd?catOf(jd,end):null;
-  out.push({e,user:e.username,nama:e.nama,desig:e.designation,rm:c.rm||e.rm,bm:c.bm||e.bm,spv:c.spv||e.mentor,_rmX:!!c.rm,_bmX:!!c.bm,_spvX:!!c.spv,join:jd,cat:ci,target:ci==null?null:T[ci],book:c.n,all:c.all||0,kpi:ci==null||!T[ci]?null:c.n/T[ci]})});
+  const c=S.counts[u]||{n:0,join:null},mm=mo(S.counts[u]),jd=pd(e.tglBergabung)||c.join,ci=jd?catOf(jd,end):null;
+  out.push({e,user:e.username,nama:e.nama,desig:e.designation,rm:c.rm||e.rm,bm:c.bm||e.bm,spv:c.spv||e.mentor,_rmX:!!c.rm,_bmX:!!c.bm,_spvX:!!c.spv,join:jd,cat:ci,target:ci==null?null:T[ci],book:mm.n,all:mm.all||0,kpi:ci==null||!T[ci]?null:mm.n/T[ci]})});
  const rows=out.filter(x=>["rm","bm","spv"].every(k=>!S[k].size||S[k].has(FKEY[k].f(x.e))));
  rows.sort((a,b)=>String(a.desig).localeCompare(String(b.desig))||b.book-a.book);
  sortBy(rows,S.sort);
  return{rows,end}}
 function orphans(){const by={};emps().forEach(e=>by[nu(e.username)]=e);const nf=[],ex=[];
- Object.keys(S.counts).forEach(u=>{const c=S.counts[u],e=by[u],base={user:c.user||u,jab:c.jab,join:c.join,book:c.n,all:c.all};
+ Object.keys(S.counts).forEach(u=>{const c=S.counts[u],mm=mo(c);if(c.m&&!mm.all)return;const e=by[u],base={user:c.user||u,jab:c.jab,join:c.join,book:mm.n,all:mm.all};
   if(!e)nf.push(base);else if(e.tglResign)ex.push({...base,nama:e.nama,why:"Sudah resign"});
   else if(!desigOk(e))ex.push({...base,nama:e.nama,why:isSalesDesig(e.designation)?`Designation "${e.designation||"-"}" tidak dipilih`:`Designation "${e.designation||"-"}" bukan sales`})});
  const s=(a,b)=>b.book-a.book||a.user.localeCompare(b.user);return{nf:sortBy(nf.sort(s),S.ms.nf),ex:sortBy(ex.sort(s),S.ms.ex)}}
@@ -9487,18 +9489,20 @@ window.kpiSalesFile=async function(inpEl){const f=inpEl.files&&inpEl.files[0];if
   var colBm=__findColExact(["bm","nama bm","branch manager"]);
   var colSpv=__findColExact(["asstn bm","asstn.bm","assten bm","asisten bm","assistant bm","asst bm","nama spv","spv","spv/mentor","mentor","nama mentor","supervisor"]);
   S.__kpiOrgCols={rm:colRm,bm:colBm,spv:colSpv};
-  const counts={};let maxD=null,total=0;
+  const counts={};let maxD=null,total=0,noDate=0;
   rows.forEach(r=>{const u=nu(r["Marketing"]);if(!u)return;const st=nu(r["Status Proses"]);const g=pd(r["Tanggal GCI"]);if(g&&(!maxD||g>maxD))maxD=g;
-   const c=counts[u]||(counts[u]={n:0,all:0,join:null,jab:"",st:{},user:String(r["Marketing"]).trim(),rm:"",bm:"",spv:""});c.all++;const j=pd(r["Tgl Gabung"]);if(j&&!c.join)c.join=j;if(!c.jab&&r["Jabatan"])c.jab=String(r["Jabatan"]);
+   const c=counts[u]||(counts[u]={n:0,all:0,join:null,jab:"",st:{},m:{},user:String(r["Marketing"]).trim(),rm:"",bm:"",spv:""});c.all++;
+   const gk=g?g.getFullYear()+"-"+String(g.getMonth()+1).padStart(2,"0"):"";const mc=gk?(c.m[gk]||(c.m[gk]={n:0,all:0,st:{}})):null;if(mc)mc.all++;else noDate++;const j=pd(r["Tgl Gabung"]);if(j&&!c.join)c.join=j;if(!c.jab&&r["Jabatan"])c.jab=String(r["Jabatan"]);
    var __orgOk=function(v){v=String(v||"").trim();if(!v)return"";var low=v.toLowerCase();if(/^(non[\s_]?spv|non[\s_]?rm|self[\s_]?booking|non|-)$/i.test(low))return"";if(/^problem\s*\(/i.test(low))return"";return v};
    if(colRm){var vRm=__orgOk(r[colRm]);if(vRm)c.rm=vRm}
    if(colBm){var vBm=__orgOk(r[colBm]);if(vBm)c.bm=vBm}
    if(colSpv){var vSp=__orgOk(r[colSpv]);if(vSp)c.spv=vSp}
-   if(st!=="leads"&&st!=="lead"){c.n++;total++;const sl=String(r["Status Proses"]).trim()||"(kosong)";c.st[sl]=(c.st[sl]||0)+1}});
+   if(st!=="leads"&&st!=="lead"){c.n++;const sl=String(r["Status Proses"]).trim()||"(kosong)";c.st[sl]=(c.st[sl]||0)+1;if(mc){mc.n++;mc.st[sl]=(mc.st[sl]||0)+1}}});
   S.file=f.name;S.rows=rows;S.counts=counts;S.rowCount=rows.length;S.__dirtyCounts=true;
   if(maxD)S.period=`${maxD.getFullYear()}-${String(maxD.getMonth()+1).padStart(2,"0")}`;
+  Object.keys(counts).forEach(u=>{const m=counts[u].m[S.period];if(m)total+=m.n});
   var orgN=[colRm,colBm,colSpv].filter(Boolean).length;
-  window.toast(rows.length+" baris dibaca, "+total+" booking (bukan Leads)."+(orgN?" Mapping: "+[colRm&&(colRm+"→RM"),colBm&&(colBm+"→BM"),colSpv&&(colSpv+"→SPV")].filter(Boolean).join(", ")+".":""),"success")}
+  window.toast(rows.length+" baris dibaca, "+total+" booking (bukan Leads) pada "+(S.period||"-")+"."+(noDate?" "+noDate+" baris tanpa Tanggal GCI valid diabaikan.":"")+(orgN?" Mapping: "+[colRm&&(colRm+"→RM"),colBm&&(colBm+"→BM"),colSpv&&(colSpv+"→SPV")].filter(Boolean).join(", ")+".":""),"success")}
  catch(err){console.error(err);window.toast(err.message||"Gagal membaca file","error")}
  renderTop();renderRes()};
 window.ksSort=function(k){S.sort=nextSort(S.sort,k);renderRes()};
@@ -9535,7 +9539,7 @@ window.kpiSalesExport=async function(){const r=compute();if(!r)return;
  const ws=XLSX.utils.aoa_to_sheet(aoa),wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,"KPI Sales");XLSX.writeFile(wb,`KPI_Sales_${S.period}.xlsx`)};
 /* ---------- detail card ---------- */
 const rowStat=x=>x.target==null?"Tgl gabung kosong":x.book>=x.target?"Perform":"Under Perform";
-const stTxt=x=>{const c=S.counts[nu(x.user)];return c?Object.entries(c.st||{}).sort((a,b)=>b[1]-a[1]).map(e=>e[0]+" "+e[1]).join(", "):""};
+const stTxt=x=>{const c=S.counts[nu(x.user)];return c?Object.entries(mo(c).st||{}).sort((a,b)=>b[1]-a[1]).map(e=>e[0]+" "+e[1]).join(", "):""};
 const kpiTxt=x=>x.kpi==null?"":Math.round(x.kpi*1e3)/10+"%";
 const selTxt=x=>x.target==null?"":(x.book-x.target>0?"+":"")+(x.book-x.target);
 const CL={
@@ -9564,7 +9568,7 @@ const DT={
 function detailRows(){const r=compute();if(!r||!S.dm)return null;const d=DT[S.dm.type];const rows=d.rows(r).slice();sortBy(rows,S.dm.sort||d.def||null);return{d,rows}}
 function fillDetail(){const ov=document.getElementById("ks-dmodal");if(!ov)return;const o=detailRows();if(!o)return;const{d,rows}=o,eff=S.dm.sort||d.def||null;
  const cols=d.cols.map(c=>CL[c]).filter(c=>!c.hide);
- let chips="";if(S.dm.type==="book"){const agg={};rows.forEach(x=>{const c=S.counts[nu(x.user)];if(c)Object.entries(c.st||{}).forEach(e=>agg[e[0]]=(agg[e[0]]||0)+e[1])});
+ let chips="";if(S.dm.type==="book"){const agg={};rows.forEach(x=>{const c=S.counts[nu(x.user)];if(c)Object.entries(mo(c).st||{}).forEach(e=>agg[e[0]]=(agg[e[0]]||0)+e[1])});
   chips=`<div class="flex flex-wrap gap-1.5 px-5 pb-2">${Object.entries(agg).sort((a,b)=>b[1]-a[1]).map(e=>`<span class="text-[10px] font-bold px-2 py-1 rounded-full bg-indigo-50 text-indigo-600">${E(e[0])} <b>${e[1]}</b></span>`).join("")}</div>`}
  const sc=ov.querySelector("[data-ks-scroll]"),top=sc?sc.scrollTop:0;
  ov.innerHTML=`<div style="width:100%;max-width:980px;max-height:88vh;display:flex;flex-direction:column" class="bg-white rounded-3xl shadow-2xl"><div class="flex items-center justify-between gap-2 px-5 py-3"><div><h2 class="text-sm font-black text-slate-800">${E(d.title)}</h2><p class="text-[10px] text-slate-500">${rows.length} karyawan • ${E(d.sub)}</p></div><div class="flex gap-2"><button onclick="window.ksDExport()" class="text-xs font-bold px-3 py-1.5 rounded-xl bg-white border border-slate-200 text-slate-600"><i class="fas fa-file-export mr-1"></i>Export</button><button onclick="document.getElementById('ks-dmodal').remove()" class="text-xs font-bold px-3 py-1.5 rounded-xl bg-slate-100 text-slate-600">Tutup</button></div></div>${chips}
