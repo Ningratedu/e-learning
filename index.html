@@ -5068,13 +5068,13 @@ window.onboardingBatchRule=function(emp,d){
   else{r=(g&&(cfg.desigRules[dk+"|"+g]||cfg.desigRules[dn+"|"+g]))||cfg.deptRules[dn]||""} /* pengaturan lama yang belum punya aturan per perusahaan */
   if(!r&&dn&&cfg.salesMarketingDepts.some(function(x){return String(x).trim().toLowerCase()===dn}))r="sales_marketing";
   if(r==="none")return"none";
-  return cfg.types.some(function(t){return t.id===r})?r:cfg.defaultId
+  return cfg.types.some(function(t){return t.id===r})?r:"unassigned"
 };
 window.__onbTypeName=function(id){
   const c=window.onboardingScheduleConfig();
   const list=c.versions.map(function(v){return v.cfg}).reverse().concat([c.base]);
   for(let i=0;i<list.length;i++){const t=list[i].types.find(function(x){return x.id===id});if(t)return t.name}
-  return id==="sales_marketing"?"Sales & Marketing":"Departemen lain"
+  return id==="unassigned"?"Belum Ditetapkan":id==="sales_marketing"?"Sales & Marketing":"Departemen lain"
 };
 window.__onbCycleInfo=function(){
   const c=window.onboardingScheduleConfig();
@@ -5085,7 +5085,7 @@ window.__onbCycleInfo=function(){
 window.saveOnboardingScheduleConfig=async function(deptList){const{ref:ref,setDoc:setDoc}=window.LMS_DB;await setDoc(ref("settings","onboardingSchedule"),{salesMarketingDepts:deptList},{merge:true});window.toast("Konfigurasi departemen Sales & Marketing disimpan","success")};window.isSalesMarketingDept=function(deptName){const cfg=window.onboardingScheduleConfig();const d=String(deptName||"").trim().toLowerCase();if(!d)return false;return cfg.salesMarketingDepts.some(x=>String(x).trim().toLowerCase()===d)};function addDaysSafe(d,n){const r=new Date(d);r.setDate(r.getDate()+n);return r}function dateOnlySafe(v){let d;if(!v)return null;if(v instanceof Date)d=v;else if(typeof v.toDate==="function")d=v.toDate();else if(typeof v.seconds==="number")d=new Date(v.seconds*1e3);else d=new Date(v);if(isNaN(d))return null;d=new Date(d);d.setHours(0,0,0,0);return d}function isoDateKeySafe(d){if(!d||isNaN(d))return"";return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0")}window.__onbNaturalBatchFor=function(emp){
   const d=dateOnlySafe(emp&&emp.tglBergabung);if(!d)return null;
   const rid=window.onboardingBatchRule(emp,d);if(rid==="none")return null;
-  const cfg=window.onboardingScheduleConfigFor(d);const t=cfg.types.find(function(x){return x.id===rid})||cfg.types[0];
+  const cfg=window.onboardingScheduleConfigFor(d);let t;if(rid==="unassigned"){const bt=cfg.types.find(function(x){return x.id===cfg.defaultId})||cfg.types[0];t={id:"unassigned",name:"Belum Ditetapkan",color:"slate",windows:bt.windows}}else t=cfg.types.find(function(x){return x.id===rid})||cfg.types[0];
   const dow=d.getDay();let best=null;
   t.windows.forEach(function(w){const gap=(w.s-dow+7)%7;if(!best||gap<best.gap)best={gap:gap,w:w}});
   const w=best.w,start=addDaysSafe(d,best.gap),deadline=addDaysSafe(start,(w.e-w.s+7)%7),windowLabel=window.__onbWinLabel(w);
@@ -5617,7 +5617,7 @@ function __ocBuildRows(){
 function __ocType(id){return __ocDraft.types.find(function(t){return t.id===id})}
 function __ocEffDept(cfg,r){
   let v=cfg.deptRules[r.key]||(!__ocIsDef(r.company)?cfg.deptRules[r.dn]:"")||(cfg.salesMarketingDepts.some(function(x){return __ocN(x)===r.dn})?"sales_marketing":"");
-  if(v==="none")return v;return cfg.types.some(function(t){return t.id===v})?v:cfg.defaultId
+  if(v==="none")return v;return cfg.types.some(function(t){return t.id===v})?v:""
 }
 function __ocSig(d){return JSON.stringify([d.types,d.defaultId,Object.keys(d.dept).sort().map(function(k){return[k,d.dept[k]]}),Object.keys(d.desig).sort().map(function(k){return[k,d.desig[k]]})])}
 function __ocInit(src){
@@ -5631,13 +5631,13 @@ function __ocInit(src){
 }
 function __ocSync(){
   const was=__ocSig(__ocDraft)!==__ocBase,cfg=__ocSrc||window.onboardingScheduleConfig();__ocRows=__ocBuildRows();
-  __ocRows.forEach(function(r){if(!__ocDraft.dept[r.key]){let v=__ocEffDept(cfg,r);if(v!=="none"&&!__ocType(v))v=__ocDraft.defaultId;__ocDraft.dept[r.key]=v}});
+  __ocRows.forEach(function(r){if(!Object.prototype.hasOwnProperty.call(__ocDraft.dept,r.key)){let v=__ocEffDept(cfg,r);if(v!=="none"&&v&&!__ocType(v))v="";__ocDraft.dept[r.key]=v}});
   if(!was)__ocBase=__ocSig(__ocDraft)
 }
 function __ocRuleOf(e){
   const dn=__ocN(e.dept),g=__ocN(e.designation),d=__ocKey(window.empCompany?window.empCompany(e):"",dn);
-  const r=__ocDraft.desig[d+"|"+g]||__ocDraft.dept[d]||__ocDraft.defaultId;
-  if(r==="none")return r;return __ocType(r)?r:__ocDraft.defaultId
+  const dd=__ocDraft.dept[d];const r=__ocDraft.desig[d+"|"+g]||(dd===undefined?"":dd);
+  if(r==="none")return r;return __ocType(r)?r:""
 }
 function __ocStartFor(t,dow){let best=null;t.windows.forEach(function(w){const gap=(w.s-dow+7)%7;if(!best||gap<best.gap)best={gap:gap,w:w}});return best}
 function __ocDaySel(val,fn){return'<select onchange="'+fn+'" class="border border-slate-200 rounded-lg px-2 py-1 text-[11px] font-bold text-slate-600 bg-white">'+window.__ONB_DAYS.map(function(d,i){return'<option value="'+i+'"'+(i===val?' selected':'')+'>'+d+'</option>'}).join("")+'</select>'}
@@ -5730,7 +5730,7 @@ function __ocTypesHtml(){
 }
 function __ocRuleSel(cur,fn,follow){
   const D=__ocDraft;
-  const opts=(follow?'<option value=""'+(cur===""?' selected':'')+'>Ikuti departemen</option>':'')
+  const opts=(follow?'<option value=""'+(cur===""?' selected':'')+'>Ikuti departemen</option>':'<option value=""'+(cur===""?' selected':'')+'>Belum ditetapkan</option>')
     +D.types.map(function(t){return'<option value="'+t.id+'"'+(cur===t.id?' selected':'')+'>'+window.escapeHtml(t.name||"(tanpa nama)")+'</option>'}).join("")
     +'<option value="none"'+(cur==="none"?' selected':'')+'>Tidak ikut batch</option>';
   const t=__ocType(cur);
@@ -5738,12 +5738,12 @@ function __ocRuleSel(cur,fn,follow){
   return'<div class="flex items-center gap-1.5">'+dot+'<select onchange="'+fn+'" class="border border-slate-200 rounded-lg px-2 py-1 text-[11px] font-bold text-slate-600 bg-white max-w-[180px]">'+opts+'</select></div>'
 }
 function __ocSumHtml(){
-  const D=__ocDraft,c={};let none=0;D.types.forEach(function(t){c[t.id]=0});
-  (window.STATE.employees||[]).forEach(function(e){if(!__ocInScope(e))return;const r=__ocRuleOf(e);if(r==="none")none++;else c[r]++});
+  const D=__ocDraft,c={};let none=0,unas=0;D.types.forEach(function(t){c[t.id]=0});
+  (window.STATE.employees||[]).forEach(function(e){if(!__ocInScope(e))return;const r=__ocRuleOf(e);if(r==="none")none++;else if(!r)unas++;else c[r]++});
   const dirty=__ocSig(D)!==__ocBase;
   return'<div class="flex flex-wrap gap-1.5 items-center">'
     +D.types.map(function(t){return'<span class="text-[10px] font-black px-2.5 py-1 rounded-full '+__ocPal(t.color).b+'">'+window.escapeHtml(t.name||"(tanpa nama)")+': '+c[t.id]+'</span>'}).join("")
-    +'<span class="text-[10px] font-black px-2.5 py-1 rounded-full bg-slate-100 text-slate-500">Tidak ikut batch: '+none+'</span>'
+    +'<span class="text-[10px] font-black px-2.5 py-1 rounded-full bg-slate-100 text-slate-500">Belum ditetapkan: '+unas+'</span>'+'<span class="text-[10px] font-black px-2.5 py-1 rounded-full bg-slate-100 text-slate-500">Tidak ikut batch: '+none+'</span>'
     +'<span class="text-[10px] text-slate-400">karyawan terdampak</span>'
     +(dirty?'<span class="text-[10px] font-black text-amber-600"><i class="fas fa-circle text-[6px] mr-1"></i>Belum disimpan</span>':'')+'</div>'
 }
@@ -5764,7 +5764,7 @@ function __ocListHtml(){
         +'<p class="text-[11px] font-black uppercase tracking-wide text-slate-500 flex-1 min-w-0 truncate">'+E(r.company)+' <span class="text-slate-300 font-bold normal-case tracking-normal">• '+nd+' departemen • '+ne+' karyawan</span></p>'
         +'<select onchange="window.onbCfgSetCompany('+ci+',this.value);this.selectedIndex=0" class="border border-slate-200 rounded-lg px-2 py-1 text-[11px] font-bold text-slate-500 bg-white max-w-[190px]"><option value="">Atur semua departemen…</option>'
         +__ocDraft.types.map(function(t){return'<option value="'+t.id+'">'+E(t.name||"(tanpa nama)")+'</option>'}).join("")
-        +'<option value="none">Tidak ikut batch</option></select></div>'
+        +'<option value="__unset__">Belum ditetapkan</option><option value="none">Tidak ikut batch</option></select></div>'
     }
     const open=__ocExp.has(ri)||(!!q&&!nameHit);
     let ov=0;r.list.forEach(function(g){if(__ocDraft.desig[r.key+"|"+g.key])ov++});
@@ -5778,7 +5778,7 @@ function __ocListHtml(){
             +__ocRuleSel(cur,"window.onbCfgSetDesig("+ri+","+gi+",this.value)",true)+'</div>'}).join("")
           :'<p class="text-[11px] text-slate-400 py-1">Belum ada data designation di departemen ini.</p>')+'</div>'
     }
-    const dcur=__ocDraft.dept[r.key]||__ocDraft.defaultId;
+    const dcur=__ocDraft.dept[r.key]===undefined?"":__ocDraft.dept[r.key];
     return hdr+'<div class="border border-slate-100 rounded-2xl mb-1.5"><div class="flex items-center gap-2 flex-wrap px-3 py-2">'
       +'<button type="button" onclick="window.onbCfgToggleDept('+ri+')" class="w-5 text-slate-400"><i class="fas fa-chevron-'+(open?"down":"right")+' text-[10px]"></i></button>'
       +'<div class="min-w-0 flex-1"><p class="text-xs font-black text-slate-700 truncate">'+E(r.name)+'</p><p class="text-[10px] text-slate-400">'+(multi?E(r.company)+' • ':'')+r.count+' karyawan • '+r.list.length+' designation'+(ov?' • <span class="text-amber-600 font-bold">'+ov+' pengecualian</span>':'')+'</p></div>'
@@ -5791,7 +5791,7 @@ function __ocInner(){
   if(!__ocDraft)__ocInit();else __ocSync();
   return'<div class="flex items-center gap-2"><h3 class="font-black text-sm text-slate-700 flex-1"><i class="fas fa-sliders text-violet-500 mr-1"></i> Atur Batch</h3><button type="button" onclick="window.onbCfgToggle()" title="Tutup" class="text-slate-400 hover:text-slate-600 w-7 h-7 rounded-full hover:bg-slate-100 transition"><i class="fas fa-xmark"></i></button></div>'
     +'<p class="text-xs text-slate-400 mt-1">Pengaturan dibuat berlapis menurut tanggal bergabung, jadi perubahan baru tidak menggeser batch yang sudah berjalan.</p>'+__ocActiveNote()+'<p class="text-xs font-black text-slate-600 mt-3">Riwayat pengaturan</p><div id="onb-cfg-hist" class="mt-1">'+__ocHistHtml()+'</div>'+'<p class="text-xs font-black text-slate-600 mt-4">1. Jenis sesi &amp; harinya</p>'
-    +'<p class="text-xs text-slate-400 mb-2">Buat jenis sesi sendiri. Tiap jenis punya satu atau beberapa hari mulai; karyawan masuk ke hari mulai terdekat setelah tanggal bergabungnya, dan batas waktunya jatuh di hari selesai. Jenis <b>Default</b> dipakai untuk departemen yang belum diatur.</p>'
+    +'<p class="text-xs text-slate-400 mb-2">Buat jenis sesi sendiri. Tiap jenis punya satu atau beberapa hari mulai; karyawan masuk ke hari mulai terdekat setelah tanggal bergabungnya, dan batas waktunya jatuh di hari selesai. Jenis <b>Default</b> hanya dipakai untuk menentukan hari sesi karyawan yang departemennya <b>Belum ditetapkan</b>. Mereka tampil di batch bernama Belum Ditetapkan, tidak otomatis masuk ke jenis sesi lain.</p>'
     +'<div id="onb-cfg-types">'+__ocTypesHtml()+'</div>'
     +'<p class="text-xs font-black text-slate-600 mt-4">2. Perusahaan, departemen &amp; designation per jenis sesi</p>'
     +'<p class="text-xs text-slate-400 mb-2">Aturan dibuat per perusahaan, jadi departemen dengan nama sama di perusahaan berbeda bisa punya jenis sesi sendiri-sendiri. Pilih jenis sesi tiap departemen, atau <b>Tidak ikut batch</b>. Buka departemen untuk membuat pengecualian per designation; aturan designation menimpa aturan departemennya.</p>'
@@ -5821,7 +5821,7 @@ window.onbCfgToggle=function(){__ocOpen=!__ocOpen;if(__ocOpen){__ocInit();__ocQ=
 window.onbCfgToggleDept=function(i){if(__ocExp.has(i))__ocExp.delete(i);else __ocExp.add(i);__ocRefreshList()};
 window.onbCfgSetDept=function(i,v){const d=__ocRows[i];if(!d)return;__ocDraft.dept[d.key]=v;__ocRefreshList()};
 window.onbCfgSetDesig=function(i,gi,v){const d=__ocRows[i],g=d&&d.list[gi];if(!g)return;const k=d.key+"|"+g.key;if(v)__ocDraft.desig[k]=v;else delete __ocDraft.desig[k];__ocRefreshList()};
-window.onbCfgSetCompany=function(ci,v){const co=__ocCoNames[ci];if(!co||!v)return;__ocRows.forEach(function(r){if(r.company===co)__ocDraft.dept[r.key]=v});__ocRefreshList()};
+window.onbCfgSetCompany=function(ci,v){const co=__ocCoNames[ci];if(!co||!v)return;const nv=v==="__unset__"?"":v;__ocRows.forEach(function(r){if(r.company===co)__ocDraft.dept[r.key]=nv});__ocRefreshList()};
 window.onbCfgSearch=function(v){__ocQ=v||"";__ocRefreshList()};
 window.onbCfgRevert=function(){__ocInit(__ocSrc);__ocRefreshAll()};
 window.onbCfgTypeName=function(ti,v){__ocDraft.types[ti].name=v;__ocRefreshList()};
@@ -5833,7 +5833,7 @@ window.onbCfgWin=function(ti,wi,f,v){const w=__ocDraft.types[ti].windows[wi];if(
 window.onbCfgWinAdd=function(ti){const t=__ocDraft.types[ti],used=t.windows.map(function(w){return w.s});let s=2;for(let i=0;i<7;i++){const d=(2+i)%7;if(used.indexOf(d)<0){s=d;break}}t.windows.push({s:s,e:(s+2)%7});__ocRefreshTypes()};
 window.onbCfgWinDel=function(ti,wi){const t=__ocDraft.types[ti];if(t.windows.length>1)t.windows.splice(wi,1);__ocRefreshTypes()};
 window.onbCfgTypeAdd=function(){const D=__ocDraft,used=D.types.map(function(t){return t.color});const color=__ocColors.find(function(c){return used.indexOf(c)<0})||__ocColors[D.types.length%__ocColors.length];D.types.push({id:"t"+Date.now().toString(36)+Math.floor(Math.random()*1296).toString(36),name:"Jenis Sesi Baru",color:color,windows:[{s:2,e:4}]});__ocRefreshTypes()};
-window.onbCfgTypeDel=function(ti){const D=__ocDraft;if(D.types.length<2)return;const gone=D.types[ti].id;D.types.splice(ti,1);if(D.defaultId===gone)D.defaultId=D.types[0].id;Object.keys(D.dept).forEach(function(k){if(D.dept[k]===gone)D.dept[k]=D.defaultId});Object.keys(D.desig).forEach(function(k){if(D.desig[k]===gone)delete D.desig[k]});__ocRefreshTypes()};
+window.onbCfgTypeDel=function(ti){const D=__ocDraft;if(D.types.length<2)return;const gone=D.types[ti].id;D.types.splice(ti,1);if(D.defaultId===gone)D.defaultId=D.types[0].id;Object.keys(D.dept).forEach(function(k){if(D.dept[k]===gone)D.dept[k]=""});Object.keys(D.desig).forEach(function(k){if(D.desig[k]===gone)delete D.desig[k]});__ocRefreshTypes()};
 window.onbCfgMode=function(m){__ocMode=m;const w=document.getElementById("onb-cfg-when");if(w)w.innerHTML=__ocWhenHtml();__ocRefreshList()};
 window.onbCfgFrom=function(v){__ocFrom=v||"";const p=document.getElementById("onb-cfg-scope");if(p)p.innerHTML=__ocScopeHtml();__ocRefreshList()};
 window.onbCfgEditVer=function(idx){const c=window.onboardingScheduleConfig();const src=idx<0?c.base:(c.versions[idx]&&c.versions[idx].cfg);if(!src)return;__ocInit(src);__ocMode=idx<0?"base":"date";if(idx>=0)__ocFrom=c.versions[idx].from;__ocQ="";__ocExp=new Set;__ocRefreshAll()};
@@ -5856,7 +5856,7 @@ window.saveOnbBatchRules=async function(){
   });
   if(__ocMode==="date"&&!/^\d{4}-\d{2}-\d{2}$/.test(__ocFrom))throw new Error("Pilih tanggal mulai berlaku");
   const{ref:ref,setDoc:setDoc}=window.LMS_DB;
-  const dr=Object.keys(D.dept).map(function(k){return{d:k,r:D.dept[k]}});
+  const dr=Object.keys(D.dept).map(function(k){return{d:k,r:D.dept[k]}}).filter(function(x){return x.r});
   const gr=[];__ocRows.forEach(function(r){r.list.forEach(function(g){const v=D.desig[r.key+"|"+g.key];if(v)gr.push({d:r.key,g:g.key,r:v})})});
   const sm=__ocRows.filter(function(r){return __ocIsDef(r.company)&&D.dept[r.key]==="sales_marketing"}).map(function(r){return r.name});
   const st=D.types.map(function(t){return{id:t.id,name:t.name,color:t.color,trainer:String(t.trainer||"").trim(),room:String(t.room||"").trim(),windows:t.windows.map(function(w){return{s:w.s,e:w.e}})}});
