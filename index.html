@@ -11770,6 +11770,8 @@ window.openOnbFacil=function(key,idsCsv,recId){
   document.getElementById("onb-facil-overlay")?.remove();
   var rec=recId?items().find(function(r){return r.id===recId}):null;
   var ids=new Set(rec?(rec.memberIds||[]):String(idsCsv||"").split(",").filter(Boolean));
+  var other={};items().forEach(function(r){if(rec&&r.id===rec.id)return;(r.memberIds||[]).forEach(function(i){other[i]=r.trainer})});
+  var held=0;if(!rec){var all0=Array.from(ids),free=all0.filter(function(i){return !other[i]});held=all0.length-free.length;ids=new Set(free)}
   var iso=String(key).split("|")[2]||"";
   var dflt=defFor(key);
   var names=[];try{names=(window.__trsCertNames?window.__trsCertNames():[])}catch(e){}
@@ -11788,7 +11790,7 @@ window.openOnbFacil=function(key,idsCsv,recId){
    +'<div class="flex items-center justify-between mt-4 mb-1"><label class="text-[11px] font-bold text-slate-500">Peserta yang difasilitasi <span id="of-count" class="text-violet-600"></span></label></div>'
    +'<div id="of-members" class="border border-slate-100 rounded-xl max-h-48 overflow-auto"></div>'
    +'<label class="block text-[11px] font-bold text-slate-500 mt-3 mb-1">Tambah peserta dari divisi/departemen lain</label>'
-   +'<p class="text-[10px] text-slate-400 -mt-0.5 mb-1">Peserta yang ditambahkan akan dipindah ke batch ini di daftar jadwal onboarding.</p>'
+   +'<p class="text-[10px] text-slate-400 -mt-0.5 mb-1">Peserta yang ditambahkan akan dipindah ke batch ini di daftar jadwal onboarding. Satu peserta hanya punya satu instruktur: kalau dipilih di sini, dia otomatis dilepas dari instruktur sebelumnya.</p>'+(held?'<p class="text-[10px] font-bold text-amber-600 mb-1">'+held+' peserta batch ini sudah punya instruktur lain, jadi tidak dicentang. Cari namanya di bawah kalau mau dipindahkan ke instruktur ini.</p>':'')
    +'<input id="of-search" '+inp+' placeholder="Cari nama / departemen (min. 2 huruf)" autocomplete="off"><div id="of-results" class="mt-1"></div>'
    +'<div class="flex items-center justify-between gap-2 mt-5">'+(rec?'<button type="button" id="of-del" class="text-[11px] font-bold text-rose-500 hover:text-rose-700 px-3 py-2"><i class="fas fa-trash mr-1"></i>Hapus</button>':'<span></span>')
    +'<div class="flex gap-2"><button type="button" id="of-cancel" class="text-[12px] font-bold text-slate-500 bg-slate-100 hover:bg-slate-200 px-4 py-2 rounded-xl">Batal</button><button type="button" id="of-save" class="text-[12px] font-bold text-white bg-indigo-600 hover:bg-indigo-700 px-4 py-2 rounded-xl">Simpan</button></div></div></div>';
@@ -11804,7 +11806,7 @@ window.openOnbFacil=function(key,idsCsv,recId){
     var q=norm($("#of-search").value),box=$("#of-results");
     if(q.length<2){box.innerHTML="";return}
     var res=(window.STATE.employees||[]).filter(function(e){return !ids.has(e.id)&&!e.tglResign&&norm((e.nama||"")+" "+(e.dept||"")).indexOf(q)>=0}).slice(0,8);
-    box.innerHTML=res.length?res.map(function(e){return'<button type="button" data-of-add="'+E(e.id)+'" class="w-full text-left flex items-center gap-2 px-3 py-1.5 text-[11px] rounded-lg hover:bg-violet-50"><i class="fas fa-plus text-violet-500 text-[10px]"></i><span class="font-bold text-slate-700">'+E(e.nama)+'</span><span class="text-slate-400">'+E(e.dept||"-")+'</span></button>'}).join(""):'<p class="text-[11px] text-slate-400 px-3 py-1">Tidak ditemukan.</p>';
+    box.innerHTML=res.length?res.map(function(e){return'<button type="button" data-of-add="'+E(e.id)+'" class="w-full text-left flex items-center gap-2 px-3 py-1.5 text-[11px] rounded-lg hover:bg-violet-50"><i class="fas fa-plus text-violet-500 text-[10px]"></i><span class="font-bold text-slate-700">'+E(e.nama)+'</span><span class="text-slate-400">'+E(e.dept||"-")+'</span>'+(other[e.id]?'<span class="ml-auto text-[10px] font-bold text-amber-600">sekarang: '+E(other[e.id])+'</span>':'')+'</button>'}).join(""):'<p class="text-[11px] text-slate-400 px-3 py-1">Tidak ditemukan.</p>';
   }
   drawMembers();
   $("#of-members").addEventListener("change",function(ev){var id=ev.target&&ev.target.getAttribute&&ev.target.getAttribute("data-of-id");if(!id)return;if(ev.target.checked)ids.add(id);else ids.delete(id);$("#of-count").textContent="("+ids.size+")"});
@@ -11819,8 +11821,8 @@ window.openOnbFacil=function(key,idsCsv,recId){
     if(!trainer){window.toast("Isi nama instruktur","warn");return}
     if(!ids.size){window.toast("Pilih minimal 1 peserta","warn");return}
     var r={id:rec?rec.id:"of_"+Date.now().toString(36)+Math.random().toString(36).slice(2,6),batchKey:key,trainer:trainer,date:$("#of-date").value||iso,room:$("#of-room").value.trim(),memberIds:Array.from(ids)};
-    var arr=items().filter(function(x){return x.id!==r.id});arr.push(r);
-    try{await persist(arr);close();window.toast("Instruktur onboarding tersimpan","success");rerender()}catch(e){console.error(e);window.toast("Gagal menyimpan: "+(e.message||e),"error")}};
+    var arr=items().filter(function(x){return x.id!==r.id});arr.push(r);var nz=oneEach(arr,r.id);arr=nz.items;
+    try{await persist(arr);close();window.toast("Instruktur onboarding tersimpan"+(nz.removed?" · "+nz.removed+" peserta dilepas dari instruktur sebelumnya":""),"success");rerender()}catch(e){console.error(e);window.toast("Gagal menyimpan: "+(e.message||e),"error")}};
 };
 
 /* isi instruktur sekaligus ke beberapa batch */
@@ -11873,14 +11875,36 @@ window.openOnbFacilBulk=function(){
     if(!trainer){window.toast("Isi nama instruktur","warn");return}
     if(!sel.size){window.toast("Pilih minimal 1 batch","warn");return}
     var arr=items().slice(),added=0,skipped=0,room=$("#ob-room").value.trim();
+    var has={};arr.forEach(function(r){(r.memberIds||[]).forEach(function(i){has[i]=1})});
     all.forEach(function(b){
       if(!sel.has(b.key))return;
       if(arr.some(function(r){return r.batchKey===b.key&&norm(r.trainer)===norm(trainer)})){skipped++;return}
-      arr.push({id:"of_"+Date.now().toString(36)+Math.random().toString(36).slice(2,6)+added,batchKey:b.key,trainer:trainer,date:String(b.key).split("|")[2],room:room,memberIds:b.ids.slice()});added++});
-    try{await persist(arr);close();window.toast(added+" batch diisi instruktur "+trainer+(skipped?" ("+skipped+" dilewati, sudah ada)":""),"success");rerender()}catch(e){console.error(e);window.toast("Gagal menyimpan: "+(e.message||e),"error")}};
+      var free=b.ids.filter(function(i){return !has[i]});
+      if(!free.length){skipped++;return}
+      free.forEach(function(i){has[i]=1});
+      arr.push({id:"of_"+Date.now().toString(36)+Math.random().toString(36).slice(2,6)+added,batchKey:b.key,trainer:trainer,date:String(b.key).split("|")[2],room:room,memberIds:free});added++});
+    try{await persist(arr);close();window.toast(added+" batch diisi instruktur "+trainer+(skipped?" ("+skipped+" dilewati: sudah ada atau semua pesertanya sudah punya instruktur)":""),"success");rerender()}catch(e){console.error(e);window.toast("Gagal menyimpan: "+(e.message||e),"error")}};
 };
 
 /* ===== Default instruktur + tempat per jenis sesi batch (diatur di Atur Sesi Batch), isi otomatis ===== */
+/* satu karyawan hanya boleh punya SATU instruktur: kalau masuk ke >1 catatan, hanya catatan "pemenang" yang dipertahankan.
+   Prioritas: catatan yang baru disimpan (preferId) > catatan di batch karyawan saat ini > catatan hasil konfirmasi (bukan default otomatis) > yang lebih baru. */
+function oneEach(arr,preferId){
+  var cur={};try{(window.STATE.employees||[]).forEach(function(e){var b=window.onboardingBatchFor?window.onboardingBatchFor(e):null;if(b)cur[e.id]=b.key})}catch(x){}
+  var stamp=function(r){return String(r&&r.id||"").replace(/^of_/,"").slice(0,8)};
+  var score=function(r,id){return[r.id===preferId?1:0,r.batchKey===cur[id]?1:0,r.auto?0:1,stamp(r)]};
+  var cmp=function(a,b){for(var i=0;i<a.length;i++){if(a[i]>b[i])return 1;if(a[i]<b[i])return -1}return 0};
+  var out=arr.map(function(r){return Object.assign({},r,{memberIds:(r.memberIds||[]).slice()})}),by={},touched={},removed=0;
+  out.forEach(function(r){(r.memberIds||[]).forEach(function(id){(by[id]=by[id]||[]).push(r)})});
+  Object.keys(by).forEach(function(id){
+    var l=by[id];if(l.length<2)return;
+    var w=l[0];l.forEach(function(r){if(cmp(score(r,id),score(w,id))>0)w=r});
+    l.forEach(function(r){if(r===w)return;var n=r.memberIds.length;r.memberIds=r.memberIds.filter(function(x){return x!==id});if(r.memberIds.length<n){removed++;touched[r.id]=1}})
+  });
+  var dropped=[];
+  out=out.filter(function(r){if(touched[r.id]&&!r.memberIds.length){dropped.push(r.batchKey);return false}return true});
+  return{items:out,removed:removed,dropped:dropped}
+}
 function docNow(){return((window.STATE&&window.STATE.settings)||[]).find(function(x){return x.id===ID})||{}}
 function skipOf(d){return d&&Array.isArray(d.autoSkip)?d.autoSkip:[]}
 function defFor(key){
@@ -11906,7 +11930,6 @@ async function autoFill(opt){
   if(!(window.sel&&window.sel.isAdmin&&window.sel.isAdmin()))return 0;
   var L=window.LMS_DB;if(!L||!L.getDoc)return 0;
   if(!opt.force&&Date.now()-afAt<90000)return 0;
-  if(!anyDefault())return 0;
   var loaded=window._loadedStateKeys||new Set();
   if(!loaded.has("employees")||!loaded.has("settings"))return 0;
   afBusy=true;
@@ -11915,18 +11938,22 @@ async function autoFill(opt){
     /* baca ulang dari server: settings hanya dimuat sekali saat login, jadi salinan lokal bisa basi */
     var snap=await L.getDoc(L.ref("settings",ID)),cur=snap.exists()?snap.data():{};
     var curItems=Array.isArray(cur.items)?cur.items:[],skip=skipOf(cur);
-    var have={};curItems.forEach(function(r){have[r.batchKey]=1});
+    /* rapikan data lama: satu karyawan hanya boleh punya satu instruktur */
+    var nz=oneEach(curItems,null);curItems=nz.items;window.__onbFacilDupFixed=(window.__onbFacilDupFixed||0)+nz.removed;
+    var have={},assigned={};curItems.forEach(function(r){have[r.batchKey]=1;(r.memberIds||[]).forEach(function(i){assigned[i]=1})});
     var add=[],seq=0;
     (window.buildOnboardingBatches?window.buildOnboardingBatches():[]).forEach(function(b){
       var d=defFor(b.key);
       if(!d.trainer||have[b.key]||skip.indexOf(b.key)>=0)return;
-      var act=b.members.filter(function(m){return!m.isResigned});
+      var act=b.members.filter(function(m){return!m.isResigned&&!assigned[m.employee.id]});
       if(!act.length)return;
+      act.forEach(function(m){assigned[m.employee.id]=1});
       add.push({id:"of_"+Date.now().toString(36)+Math.random().toString(36).slice(2,6)+(seq++),batchKey:b.key,trainer:d.trainer,date:String(b.key).split("|")[2]||"",room:d.room,memberIds:act.map(function(m){return m.employee.id}),auto:true})
     });
     var all=add.length?curItems.concat(add):curItems;
-    if(add.length)await L.setDoc(L.ref("settings",ID),{items:all,autoSkip:skip},{merge:false});
-    syncLocal({items:all,autoSkip:skip},!add.length);
+    var dirty=add.length>0||nz.removed>0;
+    if(dirty)await L.setDoc(L.ref("settings",ID),{items:all,autoSkip:skip},{merge:false});
+    syncLocal({items:all,autoSkip:skip},!dirty);
     return add.length
   }catch(e){console.warn("[instruktur default]",e);return 0}
   finally{afBusy=false}
@@ -11934,7 +11961,7 @@ async function autoFill(opt){
 window.onbFacilAutoFill=autoFill;
 var spDef=window.setPage;
 window.setPage=function(html){var r=spDef.apply(this,arguments);
-  try{if(/^#\/admin\/onboarding-schedule/.test(location.hash)&&document.getElementById("onb-results"))autoFill().then(function(n){if(n){window.toast&&window.toast(n+" batch otomatis diisi instruktur default","success");rerender()}})}catch(e){console.warn("[instruktur default]",e)}
+  try{if(/^#\/admin\/onboarding-schedule/.test(location.hash)&&document.getElementById("onb-results"))autoFill().then(function(n){var d=window.__onbFacilDupFixed||0;window.__onbFacilDupFixed=0;if(n||d){window.toast&&window.toast((n?n+" batch otomatis diisi instruktur default":"")+(n&&d?" · ":"")+(d?d+" peserta dengan instruktur ganda dirapikan":""),"success");rerender()}})}catch(e){console.warn("[instruktur default]",e)}
   return r};
 
 /* ===== Fasilitator Training By TNA (field di form training + section Summary Trainer) ===== */
