@@ -1844,14 +1844,18 @@ html.dark .hover\:border-dpv-200:hover,html.dark .hover\:border-dpv-400:hover{bo
     <div id="sidebar-tooltip"></div>
 
     <style id="data-sync-pill-css">
-    #profile-menu-refresh-btn{position:fixed;left:calc(var(--sidebar-w,260px) + 12px);bottom:calc(12px + env(safe-area-inset-bottom,0px));z-index:45;display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 11px 0 9px;border-radius:999px;background:rgba(15,23,42,.86);color:#e2e8f0;border:1px solid rgba(255,255,255,.14);font:800 10.5px/1 'Plus Jakarta Sans',system-ui,sans-serif;letter-spacing:.02em;white-space:nowrap;cursor:pointer;opacity:.92;box-shadow:0 4px 14px rgba(0,0,0,.22);transition:left .2s ease,opacity .15s,background .15s}
+    /* Badge "Perbarui data": FIXED di pojok kiri bawah viewport, DI ATAS layer sidebar (z-index sidebar = 50,
+       modal >= 9000 jadi 55 aman). Posisi left TIDAK bergantung lebar sidebar, jadi gak ikut kedorong pas
+       sidebar dibuka/dilipat. Warna ngikut tema (--th-*), sama kayak tombol/menu aktif di sidebar. */
+    #profile-menu-refresh-btn{position:fixed;left:8px;bottom:calc(8px + env(safe-area-inset-bottom,0px));z-index:55;display:inline-flex;align-items:center;justify-content:center;gap:4px;height:20px;padding:0 8px 0 7px;border-radius:999px;background:rgb(var(--th-500-rgb) / .28);-webkit-backdrop-filter:blur(10px) saturate(1.4);backdrop-filter:blur(10px) saturate(1.4);color:#fff;border:1px solid rgb(var(--th-300-rgb) / .38);text-shadow:0 1px 2px rgba(0,0,0,.35);font:800 8px/1 'Plus Jakarta Sans',system-ui,sans-serif;letter-spacing:.02em;white-space:nowrap;cursor:pointer;opacity:1;box-shadow:0 4px 14px rgba(0,0,0,.28),inset 0 1px 0 rgba(255,255,255,.22);transition:opacity .15s,background .15s,border-color .15s}
+    #profile-menu-refresh-btn::after{content:"";position:absolute;inset:-6px}
     #profile-menu-refresh-btn.hide,#profile-menu-refresh-btn.dsp-off{display:none}
-    #profile-menu-refresh-btn:hover{opacity:1;background:rgba(15,23,42,.96)}
-    #profile-menu-refresh-btn i{font-size:10px}
-    #profile-menu-refresh-btn.is-stale{background:rgba(180,83,9,.94);border-color:rgba(253,230,138,.45);color:#fff}
+    #profile-menu-refresh-btn:hover{background:rgb(var(--th-500-rgb) / .45);border-color:rgb(var(--th-300-rgb) / .6)}
+    #profile-menu-refresh-btn i{font-size:8px}
+    #profile-menu-refresh-btn.is-stale{background:rgba(217,119,6,.35);border-color:rgba(253,230,138,.5);color:#fff}
     #profile-menu-refresh-btn.is-cooling,#profile-menu-refresh-btn:disabled{opacity:.55;cursor:wait}
-    #sidebar.sidebar-mini ~ #profile-menu-refresh-btn{left:calc(var(--sidebar-mini-w,64px) + 12px)}
-    @media (max-width:1023px){#profile-menu-refresh-btn,#sidebar.sidebar-mini ~ #profile-menu-refresh-btn{left:12px}}
+    /* Biar menu paling bawah di sidebar gak ketutup badge */
+    body:has(#profile-menu-refresh-btn:not(.hide):not(.dsp-off)) #sidebar-nav{padding-bottom:40px}
     @media print{#profile-menu-refresh-btn{display:none!important}}
     </style>
     <button id="profile-menu-refresh-btn" type="button" onclick="event.stopPropagation(); window.refreshAdminReportsDataCooled()" title="Perbarui data laporan" aria-label="Perbarui data laporan" class="hide"><i class="fas fa-rotate-right"></i><span id="profile-menu-last-sync">Perbarui</span></button>
