@@ -12604,6 +12604,9 @@ function norm(s){return String(s==null?"":s).trim().toLowerCase().replace(/\s+/g
 function num(v){if(v===undefined||v===null||v==="")return null;if(typeof v==="number")return isFinite(v)?v:null;var s=String(v).trim();if(!s)return null;if(s.indexOf(",")>=0&&s.indexOf(".")<0)s=s.replace(",",".");else s=s.replace(/,/g,"");var n=Number(s);return isFinite(n)?n:null}
 function f1(x){return String(Math.round(x*10)/10).replace(".",",")}
 function monthOf(v){if(v===undefined||v===null||v==="")return 0;if(typeof v==="number"&&v>=1&&v<=12)return Math.round(v);var s=norm(v);if(/^\d{1,2}$/.test(s)){var n=+s;return n>=1&&n<=12?n:0}var re=[/jan/,/feb/,/mar/,/apr/,/\bmei\b|^mei|may/,/jun/,/jul/,/agu|aug/,/sep/,/okt+ober|^okt|oct/,/nov/,/des|dec/];for(var i=0;i<12;i++)if(re[i].test(s))return i+1;return 0}
+window.ktScoreUncapped=function(e){return ["sales","sales counter","sales counter strategic"].indexOf(norm(e&&e.designation))>=0};
+function ktWs(it,cap,un){return cap==null?null:(un?it.b*cap:it.b*Math.min(cap,1))}
+function ktTotal(items,un,sk){var sw=0,ss=0,ok=items.length>0;items.forEach(function(it){var cap=(it.p!=null&&it.t>0)?it.p/it.t:null;if(cap==null){ok=false;return}sw+=it.b;ss+=ktWs(it,cap,un)});return ok&&sw>0?ss/sw*100:sk*100}
 function statusOf(c){return c==null?{t:"—",c:"kt-na"}:c>=1?{t:"Tercapai",c:"kt-ok"}:c>=.8?{t:"Mendekati",c:"kt-wn"}:{t:"Warning",c:"kt-bd"}}
 function unitTxt(v,s){return v==null?"—":f1(v)+(s?" "+E(s):"")}
 
@@ -12652,14 +12655,14 @@ function indInner(e,y,m,pfx){pfx=pfx||"kt-ind-";
   var h='';
   if(years.length>1)h+='<div class="kt-chips">'+years.map(function(yy){return chip(yy,yy===String(y),"window.ktIndPick('"+e.id+"','"+yy+"',0,'"+pfx+"')")}).join("")+'</div>';
   h+='<div class="kt-chips">'+ms.map(function(mm){return chip(MN[mm-1].slice(0,3),mm===m,"window.ktIndPick('"+e.id+"','"+y+"',"+mm+",'"+pfx+"')")}).join("")+'</div>';
-  var items=yd[m]||yd[String(m)]||[];if(pfx==="kt-pop-"&&String(y)===String(new Date().getFullYear())){var sk=e.kpi&&(e.kpi[m]!=null?e.kpi[m]:e.kpi[String(m)]);if(typeof sk==="number")h+='<p class="kt-muted" style="margin-bottom:6px">Skor KPI '+MN[m-1]+' (total): <b>'+f1(sk*100)+'%</b></p>'}
+  var items=yd[m]||yd[String(m)]||[];if(pfx==="kt-pop-"&&String(y)===String(new Date().getFullYear())){var sk=e.kpi&&(e.kpi[m]!=null?e.kpi[m]:e.kpi[String(m)]);if(typeof sk==="number")h+='<p class="kt-muted" style="margin-bottom:6px">Skor KPI '+MN[m-1]+' (total): <b>'+f1(ktTotal(items,window.ktScoreUncapped(e),sk))+'%</b></p>'}
   if(!items.length)return h+'<p class="kt-muted">Belum ada indikator untuk bulan ini.</p>';
-  var sw=0,ss=0,anyP=false,rows=items.map(function(it){
+  var un=window.ktScoreUncapped(e),sw=0,ss=0,anyP=false,rows=items.map(function(it){
     var cap=(it.p!=null&&it.t>0)?it.p/it.t:null,st=statusOf(cap);
-    sw+=it.b;if(cap!=null){anyP=true;ss+=it.b*cap}
-    return'<tr><td>'+E(it.n)+'</td><td class="kt-l">'+E(it.i)+(it.c?'<br><small class="kt-muted">Usia join '+E(it.c)+(it.j?' (gabung '+E(it.j)+')':'')+' · target '+f1(it.t)+' booking</small>':'')+'</td><td>'+f1(it.b)+'%</td><td>'+unitTxt(it.t,it.s)+'</td><td>'+unitTxt(it.p,it.s)+'</td><td class="'+st.c+'">'+(cap==null?"—":f1(cap*100)+"%")+'</td><td>'+(cap==null?"—":f1(it.b*cap)+" poin")+'</td><td><span class="kt-bdg '+st.c+'">'+st.t+'</span></td></tr>'}).join("");
+    var ws=ktWs(it,cap,un);sw+=it.b;if(cap!=null){anyP=true;ss+=ws}
+    return'<tr><td>'+E(it.n)+'</td><td class="kt-l">'+E(it.i)+(it.c?'<br><small class="kt-muted">Usia join '+E(it.c)+(it.j?' (gabung '+E(it.j)+')':'')+' · target '+f1(it.t)+' booking</small>':'')+'</td><td>'+f1(it.b)+'%</td><td>'+unitTxt(it.t,it.s)+'</td><td>'+unitTxt(it.p,it.s)+'</td><td class="'+st.c+'">'+(cap==null?"—":f1(cap*100)+"%")+'</td><td>'+(ws==null?"—":f1(ws)+" poin")+'</td><td><span class="kt-bdg '+st.c+'">'+st.t+'</span></td></tr>'}).join("");
   h+='<div class="kt-scroll"><table class="kt-tb"><thead><tr><th>No</th><th class="kt-l">Indikator KPI</th><th>Bobot</th><th>Target</th><th>Pencapaian</th><th>% Capaian</th><th>Skor Tertimbang</th><th>Status</th></tr></thead><tbody>'+rows+'</tbody><tfoot><tr><td></td><td class="kt-l">Total</td><td>'+f1(sw)+'%</td><td></td><td></td><td></td><td>'+(anyP?f1(ss)+" poin":"—")+'</td><td></td></tr></tfoot></table></div>';
-  h+='<p class="kt-muted" style="margin-top:6px">Status: <b>Tercapai</b> ≥ 100%, <b>Mendekati</b> 80–99%, <b>Warning</b> &lt; 80%.</p>';if(!anyP)h+='<p class="kt-muted">Kolom <b>Pencapaian</b> belum ada di file upload, jadi capaian per indikator belum bisa dihitung.</p>';
+  h+='<p class="kt-muted" style="margin-top:6px">Status: <b>Tercapai</b> ≥ 100%, <b>Mendekati</b> 80–99%, <b>Warning</b> &lt; 80%.'+(un?'':' Skor tertimbang maksimal sebesar bobot indikator.')+'</p>';if(!anyP)h+='<p class="kt-muted">Kolom <b>Pencapaian</b> belum ada di file upload, jadi capaian per indikator belum bisa dihitung.</p>';
   return h}
 window.ktIndPick=function(id,y,m,pfx){pfx=pfx||"kt-ind-";
   var e=(window.STATE.employees||[]).find(function(x){return x.id===id});if(!e)return;
