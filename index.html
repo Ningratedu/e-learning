@@ -13016,65 +13016,87 @@ function computeBatch(b,ctx){
   var fb=(ctx.facil||facilByBatch())[b.key]||{};o.instructors=Object.keys(fb).map(function(k){return{k:k,name:fb[k]}});
   return o}
 
-/* ---------- strip mingguan ---------- */
-window.__onbMonRef=window.__onbMonRef||null;
-function curRef(){return window.__onbMonRef?new Date(window.__onbMonRef):new Date}
-function weekData(ref){
-  var wk=weekOf(ref),today=dayStart(new Date),ctx={today:today,started:startedSet(),evMap:window.__onbEvalMap?window.__onbEvalMap():{},facil:facilByBatch()};
+/* ---------- strip mingguan (filter minggu: dropdown, bisa pilih lebih dari satu) ---------- */
+window.__onbMonSel=window.__onbMonSel||null;window.__onbMonOpen=false;
+function selKeys(){var k=window.__onbMonSel;return k&&k.length?k.slice():[weekOf(new Date).key]}
+function weekList(){var m={},cur=weekOf(new Date);m[cur.key]=cur;
   var bs=[];try{bs=window.buildOnboardingBatches()||[]}catch(e){}
-  var rows=bs.filter(function(b){return b.start&&weekOf(b.start).key===wk.key}).map(function(b){return computeBatch(b,ctx)}).filter(function(x){return x.target>0}).sort(function(a,b){return a.start-b.start||String(a.key).localeCompare(String(b.key))});
+  bs.forEach(function(b){if(!b.start)return;var w=weekOf(b.start);if(!m[w.key])m[w.key]=w});
+  (window.__onbMonSel||[]).forEach(function(k){if(!m[k]){var q=/^(\d+)-(\d+)-w(\d+)$/.exec(k);if(q)m[k]=weekOf(new Date(+q[1],+q[2],(+q[3]-1)*7+1))}});
+  return Object.keys(m).map(function(k){return m[k]}).sort(function(a,b){return b.s-a.s})}
+function selTitle(keys,wl){
+  var ws=wl.filter(function(w){return keys.indexOf(w.key)>=0}).sort(function(a,b){return a.s-b.s});
+  if(!ws.length)return{title:"-",short:"-",wn:"-",n:0};
+  var f=ws[0],l=ws[ws.length-1];
+  var rng=ws.length===1?f.label:(f.s.getDate()+" "+MON[f.s.getMonth()]+(f.s.getFullYear()!==l.e.getFullYear()?" "+f.s.getFullYear():"")+" – "+l.e.getDate()+" "+MON[l.e.getMonth()]+" "+l.e.getFullYear());
+  return{title:ws.length===1?"Minggu ke-"+f.wn+" • "+f.label:ws.length+" minggu • "+rng,short:ws.length===1?"Minggu ke-"+f.wn+" • "+f.label:ws.length+" minggu dipilih",wn:ws.length===1?String(f.wn):ws.length+" minggu",n:ws.length,range:rng}}
+function weekData(keys){
+  keys=keys&&keys.length?keys:selKeys();var set={};keys.forEach(function(k){set[k]=1});
+  var wl=weekList(),wk=selTitle(keys,wl),today=dayStart(new Date),ctx={today:today,started:startedSet(),evMap:window.__onbEvalMap?window.__onbEvalMap():{},facil:facilByBatch()};
+  var bs=[];try{bs=window.buildOnboardingBatches()||[]}catch(e){}
+  var rows=bs.filter(function(b){return b.start&&set[weekOf(b.start).key]}).map(function(b){return computeBatch(b,ctx)}).filter(function(x){return x.target>0}).sort(function(a,b){return a.start-b.start||String(a.key).localeCompare(String(b.key))});
   var T={sched:rows.length,batchHeld:0,tr:0,held:0,target:0,done:0,started:0,late:0,lateDone:0,lateOpen:0,rSum:0,rN:0,tv:[]};
   rows.forEach(function(x){if(x.held)T.batchHeld++;T.tr+=x.trainings;T.held+=x.trainingsHeld;T.target+=x.target;T.done+=x.done;T.started+=x.started;T.late+=x.late;T.lateDone+=x.lateDone;T.lateOpen+=x.lateOpen;T.rSum+=x.ratingSum;T.rN+=x.ratingN;x.trainerVals.forEach(function(v){T.tv.push(v)})});
   T.rate=pct(T.done,T.target);T.rating=T.rN?T.rSum/T.rN:null;T.trainer=T.tv.length?T.tv.reduce(function(a,b){return a+b},0)/T.tv.length:null;
-  return{wk:wk,rows:rows,T:T,today:today}}
+  return{wk:wk,rows:rows,T:T,today:today,wl:wl,keys:keys}}
 window.__onbMonData=weekData;
 
 function tile(icon,color,val,label,sub,on){
-  return'<button type="button" onclick="'+on+'" class="bg-white rounded-2xl border border-slate-100 shadow-sm text-left" style="padding:8px 10px;cursor:pointer;min-width:0">'
-   +'<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px"><span style="width:16px;height:16px;border-radius:5px;display:inline-flex;align-items:center;justify-content:center;background:'+color+'1f;color:'+color+';font-size:8px"><i class="fas '+icon+'"></i></span><span class="text-[9px] font-black uppercase text-slate-400" style="letter-spacing:.02em">'+label+'</span></div>'
+  /* warna mengikuti tema aplikasi (variabel --th-*), sama seperti kartu minggu di halaman ini */
+  return'<button type="button" onclick="'+on+'" class="rounded-2xl text-left" style="padding:8px 10px;cursor:pointer;min-width:0;background:linear-gradient(135deg,rgb(var(--th-700-rgb,29 78 216)/.11),rgb(var(--th-500-rgb,37 99 235)/.04));border:1px solid rgb(var(--th-500-rgb,37 99 235)/.24)">'
+   +'<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px"><span style="width:16px;height:16px;border-radius:5px;display:inline-flex;align-items:center;justify-content:center;background:rgb(var(--th-500-rgb,37 99 235)/.16);color:var(--th-600,#2563eb);font-size:8px"><i class="fas '+icon+'"></i></span><span class="text-[9px] font-black uppercase" style="letter-spacing:.02em;color:var(--th-600,#2563eb);opacity:.85">'+label+'</span></div>'
    +'<div class="font-black text-slate-800" style="font-size:14px;line-height:1.15">'+val+'</div>'
    +'<div class="text-[9px] text-slate-400 font-semibold" style="margin-top:2px;line-height:1.3">'+sub+'</div></button>'}
+function weekPicker(d){
+  var keys=d.keys,cur=weekOf(new Date).key,wl=d.wl,open=window.__onbMonOpen,bc="rgb(var(--th-500-rgb,37 99 235)/.28)";
+  var btn='<button type="button" onclick="window.__onbMonToggleOpen(event)" class="text-[10px] font-black" style="display:inline-flex;align-items:center;gap:6px;padding:5px 10px;border-radius:10px;border:1px solid '+bc+';background:transparent;color:var(--th-600,#2563eb);max-width:100%"><i class="fas fa-calendar-week"></i><span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:230px">'+E(d.wk.short)+'</span><i class="fas fa-chevron-'+(open?'up':'down')+'" style="font-size:8px"></i></button>';
+  if(!open)return'<div style="position:relative">'+btn+'</div>';
+  var lastM="",items=wl.map(function(w){
+    var mh="";var mk=w.s.getFullYear()+"-"+w.s.getMonth();if(mk!==lastM){lastM=mk;mh='<div class="text-[9px] font-black uppercase text-slate-400" style="padding:6px 10px 2px">'+MON[w.s.getMonth()]+' '+w.s.getFullYear()+'</div>'}
+    var on=keys.indexOf(w.key)>=0;
+    return mh+'<label style="display:flex;align-items:center;gap:8px;padding:5px 10px;cursor:pointer;font-size:11px" class="text-slate-700 font-semibold"><input type="checkbox" '+(on?'checked ':'')+'onchange="window.__onbMonToggle(\''+w.key+'\')" style="accent-color:var(--th-600,#2563eb)"><span style="flex:1">Minggu ke-'+w.wn+' • '+E(w.label)+'</span>'+(w.key===cur?'<span class="text-[8px] font-black px-1.5 py-0.5 rounded-full" style="background:rgb(var(--th-500-rgb,37 99 235)/.14);color:var(--th-600,#2563eb)">ini</span>':'')+'</label>'}).join("");
+  return'<div style="position:relative">'+btn+'<div id="onb-mon-pop" class="bg-white" style="position:absolute;right:0;top:calc(100% + 4px);z-index:30;width:290px;max-width:86vw;border:1px solid '+bc+';border-radius:14px;box-shadow:0 12px 30px rgba(15,23,42,.18);overflow:hidden">'
+   +'<div style="display:flex;justify-content:space-between;gap:6px;padding:8px 10px;border-bottom:1px solid rgba(148,163,184,.25)"><span class="text-[10px] font-black text-slate-500">Pilih satu atau beberapa minggu</span><span style="display:flex;gap:8px"><a href="javascript:void(0)" onclick="window.__onbMonThisWeek()" class="text-[10px] font-black" style="color:var(--th-600,#2563eb);text-decoration:none">Minggu ini</a></span></div>'
+   +'<div id="onb-mon-list" style="max-height:260px;overflow:auto">'+items+'</div></div></div>'}
 function stripHtml(){
-  var d=weekData(curRef()),T=d.T,wk=d.wk,isCur=weekOf(new Date).key===wk.key;
-  var navBtn=function(dir,ic,t){return'<button type="button" onclick="window.__onbMonNav('+dir+')" title="'+t+'" class="text-slate-500 hover:text-slate-800" style="width:24px;height:24px;border-radius:8px;border:1px solid #e2e8f0;background:#fff;font-size:9px"><i class="fas '+ic+'"></i></button>'};
+  var d=weekData(),T=d.T,wk=d.wk,isCur=d.keys.length===1&&d.keys[0]===weekOf(new Date).key;
   var head='<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:8px">'
     +'<div style="display:flex;align-items:center;gap:8px;min-width:0"><span class="text-[11px] font-black text-slate-700"><i class="fas fa-gauge-high mr-1" style="color:var(--th-600,#2563eb)"></i>Monitoring Keterlaksanaan Mingguan</span>'
-    +(isCur?'<span class="text-[9px] font-black px-2 py-0.5 rounded-full" style="background:#dcfce7;color:#15803d">Minggu ini</span>':'')+'</div>'
-    +'<div style="display:flex;align-items:center;gap:6px">'+navBtn(-1,"fa-chevron-left","Minggu sebelumnya")
-    +'<span class="text-[10px] font-black text-slate-700" style="min-width:120px;text-align:center">Minggu ke-'+wk.wn+' • '+E(wk.label)+'</span>'+navBtn(1,"fa-chevron-right","Minggu berikutnya")
-    +(isCur?'':'<button type="button" onclick="window.__onbMonNav(0)" class="text-[9px] font-black px-2 py-1 rounded-lg" style="border:1px solid #e2e8f0;background:#fff;color:#475569">Minggu ini</button>')+'</div></div>';
-  if(!T.sched)return head+'<div class="bg-white rounded-2xl border border-slate-100 shadow-sm text-center text-slate-400 text-xs" style="padding:18px">Tidak ada batch onboarding yang dijadwalkan pada minggu ini.</div>';
+    +(isCur?'<span class="text-[9px] font-black px-2 py-0.5 rounded-full" style="background:rgb(var(--th-500-rgb,37 99 235)/.14);color:var(--th-600,#2563eb)">Minggu ini</span>':'')+'</div>'
+    +weekPicker(d)+'</div>';
+  if(!T.sched)return head+'<div class="bg-white rounded-2xl border border-slate-100 shadow-sm text-center text-slate-400 text-xs" style="padding:18px">Tidak ada batch onboarding yang dijadwalkan pada '+(wk.n>1?'minggu-minggu yang dipilih':'minggu ini')+'.</div>';
   var onD="window.__onbMonDetail()";
   var ratingVal=T.rating!==null?'<i class="fas fa-star" style="color:#f59e0b;font-size:11px"></i> '+r1(T.rating):'-';
   var ratingSub=T.rN?(T.rN+' ulasan'+(T.trainer!==null?' • Trainer '+r1(T.trainer):'')):'Belum ada ulasan';
   var grid='<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px">'
-   +tile("fa-calendar-check","#0284c7",T.held+'<span class="text-slate-400" style="font-size:11px"> / '+T.tr+'</span>',"Training terlaksana",pct(T.held,T.tr)+'% • '+T.batchHeld+'/'+T.sched+' batch berjalan',onD)
-   +tile("fa-users","#7c3aed",String(T.target),"Target peserta",T.started+' sudah mulai • tanpa yang resign',onD)
-   +tile("fa-circle-check","#059669",T.rate+'%',"Completion rate",T.done+' dari '+T.target+' selesai',onD)
-   +tile("fa-star","#d97706",ratingVal,"Rating",ratingSub,onD)
-   +tile("fa-clock","#e11d48",String(T.late),"Telat",T.lateDone+' selesai telat • '+T.lateOpen+' lewat deadline',onD)
+   +tile("fa-calendar-check","",T.held+'<span class="text-slate-400" style="font-size:11px"> / '+T.tr+'</span>',"Training terlaksana",pct(T.held,T.tr)+'% • '+T.batchHeld+'/'+T.sched+' batch berjalan',onD)
+   +tile("fa-users","",String(T.target),"Target peserta",T.started+' sudah mulai • tanpa yang resign',onD)
+   +tile("fa-circle-check","",T.rate+'%',"Completion rate",T.done+' dari '+T.target+' selesai',onD)
+   +tile("fa-star","",ratingVal,"Rating",ratingSub,onD)
+   +tile("fa-clock","",String(T.late),"Telat",T.lateDone+' selesai telat • '+T.lateOpen+' lewat deadline',onD)
    +'</div>';
-  return head+grid+'<p class="text-[9px] text-slate-400" style="margin-top:6px"><i class="fas fa-circle-info mr-1"></i>Training terlaksana = training dalam batch yang minimal 1 pesertanya sudah mulai (contoh: 2 batch x 5 training = 10). Klik kartu untuk rincian per batch dan instruktur.</p>'}
+  return head+grid+'<p class="text-[9px] text-slate-400" style="margin-top:6px"><i class="fas fa-circle-info mr-1"></i>Training terlaksana = training dalam batch yang minimal 1 pesertanya sudah mulai (contoh: 2 batch x 5 training = 10). Bisa pilih beberapa minggu sekaligus untuk digabung jadi satu laporan. Klik kartu untuk rincian per batch dan instruktur.</p>'}
 
 window.__onbMonRender=function(){
-  var box=document.getElementById("onb-mon");
+  var box=document.getElementById("onb-mon"),keep=0,lst=document.getElementById("onb-mon-list");if(lst)keep=lst.scrollTop;
   if(!box){var anchor=document.getElementById("onb-score");if(!anchor||!anchor.parentNode)return false;box=document.createElement("div");box.id="onb-mon";box.style.margin="0 0 14px";anchor.parentNode.insertBefore(box,anchor.nextSibling)}
   try{box.innerHTML=stripHtml()}catch(e){console.warn("onb-mon",e);box.innerHTML=""}
+  lst=document.getElementById("onb-mon-list");if(lst&&keep)lst.scrollTop=keep;
   return true};
-window.__onbMonNav=function(dir){
-  if(dir===0){window.__onbMonRef=null}
-  else{var wk=weekOf(curRef()),t=dir<0?new Date(wk.s.getTime()-DAY):new Date(wk.e.getTime()+DAY);window.__onbMonRef=new Date(t.getFullYear(),t.getMonth(),t.getDate()).getTime()}
-  window.__onbMonRender()};
+window.__onbMonToggleOpen=function(ev){if(ev&&ev.stopPropagation)ev.stopPropagation();window.__onbMonOpen=!window.__onbMonOpen;window.__onbMonRender()};
+window.__onbMonToggle=function(key){var k=selKeys(),i=k.indexOf(key);if(i>=0){if(k.length===1)return window.__onbMonRender();k.splice(i,1)}else k.push(key);window.__onbMonSel=k;window.__onbMonRender()};
+window.__onbMonThisWeek=function(){window.__onbMonSel=[weekOf(new Date).key];window.__onbMonRender()};
+document.addEventListener("click",function(e){if(!window.__onbMonOpen)return;var pop=document.getElementById("onb-mon-pop");if(pop&&pop.contains(e.target))return;window.__onbMonOpen=false;window.__onbMonRender()});
 
 /* ---------- rincian per batch / instruktur (modal yang sama dengan rincian dashboard lain) ---------- */
 window.__onbMonGo=function(key){try{window.closeModal&&window.closeModal("modal-dashboard-detail")}catch(e){}if(window.__onbGoBatch)window.__onbGoBatch(key)};
 window.__onbMonDetail=function(instrKey){
   var titleEl=document.getElementById("dashboard-detail-title"),bodyEl=document.getElementById("dashboard-detail-body");if(!titleEl||!bodyEl)return;
   if(window.hideDetailSearch)window.hideDetailSearch();
-  var d=weekData(curRef()),rows=d.rows;
+  var d=weekData(),rows=d.rows;
   if(instrKey)rows=rows.filter(function(x){return x.instructors.some(function(i){return i.k===instrKey})});
   var iname="";if(instrKey){d.rows.forEach(function(x){x.instructors.forEach(function(i){if(i.k===instrKey)iname=i.name})})}
-  titleEl.innerHTML='<i class="fas fa-gauge-high mr-1"></i> '+(instrKey?E(iname)+' · ':'')+'Minggu ke-'+d.wk.wn+' • '+E(d.wk.label);
+  titleEl.innerHTML='<i class="fas fa-gauge-high mr-1"></i> '+(instrKey?E(iname)+' · ':'')+E(d.wk.title);
   var badge=function(x){return x.held?'<span class="text-[9px] font-black px-1.5 py-0.5 rounded-full bg-emerald-50 text-emerald-600">Terlaksana</span>':(x.future?'<span class="text-[9px] font-black px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-500">Belum mulai</span>':'<span class="text-[9px] font-black px-1.5 py-0.5 rounded-full bg-rose-50 text-rose-500">Belum ada yang mulai</span>')};
   var cards=rows.map(function(x){
     var ins=x.instructors.length?x.instructors.map(function(i){return'<a href="javascript:void(0)" onclick="window.__onbMonDetail(\''+E(i.k).replace(/'/g,"\\'")+'\')" class="text-violet-600 font-bold" style="text-decoration:none"><i class="fas fa-chalkboard-user mr-1"></i>'+E(i.name)+'</a>'}).join(", "):'<span class="text-slate-300">Instruktur belum dicatat</span>';
@@ -13084,7 +13106,7 @@ window.__onbMonDetail=function(instrKey){
      +'<p class="text-[10px] text-slate-400" style="margin:2px 0 6px">Deadline '+E(fdate(x.deadline))+'</p>'
      +'<div class="text-[11px] text-slate-600" style="display:flex;flex-wrap:wrap;gap:4px 14px"><span>Training <b>'+x.trainingsHeld+'/'+x.trainings+'</b></span><span>Target <b>'+x.target+'</b></span><span>Mulai <b>'+x.started+'</b></span><span>Selesai <b>'+x.done+'</b> ('+pct(x.done,x.target)+'%)</span><span>Telat <b>'+x.late+'</b></span>'+tv+'</div>'
      +'<p class="text-[11px]" style="margin-top:6px">'+ins+'</p></div>'}).join("");
-  bodyEl.innerHTML=(instrKey?'<p class="text-[10px] text-slate-400" style="margin-bottom:8px"><a href="javascript:void(0)" onclick="window.__onbMonDetail()" class="font-bold" style="color:var(--th-600,#2563eb);text-decoration:none">← Semua batch minggu ini</a></p>':'')
+  bodyEl.innerHTML=(instrKey?'<p class="text-[10px] text-slate-400" style="margin-bottom:8px"><a href="javascript:void(0)" onclick="window.__onbMonDetail()" class="font-bold" style="color:var(--th-600,#2563eb);text-decoration:none">← Semua batch pada periode ini</a></p>':'')
     +(cards||'<p class="text-center text-slate-400 text-sm py-10">Tidak ada batch.</p>');
   bodyEl.scrollTop=0;window.openModal&&window.openModal("modal-dashboard-detail")};
 
