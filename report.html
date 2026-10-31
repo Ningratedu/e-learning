@@ -12948,6 +12948,227 @@ syncRoute();
 })();
 </script>
 
+<script id="onb-monitoring">
+/* ===== Monitoring keterlaksanaan Onboarding Training (mingguan) + evaluasi instruktur kumulatif =====
+   Satu sumber hitungan: window.__onbMon.computeBatch(batch) dipakai oleh strip di Penjadwalan Onboarding
+   dan kolom tambahan di Summary Trainer > Instruktur Onboarding, supaya angkanya tidak beda.
+   Definisi:
+   - Training terlaksana: tiap training (course) dalam batch dihitung 1; terlaksana jika minimal 1 peserta aktif sudah mulai training itu (enrollment / percobaan kuis / sertifikat). Batch 5 training x 2 batch = 10
+   - Target peserta    : anggota batch dikurangi yang resign
+   - Completion rate   : peserta selesai / target peserta
+   - Telat             : selesai tapi ada sertifikat terbit setelah deadline batch, ATAU belum selesai padahal deadline lewat
+   - Rating instruktur : dimensi Trainer saja, dari peserta yang tercatat pada instruktur itu; disembunyikan jika n < 3 */
+(function(){
+"use strict";
+if(window.__onbMonInit)return;window.__onbMonInit=true;
+var DAY=864e5,MIN_N=3;
+var MON=["Jan","Feb","Mar","Apr","Mei","Jun","Jul","Agu","Sep","Okt","Nov","Des"];
+function E(s){s=s==null?"":String(s);return window.escapeHtml?window.escapeHtml(s):s.replace(/[&<>"']/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]})}
+function norm(s){return String(s==null?"":s).toLowerCase().replace(/\s+/g," ").trim()}
+function ms(v){if(!v)return 0;if(typeof v.toMillis==="function")return v.toMillis();if(typeof v.seconds==="number")return v.seconds*1000;if(typeof v.toDate==="function")return v.toDate().getTime();var t=new Date(v).getTime();return isNaN(t)?0:t}
+function dayStart(v){var d=new Date(v);d.setHours(0,0,0,0);return d}
+function fdate(d){try{return window.fmtDate?window.fmtDate(d):new Date(d).toLocaleDateString("id-ID")}catch(e){return String(d)}}
+function pct(a,b){return b?Math.round(a/b*100):0}
+function r1(v){return v==null?"-":(Math.round(v*10)/10).toFixed(1)}
+function batchLabel(key){var p=String(key||"").split("|"),n=p[0];try{n=window.__onbTypeName(p[0])}catch(e){}return n+" • "+(p[1]||"")+" • mulai "+fdate(p[2]?new Date(p[2]+"T00:00:00"):"")}
+
+/* ---------- minggu (sama dengan pengelompokan halaman: 1-7, 8-14, 15-21, 22-28, 29-akhir) ---------- */
+function weekOf(d){d=new Date(d);var day=d.getDate(),wn=Math.ceil(day/7),last=new Date(d.getFullYear(),d.getMonth()+1,0).getDate();
+  var s=new Date(d.getFullYear(),d.getMonth(),(wn-1)*7+1),e=new Date(d.getFullYear(),d.getMonth(),Math.min(wn*7,last));
+  return{key:d.getFullYear()+"-"+String(d.getMonth()).padStart(2,"0")+"-w"+wn,s:s,e:e,wn:wn,
+    label:s.getDate()+(e.getDate()!==s.getDate()?"–"+e.getDate():"")+" "+MON[e.getMonth()]+" "+e.getFullYear()}}
+
+/* ---------- indeks data ---------- */
+function startedSet(){var S=window.STATE||{},c=startedSet.c;
+  if(c&&c.en===S.enrollments&&c.qa===S.quizAttempts&&c.el===(S.enrollments||[]).length&&c.ql===(S.quizAttempts||[]).length)return c.set;
+  var set=new Set;(S.enrollments||[]).forEach(function(e){if(e.userId&&e.courseId)set.add(e.userId+"|"+e.courseId)});
+  (S.quizAttempts||[]).forEach(function(a){if(a.userId&&a.courseId)set.add(a.userId+"|"+a.courseId)});
+  startedSet.c={en:S.enrollments,qa:S.quizAttempts,el:(S.enrollments||[]).length,ql:(S.quizAttempts||[]).length,set:set};return set}
+function facilByBatch(){var S=window.STATE||{},d=(S.settings||[]).find(function(x){return x.id==="onboardingFacilitation"}),recs=d&&Array.isArray(d.items)?d.items:[],m={};
+  recs.forEach(function(r){if(!r||!r.batchKey||!r.trainer)return;var k=norm(r.trainer);if(!k)return;var o=m[r.batchKey]||(m[r.batchKey]={});if(!o[k])o[k]=r.trainer});
+  return m}
+function evAll(ev){var r=ev.ratings||{},v=[r.materi,r.trainer,r.fasilitas].filter(function(x){return typeof x==="number"});return v.length?v.reduce(function(a,b){return a+b},0)/v.length:null}
+
+/* ---------- inti hitungan per batch ---------- */
+function computeBatch(b,ctx){
+  ctx=ctx||{};var today=ctx.today||dayStart(new Date),started=ctx.started||startedSet(),evMap=ctx.evMap||(window.__onbEvalMap?window.__onbEvalMap():{}),cert=(typeof certOfUser==="function")?certOfUser:null;
+  var dl=b.deadline?dayStart(b.deadline).getTime():0;
+  var o={key:b.key,batch:b,start:b.start,deadline:b.deadline,target:0,done:0,started:0,trainings:0,trainingsHeld:0,lateDone:0,lateOpen:0,ratingSum:0,ratingN:0,trainerVals:[],instructors:[],mem:{}};
+  var cs={};
+  (b.members||[]).forEach(function(m){
+    if(m.isResigned)return;o.target++;
+    var u=m.user,ord=m.ordered||[],idSet={};ord.forEach(function(c){idSet[c.id]=1;if(!(c.id in cs))cs[c.id]=false});
+    var st=!!(m.completedCount>0);
+    if(!st&&u)st=ord.some(function(c){return started.has(u.id+"|"+c.id)});
+    if(u)ord.forEach(function(c){if(!cs[c.id]&&(started.has(u.id+"|"+c.id)||(cert&&cert(c.id,u.id))))cs[c.id]=true});
+    if(st)o.started++;
+    if(m.isDone)o.done++;
+    var mo={done:!!m.isDone,late:false,tv:[]};if(m.employee&&m.employee.id!=null)o.mem[m.employee.id]=mo;
+    var late=false;
+    if(m.isDone&&u&&cert&&dl){late=ord.some(function(c){var ct=cert(c.id,u.id),t=ct?ms(ct.issuedAt):0;return t&&dayStart(t).getTime()>dl})}
+    if(late)o.lateDone++;else if(!m.isDone&&dl&&dl<today.getTime())o.lateOpen++;
+    mo.late=late||(!m.isDone&&!!dl&&dl<today.getTime());
+    if(u)(evMap[u.id]||[]).forEach(function(ev){
+      if(ev.autoCompleted||!idSet[ev.courseId])return;
+      var a=evAll(ev);if(a!==null){o.ratingSum+=a;o.ratingN++}
+      if(ev.ratings&&typeof ev.ratings.trainer==="number"){o.trainerVals.push(ev.ratings.trainer);mo.tv.push(ev.ratings.trainer)}})});
+  Object.keys(cs).forEach(function(k){o.trainings++;if(cs[k])o.trainingsHeld++});
+  o.late=o.lateDone+o.lateOpen;
+  o.held=o.started>0;
+  o.future=!!(b.start&&dayStart(b.start).getTime()>today.getTime());
+  var fb=(ctx.facil||facilByBatch())[b.key]||{};o.instructors=Object.keys(fb).map(function(k){return{k:k,name:fb[k]}});
+  return o}
+
+/* ---------- strip mingguan ---------- */
+window.__onbMonRef=window.__onbMonRef||null;
+function curRef(){return window.__onbMonRef?new Date(window.__onbMonRef):new Date}
+function weekData(ref){
+  var wk=weekOf(ref),today=dayStart(new Date),ctx={today:today,started:startedSet(),evMap:window.__onbEvalMap?window.__onbEvalMap():{},facil:facilByBatch()};
+  var bs=[];try{bs=window.buildOnboardingBatches()||[]}catch(e){}
+  var rows=bs.filter(function(b){return b.start&&weekOf(b.start).key===wk.key}).map(function(b){return computeBatch(b,ctx)}).filter(function(x){return x.target>0}).sort(function(a,b){return a.start-b.start||String(a.key).localeCompare(String(b.key))});
+  var T={sched:rows.length,batchHeld:0,tr:0,held:0,target:0,done:0,started:0,late:0,lateDone:0,lateOpen:0,rSum:0,rN:0,tv:[]};
+  rows.forEach(function(x){if(x.held)T.batchHeld++;T.tr+=x.trainings;T.held+=x.trainingsHeld;T.target+=x.target;T.done+=x.done;T.started+=x.started;T.late+=x.late;T.lateDone+=x.lateDone;T.lateOpen+=x.lateOpen;T.rSum+=x.ratingSum;T.rN+=x.ratingN;x.trainerVals.forEach(function(v){T.tv.push(v)})});
+  T.rate=pct(T.done,T.target);T.rating=T.rN?T.rSum/T.rN:null;T.trainer=T.tv.length?T.tv.reduce(function(a,b){return a+b},0)/T.tv.length:null;
+  return{wk:wk,rows:rows,T:T,today:today}}
+window.__onbMonData=weekData;
+
+function tile(icon,color,val,label,sub,on){
+  return'<button type="button" onclick="'+on+'" class="bg-white rounded-2xl border border-slate-100 shadow-sm text-left" style="padding:8px 10px;cursor:pointer;min-width:0">'
+   +'<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px"><span style="width:16px;height:16px;border-radius:5px;display:inline-flex;align-items:center;justify-content:center;background:'+color+'1f;color:'+color+';font-size:8px"><i class="fas '+icon+'"></i></span><span class="text-[9px] font-black uppercase text-slate-400" style="letter-spacing:.02em">'+label+'</span></div>'
+   +'<div class="font-black text-slate-800" style="font-size:14px;line-height:1.15">'+val+'</div>'
+   +'<div class="text-[9px] text-slate-400 font-semibold" style="margin-top:2px;line-height:1.3">'+sub+'</div></button>'}
+function stripHtml(){
+  var d=weekData(curRef()),T=d.T,wk=d.wk,isCur=weekOf(new Date).key===wk.key;
+  var navBtn=function(dir,ic,t){return'<button type="button" onclick="window.__onbMonNav('+dir+')" title="'+t+'" class="text-slate-500 hover:text-slate-800" style="width:24px;height:24px;border-radius:8px;border:1px solid #e2e8f0;background:#fff;font-size:9px"><i class="fas '+ic+'"></i></button>'};
+  var head='<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:8px">'
+    +'<div style="display:flex;align-items:center;gap:8px;min-width:0"><span class="text-[11px] font-black text-slate-700"><i class="fas fa-gauge-high mr-1" style="color:var(--th-600,#2563eb)"></i>Monitoring Keterlaksanaan Mingguan</span>'
+    +(isCur?'<span class="text-[9px] font-black px-2 py-0.5 rounded-full" style="background:#dcfce7;color:#15803d">Minggu ini</span>':'')+'</div>'
+    +'<div style="display:flex;align-items:center;gap:6px">'+navBtn(-1,"fa-chevron-left","Minggu sebelumnya")
+    +'<span class="text-[10px] font-black text-slate-700" style="min-width:120px;text-align:center">Minggu ke-'+wk.wn+' • '+E(wk.label)+'</span>'+navBtn(1,"fa-chevron-right","Minggu berikutnya")
+    +(isCur?'':'<button type="button" onclick="window.__onbMonNav(0)" class="text-[9px] font-black px-2 py-1 rounded-lg" style="border:1px solid #e2e8f0;background:#fff;color:#475569">Minggu ini</button>')+'</div></div>';
+  if(!T.sched)return head+'<div class="bg-white rounded-2xl border border-slate-100 shadow-sm text-center text-slate-400 text-xs" style="padding:18px">Tidak ada batch onboarding yang dijadwalkan pada minggu ini.</div>';
+  var onD="window.__onbMonDetail()";
+  var ratingVal=T.rating!==null?'<i class="fas fa-star" style="color:#f59e0b;font-size:11px"></i> '+r1(T.rating):'-';
+  var ratingSub=T.rN?(T.rN+' ulasan'+(T.trainer!==null?' • Trainer '+r1(T.trainer):'')):'Belum ada ulasan';
+  var grid='<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px">'
+   +tile("fa-calendar-check","#0284c7",T.held+'<span class="text-slate-400" style="font-size:11px"> / '+T.tr+'</span>',"Training terlaksana",pct(T.held,T.tr)+'% • '+T.batchHeld+'/'+T.sched+' batch berjalan',onD)
+   +tile("fa-users","#7c3aed",String(T.target),"Target peserta",T.started+' sudah mulai • tanpa yang resign',onD)
+   +tile("fa-circle-check","#059669",T.rate+'%',"Completion rate",T.done+' dari '+T.target+' selesai',onD)
+   +tile("fa-star","#d97706",ratingVal,"Rating",ratingSub,onD)
+   +tile("fa-clock","#e11d48",String(T.late),"Telat",T.lateDone+' selesai telat • '+T.lateOpen+' lewat deadline',onD)
+   +'</div>';
+  return head+grid+'<p class="text-[9px] text-slate-400" style="margin-top:6px"><i class="fas fa-circle-info mr-1"></i>Training terlaksana = training dalam batch yang minimal 1 pesertanya sudah mulai (contoh: 2 batch x 5 training = 10). Klik kartu untuk rincian per batch dan instruktur.</p>'}
+
+window.__onbMonRender=function(){
+  var box=document.getElementById("onb-mon");
+  if(!box){var anchor=document.getElementById("onb-score");if(!anchor||!anchor.parentNode)return false;box=document.createElement("div");box.id="onb-mon";box.style.margin="0 0 14px";anchor.parentNode.insertBefore(box,anchor.nextSibling)}
+  try{box.innerHTML=stripHtml()}catch(e){console.warn("onb-mon",e);box.innerHTML=""}
+  return true};
+window.__onbMonNav=function(dir){
+  if(dir===0){window.__onbMonRef=null}
+  else{var wk=weekOf(curRef()),t=dir<0?new Date(wk.s.getTime()-DAY):new Date(wk.e.getTime()+DAY);window.__onbMonRef=new Date(t.getFullYear(),t.getMonth(),t.getDate()).getTime()}
+  window.__onbMonRender()};
+
+/* ---------- rincian per batch / instruktur (modal yang sama dengan rincian dashboard lain) ---------- */
+window.__onbMonGo=function(key){try{window.closeModal&&window.closeModal("modal-dashboard-detail")}catch(e){}if(window.__onbGoBatch)window.__onbGoBatch(key)};
+window.__onbMonDetail=function(instrKey){
+  var titleEl=document.getElementById("dashboard-detail-title"),bodyEl=document.getElementById("dashboard-detail-body");if(!titleEl||!bodyEl)return;
+  if(window.hideDetailSearch)window.hideDetailSearch();
+  var d=weekData(curRef()),rows=d.rows;
+  if(instrKey)rows=rows.filter(function(x){return x.instructors.some(function(i){return i.k===instrKey})});
+  var iname="";if(instrKey){d.rows.forEach(function(x){x.instructors.forEach(function(i){if(i.k===instrKey)iname=i.name})})}
+  titleEl.innerHTML='<i class="fas fa-gauge-high mr-1"></i> '+(instrKey?E(iname)+' · ':'')+'Minggu ke-'+d.wk.wn+' • '+E(d.wk.label);
+  var badge=function(x){return x.held?'<span class="text-[9px] font-black px-1.5 py-0.5 rounded-full bg-emerald-50 text-emerald-600">Terlaksana</span>':(x.future?'<span class="text-[9px] font-black px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-500">Belum mulai</span>':'<span class="text-[9px] font-black px-1.5 py-0.5 rounded-full bg-rose-50 text-rose-500">Belum ada yang mulai</span>')};
+  var cards=rows.map(function(x){
+    var ins=x.instructors.length?x.instructors.map(function(i){return'<a href="javascript:void(0)" onclick="window.__onbMonDetail(\''+E(i.k).replace(/'/g,"\\'")+'\')" class="text-violet-600 font-bold" style="text-decoration:none"><i class="fas fa-chalkboard-user mr-1"></i>'+E(i.name)+'</a>'}).join(", "):'<span class="text-slate-300">Instruktur belum dicatat</span>';
+    var tv=x.trainerVals.length?'<span><i class="fas fa-star" style="color:#f59e0b"></i> Trainer '+r1(x.trainerVals.reduce(function(a,b){return a+b},0)/x.trainerVals.length)+' <span class="text-slate-400">(n='+x.trainerVals.length+')</span></span>':'<span class="text-slate-300">Belum ada rating</span>';
+    return'<div class="p-3 rounded-2xl border border-slate-100" style="margin-bottom:8px">'
+     +'<div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start"><a href="javascript:void(0)" onclick="window.__onbMonGo(this.getAttribute(\'data-k\'))" data-k="'+E(x.key)+'" class="text-sm font-bold text-slate-700" style="text-decoration:none;min-width:0">'+E(batchLabel(x.key))+' <i class="fas fa-arrow-up-right-from-square" style="font-size:9px"></i></a>'+badge(x)+'</div>'
+     +'<p class="text-[10px] text-slate-400" style="margin:2px 0 6px">Deadline '+E(fdate(x.deadline))+'</p>'
+     +'<div class="text-[11px] text-slate-600" style="display:flex;flex-wrap:wrap;gap:4px 14px"><span>Training <b>'+x.trainingsHeld+'/'+x.trainings+'</b></span><span>Target <b>'+x.target+'</b></span><span>Mulai <b>'+x.started+'</b></span><span>Selesai <b>'+x.done+'</b> ('+pct(x.done,x.target)+'%)</span><span>Telat <b>'+x.late+'</b></span>'+tv+'</div>'
+     +'<p class="text-[11px]" style="margin-top:6px">'+ins+'</p></div>'}).join("");
+  bodyEl.innerHTML=(instrKey?'<p class="text-[10px] text-slate-400" style="margin-bottom:8px"><a href="javascript:void(0)" onclick="window.__onbMonDetail()" class="font-bold" style="color:var(--th-600,#2563eb);text-decoration:none">← Semua batch minggu ini</a></p>':'')
+    +(cards||'<p class="text-center text-slate-400 text-sm py-10">Tidak ada batch.</p>');
+  bodyEl.scrollTop=0;window.openModal&&window.openModal("modal-dashboard-detail")};
+
+/* ---------- pasang strip setelah halaman Penjadwalan Onboarding dirender ---------- */
+(function hook(tries){
+  var orig=window.__onbFinish;
+  if(typeof orig!=="function"){if(tries<40)setTimeout(function(){hook(tries+1)},250);return}
+  if(orig.__mon)return;
+  var w=function(){var r=orig.apply(this,arguments);
+    var ok=false;try{ok=window.__onbMonRender()}catch(e){console.warn(e)}
+    if(!ok){setTimeout(window.__onbMonRender,60);setTimeout(window.__onbMonRender,400)}
+    return r};
+  w.__mon=true;window.__onbFinish=w})(0);
+
+/* ---------- kolom tambahan di Summary Trainer > Instruktur Onboarding ---------- */
+function instrAgg(x){
+  var bs=[];try{bs=window.buildOnboardingBatches()||[]}catch(e){}
+  var byKey={};bs.forEach(function(b){byKey[b.key]=b});
+  var ctx={today:dayStart(new Date),started:startedSet(),evMap:window.__onbEvalMap?window.__onbEvalMap():{},facil:facilByBatch()};
+  var ids={};(x.list||[]).forEach(function(r){if(!r.batchKey)return;var o=ids[r.batchKey]||(ids[r.batchKey]={});(r.memberIds||[]).forEach(function(i){o[i]=1})});
+  var a={batches:0,tr:0,held:0,target:0,done:0,late:0,sum:0,n:0};
+  Object.keys(ids).forEach(function(k){var b=byKey[k];if(!b)return;var c=computeBatch(b,ctx),mine=Object.keys(ids[k]).filter(function(i){return c.mem[i]});if(!mine.length)return;
+    a.batches++;a.tr+=c.trainings;a.held+=c.trainingsHeld;
+    mine.forEach(function(i){var m=c.mem[i];a.target++;if(m.done)a.done++;if(m.late)a.late++;m.tv.forEach(function(v){a.sum+=v;a.n++})})});
+  a.rate=a.target?pct(a.done,a.target):null;a.latePct=a.target?pct(a.late,a.target):null;a.rating=a.n?a.sum/a.n:null;return a}
+/* Samakan daftar peserta di catatan instruktur dengan anggota batch yang sekarang: buang yang resign / sudah pindah batch,
+   dan peserta batch yang belum tercatat ke siapa pun dimasukkan ke instruktur batch itu bila instrukturnya hanya satu. */
+function reconcileFacil(items){
+  var bs=[];try{bs=window.buildOnboardingBatches()||[]}catch(e){}
+  var act={};bs.forEach(function(b){var o={},l=[];(b.members||[]).forEach(function(m){if(!m.isResigned&&m.employee){o[m.employee.id]=1;l.push(m.employee.id)}});act[b.key]={set:o,list:l}});
+  var tr={},cov={},first={};
+  items.forEach(function(r){if(!r||!r.batchKey||!act[r.batchKey])return;var k=norm(r.trainer);(tr[r.batchKey]=tr[r.batchKey]||{})[k]=1;
+    var c=cov[r.batchKey]=cov[r.batchKey]||{};(r.memberIds||[]).forEach(function(i){if(act[r.batchKey].set[i])c[i]=1});if(!first[r.batchKey])first[r.batchKey]=r});
+  return items.map(function(r){
+    if(!r||!r.batchKey||!act[r.batchKey])return r;
+    var A=act[r.batchKey],ids=[],seen={};
+    (r.memberIds||[]).forEach(function(i){if(A.set[i]&&!seen[i]){seen[i]=1;ids.push(i)}});
+    if(first[r.batchKey]===r&&Object.keys(tr[r.batchKey]||{}).length===1)A.list.forEach(function(i){if(!cov[r.batchKey][i]&&!seen[i]){seen[i]=1;ids.push(i)}});
+    var o={};for(var k in r)o[k]=r[k];o.memberIds=ids;return o})}
+function ensureTrsHook(tries){
+  var orig=window.__trsOnbHtml;
+  if(typeof orig!=="function"){if(tries<40)setTimeout(function(){ensureTrsHook(tries+1)},250);return}
+  if(orig.__mon)return;
+  var w=function(period){
+    var html,S=window.STATE,old=S&&S.settings;
+    try{
+      var doc=(old||[]).find(function(d){return d.id==="onboardingFacilitation"});
+      if(doc&&Array.isArray(doc.items)){var cp={};for(var q in doc)cp[q]=doc[q];cp.items=reconcileFacil(doc.items);S.settings=old.map(function(d){return d===doc?cp:d})}
+    }catch(e){console.warn("onb-mon reconcile",e)}
+    try{html=orig.apply(this,arguments)}finally{if(S&&old)S.settings=old}
+    try{
+      var host=document.createElement("div");host.innerHTML=html;
+      var table=host.querySelector("table"),rowsData=window.__trsOnbRows||[];
+      if(!table)return html;
+      var hr=table.querySelector("thead tr"),trs=table.querySelectorAll("tbody > tr");
+      var th=function(t,tip){var e=document.createElement("th");e.className="trs-th trs-c";e.textContent=t;if(tip)e.title=tip;return e};
+      hr.appendChild(th("Training Terlaksana","Training dalam batch instruktur ini yang minimal 1 pesertanya sudah mulai, dari total training di batch tersebut"));
+      hr.appendChild(th("Target Peserta","Anggota batch dikurangi yang resign"));
+      hr.appendChild(th("Completion","Peserta selesai / target peserta"));
+      hr.appendChild(th("% Telat","Peserta selesai telat atau belum selesai padahal deadline lewat, dibanding target peserta"));
+      hr.appendChild(th("Rating Trainer","Dimensi Trainer saja, lewat batch peserta. Dihitung dari peserta yang tercatat pada instruktur ini. Disembunyikan jika responden kurang dari "+MIN_N));
+      trs.forEach(function(tr,i){
+        var x=rowsData[i],cell=function(h){var td=document.createElement("td");td.className="trs-c";td.innerHTML=h;tr.appendChild(td)};
+        if(!x){for(var j=0;j<5;j++)cell("-");return}
+        var a=instrAgg(x);
+        cell('<b>'+a.held+'</b><span class="trs-mut"> / '+a.tr+'</span><div class="trs-mut">'+a.batches+' batch</div>');
+        cell(String(a.target));
+        cell(a.target?'<b>'+a.rate+'%</b><div class="trs-mut">'+a.done+'/'+a.target+'</div>':'-');
+        cell(a.target?'<b style="color:'+(a.latePct>=30?'#e11d48':'inherit')+'">'+a.latePct+'%</b><div class="trs-mut">'+a.late+' orang</div>':'-');
+        cell(a.n>=MIN_N?'<i class="fas fa-star" style="color:#f59e0b"></i> '+r1(a.rating)+'<div class="trs-mut">n='+a.n+'</div>':(a.n?'<span class="trs-mut" title="Responden kurang dari '+MIN_N+', rata-rata disembunyikan">n='+a.n+'<br>belum cukup</span>':'-'))});
+      var note=document.createElement("p");note.className="trs-mut";note.style.cssText="margin:8px 16px 14px";
+      note.innerHTML='<b>Training Terlaksana</b> = training dalam batch yang minimal 1 pesertanya sudah mulai. <b>Target</b> tidak termasuk peserta resign. <b>Telat</b> dihitung dari tanggal sertifikat dibanding deadline batch. <b>Rating Trainer</b> hanya dimensi Trainer, dihitung dari peserta yang tercatat pada instruktur itu, dan disembunyikan jika responden (n) kurang dari '+MIN_N+'.';
+      var scroll=table.closest(".trs-scroll");if(scroll&&scroll.parentNode)scroll.parentNode.insertBefore(note,scroll.nextSibling);
+      return host.innerHTML
+    }catch(e){console.warn("onb-mon trs",e);return html}};
+  w.__mon=true;window.__trsOnbHtml=w}
+ensureTrsHook(0);
+
+window.__onbMon={reconcileFacil:reconcileFacil,computeBatch:computeBatch,weekData:weekData,instrAgg:instrAgg};
+})();
+</script>
 <script id="view-only-mode">
 /* ===== MODE LIHAT SAJA (tanpa login, tanpa aksi) ===== */
 (function(){
