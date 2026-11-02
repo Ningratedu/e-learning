@@ -2572,15 +2572,16 @@ window.__collectShareParams=function(){
   return p;
 };
 window.__shareReportPathname=function(){
-  /* Pakai path halaman yang sedang dibuka agar tidak 404.
-     Mode lihat = file report.html yang sama; jangan ganti path ke file lain. */
-  return location.pathname||"/";
+  /* Base URL halaman saat ini — JANGAN menambah /report.html (bikin 404: report/report.html) */
+  var base=(location.href||"").split("#")[0].split("?")[0]||(location.origin+(location.pathname||"/"));
+  base=base.replace(/\/report\/report\.html$/i,"/report/");
+  base=base.replace(/\/report\/report\/?$/i,"/report/");
+  return base;
 };
 window.__buildShareLink=function(extra){
-  var base=location.origin+window.__shareReportPathname();
-  // pertahankan query string non-hash yang sudah ada di URL (jika ada)
-  var search=location.search||"";
+  var base=window.__shareReportPathname();
   var path=(location.hash||"#/").split("?")[0];
+  if(!path||path==="#")path="#/";
   if(path.charAt(0)!=="#")path="#"+path;
   var p=Object.assign({},window.__collectShareParams(),extra||{});
   if(p.view==null)p.view="1";
@@ -2589,8 +2590,7 @@ window.__buildShareLink=function(extra){
     if(p[k]==null||p[k]==="")return;
     parts.push(encodeURIComponent(k)+"="+encodeURIComponent(String(p[k])));
   });
-  // Filter ditaruh di hash query: #/route?co=...&view=1 (selaras parse resolveRoute)
-  return base+search+path+(parts.length?"?"+parts.join("&"):"");
+  return base+path+(parts.length?"?"+parts.join("&"):"");
 };
 window.__copyShareLink=async function(extra){
   var url=window.__buildShareLink(extra);
@@ -2620,6 +2620,7 @@ window.__applyShareParams=function(qs){
   if(!Object.keys(p).length)return;
   if(window.__shareApplying)return;
   window.__shareApplying=true;
+  var prevToast=window.toast;window.toast=function(){};
   try{
     if(window.__divFilter){
       if(p.co!=null)window.__divFilter.setCompany(window.__shareSplit(p.co));
@@ -2641,6 +2642,7 @@ window.__applyShareParams=function(qs){
     if(p.tnaMon!=null){window.__tnaMonSel=window.__shareSplit(p.tnaMon);window.__tnaMonWeekKey=window.__tnaMonSel[0]||null}
     if(p.ksPeriod&&window.__kpiSalesSetPeriod)window.__kpiSalesSetPeriod(p.ksPeriod);
   }catch(e){console.warn(e)}
+  window.toast=prevToast;
   window.__shareApplying=false;
 };
 window.copyFilterShareLink=function(){return window.__copyShareLink()};
@@ -3455,7 +3457,7 @@ function renderDevProgramBuilder(id){if(!devProgramDraft||devProgramDraft._loade
         <label class="text-[10px] font-bold uppercase text-slate-400">Peserta</label>
         <div class="flex flex-wrap gap-2 mt-1 mb-2">
           <label class="inline-flex items-center gap-1.5 text-[11px] font-bold px-2.5 py-1 rounded-lg border cursor-pointer ${(d.participantMode||"manual")==="manual"?"border-dpv-500 bg-dpv-50 text-dpv-700":"border-slate-200 text-slate-500"}"><input type="radio" name="dp-part-mode" ${(d.participantMode||"manual")==="manual"?"checked":""} onchange="window.dpSetParticipantMode('manual')" class="accent-dpv-600"> Manual</label>
-          <label class="inline-flex items-center gap-1.5 text-[11px] font-bold px-2.5 py-1 rounded-lg border cursor-pointer ${d.participantMode==="auto"?"border-dpv-500 bg-dpv-50 text-dpv-700":"border-slate-200 text-slate-500"}"><input type="radio" name="dp-part-mode" ${d.participantMode==="auto"?"checked":""} onchange="window.dpSetParticipantMode('auto')" class="accent-dpv-600"> Otomatis (dept + designation + join)</label>
+          <label class="inline-flex items-center gap-1.5 text-[11px] font-bold px-2.5 py-1 rounded-lg border cursor-pointer ${d.participantMode==="auto"?"border-dpv-500 bg-dpv-50 text-dpv-700":"border-slate-200 text-slate-500"}"><input type="radio" name="dp-part-mode" ${d.participantMode==="auto"?"checked":""} onchange="window.dpSetParticipantMode('auto')" class="accent-dpv-600"> Otomatis batch (dept + designation + cohort join)</label>
         </div>
         ${d.participantMode==="auto"?window.dpAutoRulesHtml():`<div class="flex justify-end mb-1"><button type="button" onclick="window.fillDevProgramStartsFromJoin()" class="text-[10px] font-black px-2 py-1 rounded-lg bg-dpv-50 text-dpv-600 hover:bg-dpv-100"><i class="fas fa-calendar-check mr-1"></i>Isi tanggal mulai dari Tanggal Bergabung</button></div><p class="text-[10px] text-slate-400 mt-1">Tiap peserta bisa punya tanggal mulai sendiri. Kosong = ikut Tanggal Mulai Program.</p>`}
         ${d.participantMode==="auto"?"":``}
@@ -3715,7 +3717,25 @@ window.dpFormatFieldValues=function(e,stage){
 
 
 /* Auto enroll */
-window.dpNormalizeAutoEnroll=function(ae){ae=ae||{};return{groups:(Array.isArray(ae.groups)?ae.groups:[]).map(function(g){return{departments:(g.departments||[]).map(String).filter(Boolean),designations:(g.designations||[]).map(String).filter(Boolean)}}),joinFrom:ae.joinFrom||"",joinTo:ae.joinTo||"",joinAgeMinDays:ae.joinAgeMinDays==null||ae.joinAgeMinDays===""?null:+ae.joinAgeMinDays,joinAgeMaxDays:ae.joinAgeMaxDays==null||ae.joinAgeMaxDays===""?null:+ae.joinAgeMaxDays}};
+window.dpNormalizeAutoEnroll=function(ae){ae=ae||{};var day=ae.inviteDayOfMonth==null||ae.inviteDayOfMonth===""?15:+ae.inviteDayOfMonth;if(isNaN(day)||day<1)day=15;if(day>28)day=28;return{groups:(Array.isArray(ae.groups)?ae.groups:[]).map(function(g){return{departments:(g.departments||[]).map(String).filter(Boolean),designations:(g.designations||[]).map(String).filter(Boolean)}}),joinFrom:ae.joinFrom||"",joinTo:ae.joinTo||"",joinAgeMinDays:ae.joinAgeMinDays==null||ae.joinAgeMinDays===""?null:+ae.joinAgeMinDays,joinAgeMaxDays:ae.joinAgeMaxDays==null||ae.joinAgeMaxDays===""?null:+ae.joinAgeMaxDays,cohortMode:ae.cohortMode==="none"?"none":"joinMonth",inviteDayOfMonth:day}};
+/** Tanggal undangan batch: semua yang join di bulan yang sama diundang bareng di tgl `inviteDayOfMonth` bulan berikutnya. Cth join 1–31 Okt → undangan 15 Nov. */
+window.dpCohortInviteDate=function(joinDate,ae){
+  ae=window.dpNormalizeAutoEnroll(ae);
+  if(!joinDate||!(joinDate instanceof Date)||isNaN(joinDate))return null;
+  if(ae.cohortMode==="none")return new Date(joinDate.getFullYear(),joinDate.getMonth(),joinDate.getDate());
+  var day=ae.inviteDayOfMonth||15;
+  return new Date(joinDate.getFullYear(),joinDate.getMonth()+1,day);
+};
+window.dpCohortKey=function(joinDate){
+  if(!joinDate||isNaN(joinDate))return"";
+  return joinDate.getFullYear()+"-"+String(joinDate.getMonth()+1).padStart(2,"0");
+};
+window.dpCohortLabel=function(joinDate){
+  var MN=["Januari","Februari","Maret","April","Mei","Juni","Juli","Agustus","September","Oktober","November","Desember"];
+  if(!joinDate||isNaN(joinDate))return"-";
+  return MN[joinDate.getMonth()]+" "+joinDate.getFullYear();
+};
+
 window.dpNormKey=function(s){return String(s==null?"":s).toLowerCase().replace(/\s+/g," ").trim()};
 window.dpJoinDateOnly=function(e){try{return dateOnlySafe(e&&e.tglBergabung)}catch(err){if(!e||!e.tglBergabung)return null;var d=new Date(e.tglBergabung);return isNaN(d)?null:new Date(d.getFullYear(),d.getMonth(),d.getDate())}};
 window.dpFmtYMD=function(d){return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0")};
@@ -3730,8 +3750,8 @@ window.dpEmployeeMatchesAuto=function(e,ae){
   return ae.groups.some(function(g){var okD=!g.departments.length||g.departments.some(function(x){return window.dpNormKey(x)===dept});var okS=!g.designations.length||g.designations.some(function(x){return window.dpNormKey(x)===des});return okD&&okS});
 };
 window.dpListAutoEmployees=function(ae){return(window.STATE.employees||[]).filter(function(e){return window.dpEmployeeMatchesAuto(e,ae)}).sort(function(a,b){return String(a.nama||"").localeCompare(String(b.nama||""),"id")})};
-window.dpSyncAutoParticipantsDraft=function(){var d=devProgramDraft;if(!d||d.participantMode!=="auto")return;var list=window.dpListAutoEmployees(d.autoEnroll);d.participantUsernames=list.map(function(e){return e.username}).filter(Boolean);if(!d.participantStartDates)d.participantStartDates={};list.forEach(function(e){var k=normalizeUsername(e.username),join=window.dpJoinDateOnly(e);if(k&&join)d.participantStartDates[k]=window.dpFmtYMD(join)})};
-window.dpSetParticipantMode=function(mode){if(!devProgramDraft)return;devProgramDraft.participantMode=mode==="auto"?"auto":"manual";if(devProgramDraft.participantMode==="auto"){if(!devProgramDraft.autoEnroll)devProgramDraft.autoEnroll={groups:[{departments:[],designations:[]}],joinAgeMinDays:14,joinAgeMaxDays:60};window.dpSyncAutoParticipantsDraft()}window.rerenderDevProgramBuilder()};
+window.dpSyncAutoParticipantsDraft=function(){var d=devProgramDraft;if(!d||d.participantMode!=="auto")return;var list=window.dpListAutoEmployees(d.autoEnroll);d.participantUsernames=list.map(function(e){return e.username}).filter(Boolean);if(!d.participantStartDates)d.participantStartDates={};var ae=window.dpNormalizeAutoEnroll(d.autoEnroll);list.forEach(function(e){var k=normalizeUsername(e.username),join=window.dpJoinDateOnly(e);if(!k||!join)return;var start=window.dpCohortInviteDate(join,ae)||join;d.participantStartDates[k]=window.dpFmtYMD(start)})};
+window.dpSetParticipantMode=function(mode){if(!devProgramDraft)return;devProgramDraft.participantMode=mode==="auto"?"auto":"manual";if(devProgramDraft.participantMode==="auto"){if(!devProgramDraft.autoEnroll)devProgramDraft.autoEnroll={groups:[{departments:[],designations:[]}],joinMonths:[],cohortMode:"joinMonth",inviteDayOfMonth:15};window.dpSyncAutoParticipantsDraft()}window.rerenderDevProgramBuilder()};
 window.dpSetDeadlineMode=function(mode){if(!devProgramDraft)return;devProgramDraft.deadlineMode=mode==="hplus"?"hplus":"duration";window.rerenderDevProgramBuilder()};
 window.dpAddAutoGroup=function(){if(!devProgramDraft.autoEnroll)devProgramDraft.autoEnroll={groups:[]};devProgramDraft.autoEnroll.groups.push({departments:[],designations:[]});window.rerenderDevProgramBuilder()};
 window.dpRemoveAutoGroup=function(gi){if(devProgramDraft.autoEnroll&&devProgramDraft.autoEnroll.groups){devProgramDraft.autoEnroll.groups.splice(gi,1);window.dpSyncAutoParticipantsDraft();window.rerenderDevProgramBuilder()}};
@@ -3752,40 +3772,126 @@ window.dpRemoveAutoGroupItem=function(gi,field,ii){
   window.dpSyncAutoParticipantsDraft();window.rerenderDevProgramBuilder();
 };
 
-window.dpSetAutoMeta=function(key,val){if(!devProgramDraft.autoEnroll)devProgramDraft.autoEnroll={};if(key==="joinAgeMinDays"||key==="joinAgeMaxDays")devProgramDraft.autoEnroll[key]=val===""||val==null?null:+val;else devProgramDraft.autoEnroll[key]=val;window.dpSyncAutoParticipantsDraft();window.rerenderDevProgramBuilder()};
-window.dpAutoPreviewHtml=function(){var d=devProgramDraft;if(!d||d.participantMode!=="auto")return"";var list=window.dpListAutoEmployees(d.autoEnroll);return'<div class="text-[11px] text-slate-600 bg-emerald-50/60 border border-emerald-100 rounded-xl px-3 py-2"><b class="text-emerald-700">'+list.length+' karyawan</b> cocok & akan terdaftar (mulai = tgl bergabung).</div>'};
+window.dpSetAutoMeta=function(key,val){if(!devProgramDraft.autoEnroll)devProgramDraft.autoEnroll={};if(key==="inviteDayOfMonth")devProgramDraft.autoEnroll[key]=val===""||val==null?15:+val;else devProgramDraft.autoEnroll[key]=val;window.dpSyncAutoParticipantsDraft();window.rerenderDevProgramBuilder()};
+window.dpAddJoinMonth=function(){
+  if(!devProgramDraft.autoEnroll)devProgramDraft.autoEnroll={};
+  var el=document.getElementById("dp-auto-join-month");
+  var v=el?String(el.value||"").slice(0,7):"";
+  if(!/^\d{4}-\d{2}$/.test(v)){window.toast&&window.toast("Pilih bulan join dulu","warn");return}
+  var arr=Array.isArray(devProgramDraft.autoEnroll.joinMonths)?devProgramDraft.autoEnroll.joinMonths.slice():[];
+  if(arr.indexOf(v)<0)arr.push(v);
+  arr.sort();
+  devProgramDraft.autoEnroll.joinMonths=arr;
+  window.dpSyncAutoParticipantsDraft();window.rerenderDevProgramBuilder();
+};
+window.dpRemoveJoinMonth=function(i){
+  if(!devProgramDraft.autoEnroll||!Array.isArray(devProgramDraft.autoEnroll.joinMonths))return;
+  devProgramDraft.autoEnroll.joinMonths.splice(i,1);
+  window.dpSyncAutoParticipantsDraft();window.rerenderDevProgramBuilder();
+};
+window.dpAddAutoGroupFromSelect=function(gi,field){
+  var el=document.getElementById("dp-auto-sel-"+field+"-"+gi);
+  var v=el?String(el.value||"").trim():"";
+  if(!v)return;
+  var g=devProgramDraft.autoEnroll&&devProgramDraft.autoEnroll.groups[gi];if(!g)return;
+  if(!Array.isArray(g[field]))g[field]=[];
+  if(!g[field].some(function(x){return String(x).toLowerCase()===v.toLowerCase()}))g[field].push(v);
+  if(el)el.value="";
+  window.dpSyncAutoParticipantsDraft();window.rerenderDevProgramBuilder();
+};
+
+window.dpAutoPreviewHtml=function(){
+  var d=devProgramDraft;if(!d||d.participantMode!=="auto")return"";
+  var ae=window.dpNormalizeAutoEnroll(d.autoEnroll);
+  var list=window.dpListAutoEmployees(d.autoEnroll);
+  var E=window.escapeHtml;
+  var by={};
+  list.forEach(function(e){
+    var join=window.dpJoinDateOnly(e);if(!join)return;
+    var k=window.dpCohortKey(join);
+    if(!by[k])by[k]={join:join,n:0,invite:window.dpCohortInviteDate(join,ae)};
+    by[k].n++;
+  });
+  var keys=Object.keys(by).sort().reverse().slice(0,6);
+  var rows=keys.map(function(k){
+    var x=by[k];
+    var inv=x.invite?window.dpFmtYMD(x.invite):"-";
+    return'<div class="flex justify-between gap-2 text-[10px] py-0.5 border-b border-emerald-100/80"><span>Join <b>'+E(window.dpCohortLabel(x.join))+'</b> <span class="text-slate-400">('+x.n+' org)</span></span><span class="text-emerald-800 font-bold">Undangan batch: '+E(inv)+'</span></div>';
+  }).join("");
+  var modeNote=ae.cohortMode==="joinMonth"
+    ?('Batch seperti onboarding: yang join sebulan penuh diundang bareng tgl <b>'+ae.inviteDayOfMonth+' bulan berikutnya</b> (cth. join Okt → undangan '+ae.inviteDayOfMonth+' Nov).')
+    :'Tanpa batch bulanan — mulai journey = tanggal bergabung.';
+  return'<div class="text-[11px] text-slate-600 bg-emerald-50/60 border border-emerald-100 rounded-xl px-3 py-2 space-y-1.5"><div><b class="text-emerald-700">'+list.length+' karyawan</b> cocok & terdaftar otomatis.</div><p class="text-[10px] text-slate-500 leading-relaxed">'+modeNote+'</p>'+(rows?('<div class="mt-1">'+rows+'</div>'):'')+'</div>';
+};
 window.dpAutoRulesHtml=function(){
   var d=devProgramDraft,E=window.escapeHtml;
-  if(!d.autoEnroll)d.autoEnroll={groups:[{departments:[],designations:[]}],joinAgeMinDays:14,joinAgeMaxDays:60};
+  if(!d.autoEnroll)d.autoEnroll={groups:[{departments:[],designations:[]}],joinMonths:[],cohortMode:"joinMonth",inviteDayOfMonth:15};
   if(!d.autoEnroll.groups||!d.autoEnroll.groups.length)d.autoEnroll.groups=[{departments:[],designations:[]}];
   var ae=window.dpNormalizeAutoEnroll(d.autoEnroll);
-  function chips(gi,field,arr){
+  d.autoEnroll.cohortMode=ae.cohortMode;d.autoEnroll.inviteDayOfMonth=ae.inviteDayOfMonth;
+  if(!Array.isArray(d.autoEnroll.joinMonths))d.autoEnroll.joinMonths=ae.joinMonths.slice();
+  var allDept=window.dpAllDepartments();
+  var monthOpts=window.dpAvailableJoinMonths();
+  var MN=["Jan","Feb","Mar","Apr","Mei","Jun","Jul","Agu","Sep","Okt","Nov","Des"];
+  function monthLabel(ym){
+    var p=String(ym||"").split("-");if(p.length<2)return ym;
+    var mi=+p[1]-1;return (MN[mi]||p[1])+" "+p[0];
+  }
+  function chips(gi,field,arr,options){
     arr=arr||[];
     var h='<div class="flex flex-wrap gap-1 mb-1">';
     arr.forEach(function(v,ii){
       h+='<span class="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-lg bg-white border border-slate-200 text-slate-700">'+E(v)+'<button type="button" onclick="window.dpRemoveAutoGroupItem('+gi+',\''+field+'\','+ii+')" class="text-rose-400 hover:text-rose-600 leading-none">&times;</button></span>';
     });
-    if(!arr.length)h+='<span class="text-[10px] text-slate-400 italic">Belum ada</span>';
+    if(!arr.length)h+='<span class="text-[10px] text-slate-400 italic">Belum dipilih</span>';
     h+='</div>';
-    h+='<div class="flex gap-1"><input id="dp-auto-'+field+'-'+gi+'" type="text" placeholder="'+(field==='departments'?'Ketik departemen lalu tambah':'Ketik designation lalu tambah')+'" onkeydown="if(event.key===\'Enter\'){event.preventDefault();window.dpAddAutoGroupItem('+gi+',\''+field+'\')}" class="flex-1 border border-slate-200 rounded-lg px-2 py-1.5 text-[11px] bg-white"><button type="button" onclick="window.dpAddAutoGroupItem('+gi+',\''+field+'\')" class="text-[10px] font-black px-2 py-1 rounded-lg bg-dpv-600 text-white shrink-0">Tambah</button></div>';
+    var avail=(options||[]).filter(function(o){return!arr.some(function(x){return String(x).toLowerCase()===String(o).toLowerCase()})});
+    h+='<select id="dp-auto-sel-'+field+'-'+gi+'" onchange="window.dpAddAutoGroupFromSelect('+gi+',\''+field+'\')" class="w-full border border-slate-200 rounded-lg px-2 py-1.5 text-[11px] bg-white">';
+    h+='<option value="">— Pilih '+(field==='departments'?'departemen':'designation')+' —</option>';
+    avail.forEach(function(o){h+='<option value="'+E(o)+'">'+E(o)+'</option>'});
+    if(!avail.length)h+='<option value="" disabled>Semua sudah dipilih / data kosong</option>';
+    h+='</select>';
     return h;
   }
   var groups=d.autoEnroll.groups.map(function(g,gi){
+    var desigOpts=window.dpAllDesignations(g.departments||[]);
     return'<div class="border border-slate-200 rounded-xl p-2.5 space-y-2 bg-slate-50/80">'
-      +'<div class="flex justify-between"><span class="text-[10px] font-black uppercase text-slate-400">Grup '+(gi+1)+'</span><button type="button" onclick="window.dpRemoveAutoGroup('+gi+')" class="text-[10px] font-bold text-rose-400">Hapus</button></div>'
-      +'<div><label class="text-[10px] font-bold text-slate-500">Departemen</label>'+chips(gi,'departments',g.departments||[])+'</div>'
-      +'<div><label class="text-[10px] font-bold text-slate-500">Designation</label>'+chips(gi,'designations',g.designations||[])+'</div>'
+      +'<div class="flex justify-between"><span class="text-[10px] font-black uppercase text-slate-400">Target grup '+(gi+1)+'</span><button type="button" onclick="window.dpRemoveAutoGroup('+gi+')" class="text-[10px] font-bold text-rose-400">Hapus</button></div>'
+      +'<div><label class="text-[10px] font-bold text-slate-500">Departemen</label>'+chips(gi,'departments',g.departments||[],allDept)+'</div>'
+      +'<div><label class="text-[10px] font-bold text-slate-500">Designation</label>'+chips(gi,'designations',g.designations||[],desigOpts)+'</div>'
       +'</div>';
   }).join("");
-  return'<div class="space-y-2 mt-2"><div class="flex justify-between"><span class="text-[10px] font-black uppercase text-slate-400">Aturan otomatis</span><button type="button" onclick="window.dpAddAutoGroup()" class="text-[10px] font-black text-dpv-600">+ Grup</button></div>'+groups
-    +'<div class="grid grid-cols-2 sm:grid-cols-4 gap-2">'
-    +'<div><label class="text-[10px] font-bold text-slate-500">Usia join min (hari)</label><input type="number" value="'+(ae.joinAgeMinDays!=null?ae.joinAgeMinDays:"")+'" onchange="window.dpSetAutoMeta(\'joinAgeMinDays\',this.value)" class="w-full border border-slate-200 rounded-lg px-2 py-1.5 text-[11px] mt-0.5" placeholder="14"></div>'
-    +'<div><label class="text-[10px] font-bold text-slate-500">Usia join max (hari)</label><input type="number" value="'+(ae.joinAgeMaxDays!=null?ae.joinAgeMaxDays:"")+'" onchange="window.dpSetAutoMeta(\'joinAgeMaxDays\',this.value)" class="w-full border border-slate-200 rounded-lg px-2 py-1.5 text-[11px] mt-0.5" placeholder="60"></div>'
-    +'<div><label class="text-[10px] font-bold text-slate-500">Join dari</label><input type="date" value="'+E(ae.joinFrom||"")+'" onchange="window.dpSetAutoMeta(\'joinFrom\',this.value)" class="w-full border border-slate-200 rounded-lg px-2 py-1.5 text-[11px] mt-0.5"></div>'
-    +'<div><label class="text-[10px] font-bold text-slate-500">Join sampai</label><input type="date" value="'+E(ae.joinTo||"")+'" onchange="window.dpSetAutoMeta(\'joinTo\',this.value)" class="w-full border border-slate-200 rounded-lg px-2 py-1.5 text-[11px] mt-0.5"></div>'
-    +'</div>'+window.dpAutoPreviewHtml()+'</div>';
-};
+  var jm=d.autoEnroll.joinMonths||[];
+  var jmChips='<div class="flex flex-wrap gap-1 mb-1">';
+  jm.forEach(function(v,ii){
+    jmChips+='<span class="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-lg bg-white border border-slate-200 text-slate-700">'+E(monthLabel(v))+'<button type="button" onclick="window.dpRemoveJoinMonth('+ii+')" class="text-rose-400">&times;</button></span>';
+  });
+  if(!jm.length)jmChips+='<span class="text-[10px] text-slate-400 italic">Belum dipilih — jika kosong, semua bulan join berlaku</span>';
+  jmChips+='</div>';
+  var jmAvail=monthOpts.filter(function(m){return jm.indexOf(m)<0});
+  var jmSelect='<div class="flex gap-1"><select id="dp-auto-join-month" class="flex-1 border border-slate-200 rounded-lg px-2 py-1.5 text-[11px] bg-white"><option value="">— Pilih bulan join —</option>';
+  jmAvail.forEach(function(m){jmSelect+='<option value="'+E(m)+'">'+E(monthLabel(m))+'</option>'});
+  jmSelect+='</select><button type="button" onclick="window.dpAddJoinMonth()" class="text-[10px] font-black px-2 py-1 rounded-lg bg-dpv-600 text-white shrink-0">Tambah</button></div>';
 
+  return'<div class="space-y-2 mt-2">'
+    +'<div class="rounded-xl bg-sky-50 border border-sky-100 px-2.5 py-2 text-[10px] text-sky-900 leading-relaxed"><b class="font-black">Batch peserta otomatis</b><br>Pilih dept &amp; designation (dropdown). Program berlaku untuk karyawan yang <b>bulan join</b>-nya termasuk daftar di bawah — dikelompokkan batch lalu diundang bareng.</div>'
+    +'<div class="flex justify-between"><span class="text-[10px] font-black uppercase text-slate-400">Target grup</span><button type="button" onclick="window.dpAddAutoGroup()" class="text-[10px] font-black text-dpv-600">+ Grup</button></div>'+groups
+    +'<div class="border border-slate-200 rounded-xl p-2.5 space-y-1.5 bg-white">'
+    +'<div class="text-[10px] font-black uppercase text-slate-400">Diterapkan ke bulan join</div>'
+    +jmChips+jmSelect
+    +'<p class="text-[9px] text-slate-400">Contoh: pilih Okt &amp; Nov 2026 → hanya karyawan join di bulan itu yang masuk gelombang program.</p>'
+    +'</div>'
+    +'<div class="border border-slate-200 rounded-xl p-2.5 space-y-2 bg-white">'
+    +'<div class="text-[10px] font-black uppercase text-slate-400">Jadwal undangan batch journey</div>'
+    +'<div class="flex flex-wrap gap-2">'
+    +'<label class="inline-flex items-center gap-1.5 text-[11px] font-bold px-2.5 py-1 rounded-lg border cursor-pointer '+(ae.cohortMode!=="none"?"border-dpv-500 bg-dpv-50 text-dpv-700":"border-slate-200 text-slate-500")+'"><input type="radio" name="dp-cohort-mode" '+(ae.cohortMode!=="none"?"checked":"")+' onchange="window.dpSetAutoMeta(\'cohortMode\',\'joinMonth\')" class="accent-dpv-600"> Batch per bulan join</label>'
+    +'<label class="inline-flex items-center gap-1.5 text-[11px] font-bold px-2.5 py-1 rounded-lg border cursor-pointer '+(ae.cohortMode==="none"?"border-dpv-500 bg-dpv-50 text-dpv-700":"border-slate-200 text-slate-500")+'"><input type="radio" name="dp-cohort-mode" '+(ae.cohortMode==="none"?"checked":"")+' onchange="window.dpSetAutoMeta(\'cohortMode\',\'none\')" class="accent-dpv-600"> Langsung dari tgl join</label>'
+    +'</div>'
+    +(ae.cohortMode!=="none"?('<div><label class="text-[10px] font-bold text-slate-500">Tanggal undangan (bulan setelah join)</label><input type="number" min="1" max="28" value="'+ae.inviteDayOfMonth+'" onchange="window.dpSetAutoMeta(\'inviteDayOfMonth\',this.value)" class="w-24 border border-slate-200 rounded-lg px-2 py-1.5 text-[11px] mt-0.5"><p class="text-[9px] text-slate-400 mt-0.5">Cth: 15 → join Oktober diundang 15 November bareng.</p></div>'):'')
+    +'</div>'
+    +window.dpAutoPreviewHtml()
+    +'</div>';
+};
 window.dpOnboardingPackageOptionsHtml=function(){
   var E=window.escapeHtml;
   var pkgs=[], types=[];
