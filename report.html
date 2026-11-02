@@ -2654,7 +2654,89 @@ window.__shareSplit=function(v){return String(v||"").split("|").map(function(x){
   /* ---- Popup detail (card/chart yang bisa diklik) ----
      Fungsi popup dibungkus lewat accessor supaya tetap terbungkus walau didefinisikan / ditimpa belakangan.
      Hanya popup baca-saja dengan argumen sederhana (string/angka/null) yang dicatat. */
-  var POPUPS=["openOnboardingScheduleDetail","openProgramScoreDetail","openDashboardDetail","openReportDetail","openEmployeeStatDetail","openOnboardingPassDetail","openTnaSummaryDetail","openDevProgramSummaryDetail","openCompetencyResultDetail","openTrainingReportCardDetail","openProgramMetricDetail","openDashScoreDetail","openDevProgramPanel"];
+  var POPUPS=["openOnboardingScheduleDetail","openProgramScoreDetail","openDashboardDetail","openReportDetail","openEmployeeStatDetail","openOnboardingPassDetail","openTnaSummaryDetail","openDevProgramSummaryDetail","openCompetencyResultDetail","openTrainingReportCardDetail","openProgramMetricDetail","openDashScoreDetail","openDevProgramPanel","__onbMonDetail","__tnaMonDetail"];
+  /* Baris ringkasan konteks (periode + filter aktif) di header popup Jadwal Onboarding & Jadwal Training By TNA,
+     supaya yang membuka link tahu angka popup ini dihitung dari periode/filter apa. */
+  var MN=["Januari","Februari","Maret","April","Mei","Juni","Juli","Agustus","September","Oktober","November","Desember"];
+  function mName(v){v=String(v);return/^\d{1,2}$/.test(v)?(MN[+v-1]||v):v}
+  function perLabel(v){var m=String(v||"").match(/^(\d{4})-(\d{2})$/);return m?(MN[+m[2]-1]||m[2])+" "+m[1]:String(v||"")}
+  function esc(x){return String(x==null?"":x).replace(/[&<>"']/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]})}
+  function summaryParts(name){
+    var parts=[];
+    if(name==="openOnboardingScheduleDetail"||name==="__onbMonDetail"){
+      var P=window.__onbPeriod||(typeof __onbPeriodVal==="function"?__onbPeriodVal():"");
+      parts.push("Periode: "+(P&&P!=="all"?perLabel(P):"Semua periode"));
+      var f=typeof onboardingScheduleFilters!=="undefined"?onboardingScheduleFilters:null;
+      if(f){
+        if(f.depts&&f.depts.length)parts.push("Dept: "+f.depts.join(", "));
+        if(f.years&&f.years.length)parts.push("Tahun: "+f.years.join(", "));
+        if(f.months&&f.months.length)parts.push("Bulan: "+f.months.map(mName).join(", "));
+        if(f.weeks&&f.weeks.length)parts.push("Minggu: "+f.weeks.length+" dipilih");
+      }
+      if(window.__onbMonSel&&window.__onbMonSel.length)parts.push("Minggu monitoring: "+window.__onbMonSel.length+" dipilih");
+    }else if(name==="openTnaSummaryDetail"||name==="__tnaMonDetail"){
+      try{if(typeof getActiveTnaSummaryMonthKey==="function"&&typeof tnaSummaryMonthLabel==="function")parts.push("Bulan: "+tnaSummaryMonthLabel(getActiveTnaSummaryMonthKey()))}catch(e){}
+      if(window.__tnaMonSel&&window.__tnaMonSel.length)parts.push("Minggu monitoring: "+window.__tnaMonSel.length+" dipilih");
+    }
+    try{var dl=window.__divFilter&&window.__divFilter.label&&window.__divFilter.label();if(dl)parts.push("Filter: "+dl)}catch(e){}
+    return parts;
+  }
+  function clearSummary(){var o=document.getElementById("dashboard-detail-summary");if(o&&o.parentNode)o.parentNode.removeChild(o)}
+  /* teks card yang diklik (label + angka, mis. "Keterlaksanaan 100% Target >= 90%"), dibaca dari card di halaman */
+  function cardText(name,args){
+    try{
+      var a0=args[0]==null?"":String(args[0]).replace(/"/g,"");
+      var sel='[onclick*="'+name+"('"+a0+"')"+'"]';
+      var list=document.querySelectorAll("#page-content "+sel);
+      for(var i=0;i<list.length;i++){
+        var el=list[i];
+        var out=[],seen={},tw=document.createTreeWalker(el,NodeFilter.SHOW_TEXT,{acceptNode:function(n){
+          for(var q=n.parentNode;q&&q!==el;q=q.parentNode){if(q.nodeName&&q.nodeName.toLowerCase()==="svg")return NodeFilter.FILTER_REJECT}
+          return NodeFilter.FILTER_ACCEPT}}),n;
+        while((n=tw.nextNode())){var x=(n.nodeValue||"").replace(/\s+/g," ").trim();if(x&&!seen[x]){seen[x]=1;out.push(x)}}
+        var txt=out.join(" \u2022 ");
+        if(txt)return txt.length>160?txt.slice(0,157)+"...":txt;
+      }
+    }catch(e){}
+    return"";
+  }
+  var SUMMARY_POPS=["openOnboardingScheduleDetail","openTnaSummaryDetail","__onbMonDetail","__tnaMonDetail"];
+  /* 6 kartu Monitoring Keterlaksanaan Mingguan (Onboarding / TNA): label, angka, keterangan -> chip */
+  function monCardKey(name,args){
+    args=args||[];window.__monLastCard=window.__monLastCard||{};
+    var k=name==="__tnaMonDetail"?args[0]:args[1];
+    if(typeof k==="string"&&k)window.__monLastCard[name]=k;
+    else k=window.__monLastCard[name];
+    return k||null;
+  }
+  /* Kartu Monitoring Keterlaksanaan Mingguan (Onboarding / TNA): hanya chip dari kartu yang diklik */
+  function monTiles(name,key){
+    var box=document.getElementById(name==="__tnaMonDetail"?"tna-mon":"onb-mon"),out=[];
+    if(!box||!key)return out;
+    var list=box.querySelectorAll('[onclick*="'+name+'("]');
+    for(var i=0;i<list.length;i++){
+      var el=list[i],m=/Detail\((?:null,)?'([a-z]+)'\)/.exec(el.getAttribute("onclick")||"");
+      if(!m||m[1]!==key)continue;
+      var t=[],tw=document.createTreeWalker(el,NodeFilter.SHOW_TEXT,null),n;
+      while((n=tw.nextNode())){var x=(n.nodeValue||"").replace(/\s+/g," ").trim();if(x)t.push(x)}
+      if(t.length<2)continue;
+      out.push({label:t[0],val:t[1],sub:t.slice(2).join(" ")});
+    }
+    return out;
+  }
+  function decoratePop(name,args){
+    clearSummary();
+    if(SUMMARY_POPS.indexOf(name)<0)return;
+    var t=document.getElementById("dashboard-detail-title"),hdr=t&&t.parentNode;
+    if(!hdr||!hdr.parentNode)return;
+    var parts=summaryParts(name),card=cardText(name,args||[]),tiles=monTiles(name,monCardKey(name,args));if(!parts.length&&!card&&!tiles.length)return;
+    var d=document.createElement("div");d.id="dashboard-detail-summary";
+    d.className="px-4 py-2 bg-indigo-50/60 border-b border-indigo-100 text-[11px] font-semibold text-slate-500 shrink-0";
+    var chips=tiles.length?'<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:6px">'+tiles.map(function(c){
+      return'<span style="display:inline-flex;flex-direction:column;min-width:0;padding:4px 9px;border-radius:10px;background:#fff;border:1px solid #c7d2fe;line-height:1.25"><span style="font-size:9px;font-weight:800;text-transform:uppercase;color:#6366f1">'+esc(c.label)+'</span><span style="font-size:13px;font-weight:900;color:#1e293b">'+esc(c.val)+'</span>'+(c.sub?'<span style="font-size:9px;font-weight:600;color:#94a3b8">'+esc(c.sub)+'</span>':"")+'</span>'}).join("")+'</div>':"";
+    d.innerHTML=chips+(card?'<div class="text-[12px] font-black text-slate-700 mb-0.5"><i class="fas fa-chart-pie mr-1 text-indigo-400"></i>'+esc(card)+'</div>':"")+(parts.length?'<div><i class="fas fa-filter mr-1 text-indigo-400"></i>'+parts.map(esc).join(" \u2022 ")+'</div>':"");
+    hdr.parentNode.insertBefore(d,hdr.nextSibling);
+  }
   function pathOf(){return String(location.hash||"").split("?")[0]}
   function wrapPop(name,fn){
     if(typeof fn!=="function"||fn.__shareWrapped)return fn;
@@ -2664,7 +2746,9 @@ window.__shareSplit=function(v){return String(v||"").split("|").map(function(x){
         if(a.every(function(x){return x==null||typeof x==="string"||typeof x==="number"}))
           window.__sharePopup={fn:name,args:a,path:pathOf()};
       }catch(e){}
-      return fn.apply(this,arguments);
+      var r=fn.apply(this,arguments);
+      try{decoratePop(name,Array.prototype.slice.call(arguments))}catch(e){}
+      return r;
     };
     w.__shareWrapped=true;return w;
   }
@@ -2676,7 +2760,7 @@ window.__shareSplit=function(v){return String(v||"").split("|").map(function(x){
   });
   if(typeof window.closeModal==="function"&&!window.closeModal.__shareWrapped){
     var _cm=window.closeModal;
-    window.closeModal=function(){window.__sharePopup=null;return _cm.apply(this,arguments)};
+    window.closeModal=function(){window.__sharePopup=null;try{clearSummary()}catch(e){}return _cm.apply(this,arguments)};
     window.closeModal.__shareWrapped=true;
   }
   function popupOpen(){
@@ -13949,14 +14033,14 @@ syncRoute();
     }
     var ratingVal=T.rating!==null?'<i class="fas fa-star" style="color:#f59e0b;font-size:11px"></i> '+r1(T.rating):'-';
     var ratingSub=T.rN?(T.rN+' ulasan'):'Belum ada ulasan';
-    var onD="window.__tnaMonDetail()";
+    var onK=function(k){return "window.__tnaMonDetail('"+k+"')"};
     var grid='<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px">'
-      +tile("fa-calendar-check",pct(T.held,T.tr)+'%',"Training terlaksana",T.held+' / '+T.tr+' dari jadwal',onD)
-      +tile("fa-users",String(T.target),"Target peserta",T.attended+' sudah hadir',onD)
-      +tile("fa-user-check",T.attPct+'%',"Kehadiran",T.attended+' / '+T.target,onD)
-      +tile("fa-award",T.passPct+'%',"Kelulusan",T.passed+' sertifikat',onD)
-      +tile("fa-star",ratingVal,"Rating",ratingSub,onD)
-      +tile("fa-chart-line",T.eff!=null?(T.eff+"%"):"-","Efektivitas",T.effN?("rata² dari "+T.effN+" training"):"Belum bisa dihitung",onD)
+      +tile("fa-calendar-check",pct(T.held,T.tr)+'%',"Training terlaksana",T.held+' / '+T.tr+' dari jadwal',onK('held'))
+      +tile("fa-users",String(T.target),"Target peserta",T.attended+' sudah hadir',onK('target'))
+      +tile("fa-user-check",T.attPct+'%',"Kehadiran",T.attended+' / '+T.target,onK('att'))
+      +tile("fa-award",T.passPct+'%',"Kelulusan",T.passed+' sertifikat',onK('pass'))
+      +tile("fa-star",ratingVal,"Rating",ratingSub,onK('rating'))
+      +tile("fa-chart-line",T.eff!=null?(T.eff+"%"):"-","Efektivitas",T.effN?("rata² dari "+T.effN+" training"):"Belum bisa dihitung",onK('eff'))
       +'</div>';
     return head+grid+'<p class="text-[9px] text-slate-400" style="margin-top:6px"><i class="fas fa-circle-info mr-1"></i>Minggu dihitung Senin–Minggu. Pilih minggu untuk memfilter tabel. Klik kartu untuk rincian per training (hadir, lulus, rating, efektivitas).</p>';
   }
@@ -14225,15 +14309,15 @@ function stripHtml(){
     +(isCur?'<span class="text-[9px] font-black px-2 py-0.5 rounded-full" style="background:rgb(var(--th-500-rgb,37 99 235)/.14);color:var(--th-600,#2563eb)">Minggu ini</span>':'')+'</div>'
     +weekPicker(d)+'</div>';
   if(!T.sched)return head+'<div class="bg-white rounded-2xl border border-slate-100 shadow-sm text-center text-slate-400 text-xs" style="padding:18px">Tidak ada batch onboarding yang dijadwalkan pada '+(wk.n>1?'minggu-minggu yang dipilih':'minggu ini')+'.</div>';
-  var onD="window.__onbMonDetail()";
+  var onK=function(k){return "window.__onbMonDetail(null,'"+k+"')"};
   var ratingVal=T.rating!==null?'<i class="fas fa-star" style="color:#f59e0b;font-size:11px"></i> '+r1(T.rating):'-';
   var ratingSub=T.rN?(T.rN+' ulasan'+(T.trainer!==null?' • Trainer '+r1(T.trainer):'')):'Belum ada ulasan';
   var grid='<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px">'
-   +tile("fa-calendar-check","",pct(T.held,T.tr)+'%',"Training terlaksana",T.held+' / '+T.tr+' • '+T.batchHeld+'/'+T.sched+' batch berjalan',onD)
-   +tile("fa-users","",String(T.target),"Target peserta",T.started+' sudah mulai • tanpa yang resign',onD)
-   +tile("fa-circle-check","",T.rate+'%',"Completion rate",T.done+' dari '+T.target+' selesai',onD)
-   +tile("fa-star","",ratingVal,"Rating",ratingSub,onD)
-   +tile("fa-clock","",String(T.late),"Telat",T.lateDone+' selesai telat • '+T.lateOpen+' lewat deadline',onD)
+   +tile("fa-calendar-check","",pct(T.held,T.tr)+'%',"Training terlaksana",T.held+' / '+T.tr+' • '+T.batchHeld+'/'+T.sched+' batch berjalan',onK('held'))
+   +tile("fa-users","",String(T.target),"Target peserta",T.started+' sudah mulai • tanpa yang resign',onK('target'))
+   +tile("fa-circle-check","",T.rate+'%',"Completion rate",T.done+' dari '+T.target+' selesai',onK('rate'))
+   +tile("fa-star","",ratingVal,"Rating",ratingSub,onK('rating'))
+   +tile("fa-clock","",String(T.late),"Telat",T.lateDone+' selesai telat • '+T.lateOpen+' lewat deadline',onK('late'))
    +'</div>';
   return head+grid+'<p class="text-[9px] text-slate-400" style="margin-top:6px"><i class="fas fa-circle-info mr-1"></i>Training terlaksana = training dalam batch yang minimal 1 pesertanya sudah mulai (contoh: 2 batch x 5 training = 10). Minggu dihitung Senin–Minggu berdasarkan tanggal mulai batch. Default: semua minggu pada periode di atas; bisa pilih minggu tertentu untuk digabung jadi satu laporan. Klik kartu untuk rincian per batch dan instruktur.</p>'}
 
