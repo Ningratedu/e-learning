@@ -2572,21 +2572,25 @@ window.__collectShareParams=function(){
   return p;
 };
 window.__shareReportPathname=function(){
-  var base=(location.href||"").split("#")[0].split("?")[0]||(location.origin+(location.pathname||"/"));
-  base=base.replace(/\/report\/report\.html$/i,"/report/");
-  base=base.replace(/\/report\/report\/?$/i,"/report/");
-  // directory mode lihat: pastikan ada trailing slash agar GH Pages tidak redirect & drop hash
-  if(/\/report$/i.test(base))base=base+"/";
-  if(/\/report\.html$/i.test(base)){/* file mode ok */}
-  else if(/\/report\/$/i.test(base)){/* ok */}
-  return base;
+  /* Mode lihat di GH Pages = file report.html di folder yang sama, BUKAN folder /report/ */
+  var origin=location.origin||"";
+  var path=location.pathname||"/";
+  // sudah di report.html
+  if(/report\.html$/i.test(path))return origin+path;
+  // folder /report/ (kalau memang dipakai)
+  if(/\/report\/$/i.test(path))return origin+path;
+  if(/\/report$/i.test(path))return origin+path+"/";
+  // index.html → report.html
+  if(/index\.html$/i.test(path))return origin+path.replace(/index\.html$/i,"report.html");
+  // root app: /e-learning/ atau /e-learning → /e-learning/report.html
+  if(path.endsWith("/"))return origin+path+"report.html";
+  return origin+path.replace(/\/?$/,"/")+"report.html";
 };
 window.__buildShareLink=function(extra){
   var base=window.__shareReportPathname();
   var path=(location.hash||"#/").split("?")[0];
   if(!path||path==="#")path="#/";
   if(path.charAt(0)!=="#")path="#"+path;
-  // pastikan bentuk #/route bukan #route
   if(path.length>1&&path.charAt(1)!=="/")path="#/"+path.slice(1);
   var p=Object.assign({},window.__collectShareParams(),extra||{});
   if(p.view==null)p.view="1";
@@ -2595,9 +2599,9 @@ window.__buildShareLink=function(extra){
     if(p[k]==null||p[k]==="")return;
     parts.push(encodeURIComponent(k)+"="+encodeURIComponent(String(p[k])));
   });
-  var url=base+path+(parts.length?"?"+parts.join("&"):"");
-  try{sessionStorage.setItem("__shareHash",path+(parts.length?"?"+parts.join("&"):""))}catch(e){}
-  return url;
+  var hashPart=path+(parts.length?"?"+parts.join("&"):"");
+  try{sessionStorage.setItem("__shareHash",hashPart)}catch(e){}
+  return base+hashPart;
 };
 window.__copyShareLink=async function(extra){
   var url=window.__buildShareLink(extra);
