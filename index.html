@@ -2572,29 +2572,25 @@ window.__collectShareParams=function(){
   return p;
 };
 window.__shareReportPathname=function(){
-  /* Link lampiran selalu mode lihat (report.html), bukan index admin */
-  var p=location.pathname||"/";
-  if(/report\.html$/i.test(p))return p;
-  if(/index\.html$/i.test(p))return p.replace(/index\.html$/i,"report.html");
-  if(p.endsWith("/"))return p+"report.html";
-  // root SPA tanpa nama file: / → /report.html
-  if(p==="/"||p==="")return "/report.html";
-  // path folder app: /lms → /lms/report.html
-  return p.replace(/\/?$/,"")+"/report.html";
+  /* Pakai path halaman yang sedang dibuka agar tidak 404.
+     Mode lihat = file report.html yang sama; jangan ganti path ke file lain. */
+  return location.pathname||"/";
 };
 window.__buildShareLink=function(extra){
   var base=location.origin+window.__shareReportPathname();
+  // pertahankan query string non-hash yang sudah ada di URL (jika ada)
+  var search=location.search||"";
   var path=(location.hash||"#/").split("?")[0];
   if(path.charAt(0)!=="#")path="#"+path;
   var p=Object.assign({},window.__collectShareParams(),extra||{});
-  // penanda mode lihat
   if(p.view==null)p.view="1";
   var parts=[];
   Object.keys(p).forEach(function(k){
     if(p[k]==null||p[k]==="")return;
     parts.push(encodeURIComponent(k)+"="+encodeURIComponent(String(p[k])));
   });
-  return base+path+(parts.length?"?"+parts.join("&"):"");
+  // Filter ditaruh di hash query: #/route?co=...&view=1 (selaras parse resolveRoute)
+  return base+search+path+(parts.length?"?"+parts.join("&"):"");
 };
 window.__copyShareLink=async function(extra){
   var url=window.__buildShareLink(extra);
@@ -2603,7 +2599,7 @@ window.__copyShareLink=async function(extra){
     else{
       var ta=document.createElement("textarea");ta.value=url;ta.style.position="fixed";ta.style.left="-9999px";document.body.appendChild(ta);ta.select();document.execCommand("copy");document.body.removeChild(ta);
     }
-    window.toast&&window.toast("Link mode lihat + filter tersalin","success");
+    window.toast&&window.toast("Link + filter tersalin (halaman ini)","success");
   }catch(e){
     window.prompt("Salin link ini:",url);
   }
@@ -3443,7 +3439,7 @@ function renderDevProgramBuilder(id){if(!devProgramDraft||devProgramDraft._loade
                 <option value="training" ${d._stageType==="training"?"selected":""}>Training By TNA</option>
                 <option value="course" ${d._stageType==="course"?"selected":""}>Onboarding/Modul</option>
                 <option value="manual" ${d._stageType==="manual"?"selected":""}>OJT / Aktivitas Manual</option><option value="panel" ${d._stageType==="panel"?"selected":""}>Panel / Presentasi</option>
-            </select>
+            </select>${d._stageType==="manual"?`<span class="text-[10px] text-slate-500 self-center">Urutan tipikal 90 days: <b>Onboarding/Modul</b> dulu → lalu <b>OJT</b> (banyak aktivitas + isian).</span>`:""}
             ${d._stageType==="panel"?DP_PANEL_ADD:d._stageType==="manual"?`<select id="dp-manual-kind" class="border border-slate-200 rounded-lg px-2 py-1.5 text-xs shrink-0"><option>OJT</option><option>Mentoring</option><option>Project</option><option>Assessment</option><option>Lainnya</option></select><input id="dp-manual-title" type="text" autocomplete="off" maxlength="120" placeholder="Judul journey, cth: OJT di Divisi Sales (4 minggu)" onkeydown="if(event.key===\'Enter\'&&!event.isComposing){event.preventDefault();window.addDevProgramManualStage()}" class="flex-1 min-w-[160px] border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs"><button type="button" onclick="window.addDevProgramManualStage()" class="bg-dpv-600 hover:bg-dpv-700 text-white text-xs font-bold px-3 py-1.5 rounded-lg shrink-0"><i class="fas fa-plus mr-1"></i>Tambah</button>`:d._stageType==="course"?`<select id="dp-onb-pkg" class="flex-1 min-w-[180px] border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs">${window.dpOnboardingPackageOptionsHtml()}</select><button type="button" onclick="window.addDevProgramOnboardingPackage()" class="bg-dpv-600 hover:bg-dpv-700 text-white text-xs font-bold px-3 py-1.5 rounded-lg shrink-0"><i class="fas fa-plus mr-1"></i>Tambah Paket</button>`:`<input id="dp-stage-search" type="search" autocomplete="off" spellcheck="false" placeholder="Cari judul / kategori / trainer... (Enter = tambah hasil teratas)" value="${window.escapeHtml(d._stageSearch||"")}" oninput="window.devProgSearch('stage',this.value)" onkeydown="window.devProgSearchEnter(event,'stage')" class="flex-1 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs">`}
         </div>
         ${d._stageType==="panel"?`<div class="text-[11px] text-slate-400 bg-slate-50 rounded-xl px-3 py-2"><i class="fas fa-circle-info mr-1"></i>Journey Panel: HR mengisi jadwal, panelis, nilai per kriteria rubrik, dan hasil. Hasil "Lulus" otomatis menuntaskan journey ini.</div>`:d._stageType==="manual"?`<div class="text-[11px] text-slate-400 bg-slate-50 rounded-xl px-3 py-2"><i class="fas fa-circle-info mr-1"></i>Journey manual (OJT, mentoring, project, dll) tidak punya halaman di LMS. Selesainya dikonfirmasi admin/HR per peserta lewat menu Progress &amp; Approval.</div>`:`${d._stageType==="course"?`<div class="text-[11px] text-slate-400 bg-slate-50 rounded-xl px-3 py-2 mb-2"><i class="fas fa-circle-info mr-1"></i>Pilih <b>paket / sesi onboarding</b> (Sales &amp; Marketing, Support, Departemen Lain, dll sesuai pengaturan). Journey tuntas jika peserta sudah punya sertifikat untuk <b>semua modul</b> di paket itu. Modul individual masih bisa ditambah lewat jenis Training By TNA bila perlu.</div>`:""}<div id="dp-stage-results" class="max-h-44 overflow-y-auto border border-slate-100 rounded-xl divide-y divide-slate-50${d._stageType==="course"||d._stageType==="manual"||d._stageType==="panel"?" hide":""}">${d._stageType==="course"||d._stageType==="manual"||d._stageType==="panel"?"":devProgStageResultsHtml()}</div>`}
@@ -3496,19 +3492,28 @@ window.dpManualStageConfigHtml=function(s,i){
   var esc=window.escapeHtml,lab="text-[10px] font-bold uppercase text-slate-400";
   window.dpMigrateStageActivities(s);
   var acts=s.activities;
-  var html='<div class="mt-2 pt-2 border-t border-slate-100 space-y-2"><div class="flex items-center justify-between gap-2"><label class="'+lab+'"><i class="fas fa-list-check mr-1"></i>Aktivitas + field laporan</label><button type="button" onclick="window.dpAddActivity('+i+')" class="text-[10px] font-black text-dpv-600"><i class="fas fa-plus mr-0.5"></i>Tambah aktivitas</button></div><p class="text-[10px] text-slate-400">Tiap aktivitas punya field laporan sendiri. Peserta pilih aktivitas lalu isi field-nya.</p>';
-  if(!acts.length)html+='<p class="text-[10px] text-slate-400 italic">Belum ada aktivitas. Klik "Tambah aktivitas" atau "Template canvasing".</p>';
+  var html='<div class="mt-2 pt-2 border-t border-slate-100 space-y-2.5">';
+  html+='<div class="rounded-xl bg-amber-50/80 border border-amber-100 px-2.5 py-2 text-[10px] text-amber-900 leading-relaxed"><b class="font-black">OJT — aktivitas & isian</b><br>Isi daftar <b>aktivitas</b> (mis. canvasing, follow-up, kunjungan). Tiap aktivitas punya <b>field isian sendiri</b> yang nanti diisi peserta. Bisa banyak aktivitas dalam satu journey OJT.</div>';
+  html+='<div class="flex items-center justify-between gap-2"><label class="'+lab+'"><i class="fas fa-list-check mr-1"></i>Daftar aktivitas ('+acts.length+')</label><button type="button" onclick="window.dpAddActivity('+i+')" class="text-[10px] font-black text-dpv-600"><i class="fas fa-plus mr-0.5"></i>Tambah aktivitas</button></div>';
+  if(!acts.length)html+='<p class="text-[10px] text-slate-400 italic">Belum ada aktivitas. Klik "Tambah aktivitas".</p>';
   acts.forEach(function(a,ai){
-    html+='<div class="border border-slate-200 rounded-xl p-2.5 bg-slate-50/80 space-y-1.5">';
-    html+='<div class="flex items-center gap-1.5"><span class="text-[10px] font-black text-slate-400 shrink-0">#'+(ai+1)+'</span><input value="'+esc(a.title||"")+'" oninput="devProgramDraft.stages['+i+'].activities['+ai+'].title=this.value" placeholder="Nama aktivitas, cth: Melakukan canvasing" class="flex-1 border border-slate-200 rounded-lg px-2 py-1.5 text-[11px] bg-white font-bold"><button type="button" onclick="window.dpApplyActivityTemplate('+i+','+ai+')" class="text-[10px] font-black text-amber-600 px-1.5 whitespace-nowrap" title="Isi field template">Template</button><button type="button" onclick="window.dpRemoveActivity('+i+','+ai+')" class="text-rose-400 hover:text-rose-600 px-1"><i class="fas fa-trash"></i></button></div>';
-    html+='<div class="pl-1 space-y-1"><div class="flex items-center justify-between"><span class="text-[9px] font-black uppercase text-slate-400">Field laporan aktivitas ini</span><button type="button" onclick="window.dpAddActivityField('+i+','+ai+')" class="text-[10px] font-black text-dpv-600">+ Field</button></div>';
+    html+='<div class="border border-slate-200 rounded-xl p-2.5 bg-white shadow-sm space-y-2">';
+    html+='<div class="flex items-center gap-1.5"><span class="text-[10px] font-black text-white bg-dpv-600 rounded-md px-1.5 py-0.5 shrink-0">Aktivitas '+(ai+1)+'</span>';
+    html+='<input value="'+esc(a.title||"")+'" oninput="devProgramDraft.stages['+i+'].activities['+ai+'].title=this.value" placeholder="Nama aktivitas, cth: Melakukan canvasing" class="flex-1 border border-slate-200 rounded-lg px-2 py-1.5 text-[11px] bg-slate-50 font-bold">';
+    html+='<button type="button" onclick="window.dpApplyActivityTemplate('+i+','+ai+')" class="text-[10px] font-black text-amber-700 px-1.5 whitespace-nowrap" title="Pakai field template canvasing">Template</button>';
+    html+='<button type="button" onclick="window.dpRemoveActivity('+i+','+ai+')" class="text-rose-400 hover:text-rose-600 px-1" title="Hapus aktivitas"><i class="fas fa-trash"></i></button></div>';
+    html+='<div class="pl-1 border-l-2 border-dpv-200 ml-1 space-y-1.5">';
+    html+='<div class="flex items-center justify-between"><span class="text-[9px] font-black uppercase tracking-wide text-slate-500">Isian laporan untuk aktivitas ini</span>';
+    html+='<button type="button" onclick="window.dpAddActivityField('+i+','+ai+')" class="text-[10px] font-black text-dpv-600">+ Tambah isian</button></div>';
     var fields=a.reportFields||[];
-    if(!fields.length)html+='<p class="text-[10px] text-slate-400 italic">Belum ada field — tambah manual atau Template</p>';
+    if(!fields.length)html+='<p class="text-[10px] text-slate-400 italic">Belum ada isian — tambah manual atau Template (Status, Tanggal, Lokasi, Detail, Jumlah DB, …)</p>';
     fields.forEach(function(f,fi){
       var opts=(f.options||[]).join(", ");
-      html+='<div class="bg-white rounded-lg border border-slate-100 p-1.5 space-y-1"><div class="flex flex-wrap gap-1 items-center">';
-      html+='<input value="'+esc(f.label||"")+'" oninput="devProgramDraft.stages['+i+'].activities['+ai+'].reportFields['+fi+'].label=this.value" placeholder="Label field" class="flex-1 min-w-[90px] border border-slate-200 rounded-lg px-2 py-1 text-[11px]">';
-      html+='<select onchange="devProgramDraft.stages['+i+'].activities['+ai+'].reportFields['+fi+'].type=this.value;window.rerenderDevProgramBuilder()" class="border border-slate-200 rounded-lg px-1 py-1 text-[10px]">';
+      html+='<div class="bg-slate-50 rounded-lg border border-slate-100 p-1.5 space-y-1">';
+      html+='<div class="flex flex-wrap gap-1 items-center">';
+      html+='<span class="text-[9px] font-black text-slate-400 w-4">'+(fi+1)+'</span>';
+      html+='<input value="'+esc(f.label||"")+'" oninput="devProgramDraft.stages['+i+'].activities['+ai+'].reportFields['+fi+'].label=this.value" placeholder="Label isian, cth: Jumlah database" class="flex-1 min-w-[100px] border border-slate-200 rounded-lg px-2 py-1 text-[11px] bg-white">';
+      html+='<select onchange="devProgramDraft.stages['+i+'].activities['+ai+'].reportFields['+fi+'].type=this.value;window.rerenderDevProgramBuilder()" class="border border-slate-200 rounded-lg px-1 py-1 text-[10px] bg-white">';
       [["text","Teks"],["textarea","Paragraf"],["number","Angka"],["date","Tanggal"],["select","Pilihan"]].forEach(function(x){
         html+='<option value="'+x[0]+'" '+(f.type===x[0]?"selected":"")+'>'+x[1]+'</option>';
       });
@@ -3516,12 +3521,21 @@ window.dpManualStageConfigHtml=function(s,i){
       html+='<label class="text-[10px] font-bold text-slate-500 flex items-center gap-1"><input type="checkbox" '+(f.required?"checked":"")+' onchange="devProgramDraft.stages['+i+'].activities['+ai+'].reportFields['+fi+'].required=this.checked">Wajib</label>';
       html+='<button type="button" onclick="window.dpRemoveActivityField('+i+','+ai+','+fi+')" class="text-rose-400 px-1"><i class="fas fa-xmark"></i></button>';
       html+='</div>';
-      if(f.type==="select"){html+='<div class="space-y-1"><div class="flex flex-wrap gap-1">';(f.options||[]).forEach(function(op,oi){html+='<span class="inline-flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 rounded bg-white border border-slate-200">'+esc(op)+'<button type="button" onclick="window.dpRemoveFieldOption('+i+','+ai+','+fi+','+oi+')" class="text-rose-400">&times;</button></span>'});html+='</div><div class="flex gap-1"><input id="dp-opt-'+i+'-'+ai+'-'+fi+'" type="text" placeholder="Ketik opsi lalu tambah" onkeydown="if(event.key===\'Enter\'){event.preventDefault();window.dpAddFieldOption('+i+','+ai+','+fi+')}" class="flex-1 border border-slate-200 rounded-lg px-2 py-1 text-[10px] bg-white"><button type="button" onclick="window.dpAddFieldOption('+i+','+ai+','+fi+')" class="text-[10px] font-black px-2 py-1 rounded-lg bg-dpv-600 text-white">Tambah</button></div></div>';}
+      if(f.type==="select"){
+        html+='<div class="space-y-1 pl-4"><div class="flex flex-wrap gap-1">';
+        (f.options||[]).forEach(function(op,oi){
+          html+='<span class="inline-flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 rounded bg-white border border-slate-200">'+esc(op)+'<button type="button" onclick="window.dpRemoveFieldOption('+i+','+ai+','+fi+','+oi+')" class="text-rose-400">&times;</button></span>';
+        });
+        html+='</div><div class="flex gap-1"><input id="dp-opt-'+i+'-'+ai+'-'+fi+'" type="text" placeholder="Ketik opsi lalu Tambah" class="flex-1 border border-slate-200 rounded-lg px-2 py-1 text-[10px] bg-white"><button type="button" onclick="window.dpAddFieldOption('+i+','+ai+','+fi+')" class="text-[10px] font-black px-2 py-1 rounded-lg bg-dpv-600 text-white">Tambah</button></div></div>';
+      }
       html+='</div>';
     });
     html+='</div></div>';
   });
-  html+='<button type="button" onclick="window.dpAddActivityWithTemplate('+i+')" class="text-[10px] font-black text-amber-700 bg-amber-50 hover:bg-amber-100 px-2.5 py-1.5 rounded-lg border border-amber-100"><i class="fas fa-wand-magic-sparkles mr-1"></i>Tambah aktivitas + template canvasing</button></div>';
+  html+='<div class="flex flex-wrap gap-2">';
+  html+='<button type="button" onclick="window.dpAddActivity('+i+')" class="text-[10px] font-black text-dpv-700 bg-dpv-50 hover:bg-dpv-100 px-2.5 py-1.5 rounded-lg border border-dpv-100"><i class="fas fa-plus mr-1"></i>Tambah aktivitas lagi</button>';
+  html+='<button type="button" onclick="window.dpAddActivityWithTemplate('+i+')" class="text-[10px] font-black text-amber-800 bg-amber-50 hover:bg-amber-100 px-2.5 py-1.5 rounded-lg border border-amber-100"><i class="fas fa-wand-magic-sparkles mr-1"></i>Aktivitas + template canvasing</button>';
+  html+='</div></div>';
   return html;
 };
 window.dpDefaultCanvasingFields=function(){
@@ -3628,7 +3642,7 @@ window.dpRenderActivityFieldsBox=function(){
   var fields=activityId?window.dpGetActivityFields(stage,activityId):(stage.activities&&stage.activities.length?[]:(stage.reportFields||[]));
   var E=window.escapeHtml,h="";
   if(!activityId&&(stage.activities||[]).filter(function(a){return a&&a.title}).length){
-    h='<p class="text-[11px] text-slate-400">Pilih aktivitas dulu untuk melihat field laporan.</p>';
+    h='<p class="text-[11px] text-slate-400">Pilih aktivitas dulu — isian di bawah menyesuaikan aktivitas itu.</p>';
   }else{
     fields.forEach(function(f){
       var req=f.required?' <span class="text-rose-500">*</span>':"";
@@ -3655,7 +3669,7 @@ window.dpReportFieldsFormHtml=function(stage){
     h+='<option value="">— Pilih aktivitas —</option>';
     acts.forEach(function(a){h+='<option value="'+E(a.id)+'">'+E(a.title)+'</option>'});
     h+='</select></div>';
-    h+='<div id="dp-ev-fields" class="space-y-2"><p class="text-[11px] text-slate-400">Pilih aktivitas dulu untuk melihat field laporan.</p></div>';
+    h+='<div id="dp-ev-fields" class="space-y-2"><p class="text-[11px] text-slate-400">Pilih aktivitas dulu — isian di bawah menyesuaikan aktivitas itu.</p></div>';
   }else{
     // no activities: use legacy stage.reportFields or empty
     h+='<div id="dp-ev-fields" class="space-y-2">';
@@ -3857,7 +3871,7 @@ window.addDevProgramOnboardingPackage=function(){
 };
 
 window.addDevProgramStage=function(refId){const list=devProgramDraft._stageType==="training"?window.STATE.trainings:window.STATE.courses;const item=list.find(x=>x.id===refId);if(!item)return;devProgramDraft.stages.push({id:"stage_"+Date.now().toString(36)+Math.random().toString(36).slice(2,6),type:devProgramDraft._stageType,refId:refId,title:item.title||"",order:devProgramDraft.stages.length});if(devProgramDraft._stageType==="training"&&!item.devProgramOnly&&window.confirm("Tandai training \""+(item.title||"")+"\" sebagai KHUSUS Development Program?\n\nKalau ya, training ini tidak dihitung sebagai Training TNA (target & progres TNA peserta, statistik TNA). Pilih Batal kalau training ini juga dipakai sebagai Training TNA biasa.")){try{const{ref:ref,setDoc:setDoc}=window.LMS_DB;setDoc(ref("trainings",item.id),{devProgramOnly:true},{merge:true}).then(()=>window.toast("Training ditandai khusus Development Program","success")).catch(e=>{console.error(e);window.toast("Gagal menandai training: "+(e.message||e),"error")});item.devProgramOnly=true}catch(e){console.error(e)}}devProgramDraft._stageSearch="";window.rerenderDevProgramBuilder();setTimeout(()=>{const el=document.getElementById("dp-stage-search");if(el)el.focus()},0)};
-window.addDevProgramManualStage=function(){const t=document.getElementById("dp-manual-title");const k=document.getElementById("dp-manual-kind");const title=t?t.value.trim():"";if(!title){window.toast("Judul journey wajib diisi","warn");if(t)t.focus();return}devProgramDraft.stages.push({id:"stage_"+Date.now().toString(36)+Math.random().toString(36).slice(2,6),type:"manual",kind:k?k.value:"Lainnya",refId:"",title:title,order:devProgramDraft.stages.length,activities:[],reportFields:[]});window.rerenderDevProgramBuilder();setTimeout(()=>{const el=document.getElementById("dp-manual-title");if(el)el.focus()},0)};
+window.addDevProgramManualStage=function(){const t=document.getElementById("dp-manual-title");const k=document.getElementById("dp-manual-kind");const title=t?t.value.trim():"";if(!title){window.toast("Judul journey wajib diisi","warn");if(t)t.focus();return}devProgramDraft.stages.push({id:"stage_"+Date.now().toString(36)+Math.random().toString(36).slice(2,6),type:"manual",kind:k?k.value:"Lainnya",refId:"",title:title,order:devProgramDraft.stages.length,activities:[{id:window.dpNewId?window.dpNewId():("act_"+Date.now().toString(36)),title:"",reportFields:[]}],reportFields:[]});window.rerenderDevProgramBuilder();setTimeout(()=>{const el=document.getElementById("dp-manual-title");if(el)el.focus()},0)};
 window.removeDevProgramStage=function(idx){devProgramDraft.stages.splice(idx,1);devProgramDraft.stages.forEach((s,i)=>s.order=i);window.rerenderDevProgramBuilder()};
 window.moveDevProgramStage=function(idx,dir){const arr=devProgramDraft.stages;const j=idx+dir;if(j<0||j>=arr.length)return;const tmp=arr[idx];arr[idx]=arr[j];arr[j]=tmp;arr.forEach((s,i)=>s.order=i);window.rerenderDevProgramBuilder()};
 const dpNorm=s=>String(s||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase();
@@ -13676,7 +13690,7 @@ syncRoute();
     var ratingSub=T.rN?(T.rN+' ulasan'):'Belum ada ulasan';
     var onD="window.__tnaMonDetail()";
     var grid='<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px">'
-      +tile("fa-calendar-check",T.held+'<span class="text-slate-400" style="font-size:11px"> / '+T.tr+'</span>',"Training terlaksana",pct(T.held,T.tr)+'% dari jadwal',onD)
+      +tile("fa-calendar-check",pct(T.held,T.tr)+'%',"Training terlaksana",T.held+' / '+T.tr+' dari jadwal',onD)
       +tile("fa-users",String(T.target),"Target peserta",T.attended+' sudah hadir',onD)
       +tile("fa-user-check",T.attPct+'%',"Kehadiran",T.attended+' / '+T.target,onD)
       +tile("fa-award",T.passPct+'%',"Kelulusan",T.passed+' sertifikat',onD)
@@ -13954,7 +13968,7 @@ function stripHtml(){
   var ratingVal=T.rating!==null?'<i class="fas fa-star" style="color:#f59e0b;font-size:11px"></i> '+r1(T.rating):'-';
   var ratingSub=T.rN?(T.rN+' ulasan'+(T.trainer!==null?' • Trainer '+r1(T.trainer):'')):'Belum ada ulasan';
   var grid='<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px">'
-   +tile("fa-calendar-check","",T.held+'<span class="text-slate-400" style="font-size:11px"> / '+T.tr+'</span>',"Training terlaksana",pct(T.held,T.tr)+'% • '+T.batchHeld+'/'+T.sched+' batch berjalan',onD)
+   +tile("fa-calendar-check","",pct(T.held,T.tr)+'%',"Training terlaksana",T.held+' / '+T.tr+' • '+T.batchHeld+'/'+T.sched+' batch berjalan',onD)
    +tile("fa-users","",String(T.target),"Target peserta",T.started+' sudah mulai • tanpa yang resign',onD)
    +tile("fa-circle-check","",T.rate+'%',"Completion rate",T.done+' dari '+T.target+' selesai',onD)
    +tile("fa-star","",ratingVal,"Rating",ratingSub,onD)
