@@ -2651,6 +2651,61 @@ window.__shareSplit=function(v){return String(v||"").split("|").map(function(x){
   function routeOk(e,rk){return !e.r||e.r.indexOf(rk)>=0}
   window.__SHARE_REG=REG;
 
+  /* ---- Popup detail (card/chart yang bisa diklik) ----
+     Fungsi popup dibungkus lewat accessor supaya tetap terbungkus walau didefinisikan / ditimpa belakangan.
+     Hanya popup baca-saja dengan argumen sederhana (string/angka/null) yang dicatat. */
+  var POPUPS=["openOnboardingScheduleDetail","openProgramScoreDetail","openDashboardDetail","openReportDetail","openEmployeeStatDetail","openOnboardingPassDetail","openTnaSummaryDetail","openDevProgramSummaryDetail","openCompetencyResultDetail","openTrainingReportCardDetail","openProgramMetricDetail","openDashScoreDetail","openDevProgramPanel"];
+  function pathOf(){return String(location.hash||"").split("?")[0]}
+  function wrapPop(name,fn){
+    if(typeof fn!=="function"||fn.__shareWrapped)return fn;
+    var w=function(){
+      try{
+        var a=Array.prototype.slice.call(arguments);
+        if(a.every(function(x){return x==null||typeof x==="string"||typeof x==="number"}))
+          window.__sharePopup={fn:name,args:a,path:pathOf()};
+      }catch(e){}
+      return fn.apply(this,arguments);
+    };
+    w.__shareWrapped=true;return w;
+  }
+  POPUPS.forEach(function(name){
+    var cur=wrapPop(name,window[name]);
+    try{
+      Object.defineProperty(window,name,{configurable:true,enumerable:true,get:function(){return cur},set:function(v){cur=wrapPop(name,v)}});
+    }catch(e){}
+  });
+  if(typeof window.closeModal==="function"&&!window.closeModal.__shareWrapped){
+    var _cm=window.closeModal;
+    window.closeModal=function(){window.__sharePopup=null;return _cm.apply(this,arguments)};
+    window.closeModal.__shareWrapped=true;
+  }
+  function popupOpen(){
+    var pp=window.__sharePopup;
+    if(!pp||pp.path!==pathOf())return null;
+    try{if(!document.querySelector('[id^="modal-"]:not(.hide)'))return null}catch(e){return null}
+    return pp;
+  }
+  /* buka popup dari link setelah halaman + data siap (maks ~15 dtk) */
+  function restorePopup(fn,args,path){
+    if(typeof window[fn]!=="function")return;
+    var t0=Date.now(),tries=0;
+    (function tick(){
+      if(pathOf()!==path)return; /* pindah halaman: batal */
+      var pc=document.getElementById("page-content");
+      var heavyOk=!window.__adminHeavyDataLoaded||window.__adminHeavyDataLoaded();
+      var rendered=!!(pc&&pc.children.length&&!pc.querySelector(".route-loading-spinner"));
+      var timeout=Date.now()-t0>15000;
+      if((heavyOk&&rendered&&++tries>=2)||timeout){
+        setTimeout(function(){
+          if(pathOf()!==path)return;
+          try{window[fn].apply(window,args)}catch(e){console.warn("share popup",fn,e)}
+        },300);
+        return;
+      }
+      setTimeout(tick,400);
+    })();
+  }
+
   /* Filter global Perusahaan / Divisi / Departemen: SELALU ikut (kosong = "~"), karena
      filter ini tersimpan di localStorage pembuka link dan kalau tidak ditimpa hasilnya beda. */
   window.__collectShareParams=function(){
@@ -2665,6 +2720,8 @@ window.__shareSplit=function(v){return String(v||"").split("|").map(function(x){
       if(!routeOk(e,rk))return;
       try{var v=e.get();if(v!=null&&v!=="")p[e.k]=v}catch(err){}
     });
+    var pp=popupOpen();
+    if(pp){p.pop=pp.fn;p.pa=JSON.stringify(pp.args)}
     return p;
   };
   window.__shareReportPathname=function(){
@@ -2745,6 +2802,11 @@ window.__shareSplit=function(v){return String(v||"").split("|").map(function(x){
     window.toast=prevToast;
     window.__shareApplying=false;
     window.__shareAppliedHash=h;
+    if(p.pop&&POPUPS.indexOf(p.pop)>=0&&window.__sharePopupHash!==h){
+      window.__sharePopupHash=h;
+      var pa=[];try{pa=JSON.parse(p.pa||"[]");if(!Array.isArray(pa))pa=[]}catch(e){pa=[]}
+      restorePopup(p.pop,pa,pathOf());
+    }
   };
   /* interaksi pertama setelah link diterapkan = filter jadi milik pembuka link */
   ["pointerdown","keydown","touchstart"].forEach(function(ev){
@@ -14461,6 +14523,25 @@ cp.onclick=function(){window.copyFilterShareLink()};
 seen.add(cp);document.body.appendChild(cp);
 /* sembunyikan kalau halaman sudah punya tombol salin link sendiri */
 function syncCopy(){var inl=document.querySelector('#page-content [onclick*="copyFilterShareLink"]');cp.classList.toggle("vo-off",!!(inl&&!inl.classList.contains("vo-hide")))}
+/* tombol salin link di header popup detail (modal z-10000 menutupi tombol melayang) */
+st.textContent+=".vo-popcopy{display:inline-flex;align-items:center;gap:5px;height:26px;padding:0 10px;border-radius:999px;border:1px solid #c7d2fe;background:#fff;color:#4338ca;font:800 10px/1 'Plus Jakarta Sans',system-ui,sans-serif;cursor:pointer;white-space:nowrap}.vo-popcopy:hover{background:#e0e7ff}";
+function syncPop(){
+  var pp=window.__sharePopup;
+  document.querySelectorAll('[id^="modal-"]').forEach(function(m){
+    var b=m.querySelector(".vo-popcopy"),on=!m.classList.contains("hide")&&!!pp;
+    if(!on){if(b){var w=b.parentNode;b.remove();if(w&&w.classList.contains("vo-popwrap")&&w.parentNode){while(w.firstChild)w.parentNode.insertBefore(w.firstChild,w);w.remove()}}return}
+    if(b)return;
+    var close=m.querySelector('button[onclick*="closeModal"]');
+    if(!close||!close.parentNode)return;
+    var wrap=document.createElement("div");wrap.className="vo-popwrap flex items-center gap-3 shrink-0";
+    var nb=document.createElement("button");nb.type="button";nb.className="vo-popcopy";
+    nb.title="Salin link halaman + popup ini";nb.innerHTML='<i class="fas fa-link"></i>Salin link';
+    nb.onclick=function(ev){ev.stopPropagation();window.copyFilterShareLink()};
+    seen.add(nb);
+    close.parentNode.insertBefore(wrap,close);wrap.appendChild(nb);wrap.appendChild(close);
+  });
+}
+setInterval(function(){try{syncPop()}catch(e){}},400);
 document.title=document.title+" (Lihat Saja)";
 new MutationObserver(schedule).observe(document.body,{childList:true,subtree:true});
 schedule();
