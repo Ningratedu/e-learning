@@ -3312,7 +3312,7 @@ window.ROUTES["admin/onboarding-feedback"]=requireAdmin(function(){renderOnboard
 function devProgramStageLabel(stage){if(!stage)return"-";if(stage.type==="manual"||stage.type==="panel")return stage.title||"Journey manual";if(stage.type==="training"){const t=window.STATE.trainings.find(x=>x.id===stage.refId);return t?t.title:(stage.title||"Training (sudah dihapus)")}if(stage.type==="course"&&(stage.packageId||stage.title&&stage.courseIds&&stage.courseIds.length)){const n=(stage.courseIds||[]).length;return(stage.title||"Paket Onboarding")+(n?" ("+n+" modul)":"")}const c=window.STATE.courses.find(x=>x.id===stage.refId);return c?c.title:(stage.title||"Modul (sudah dihapus)")}
 function devProgramUserIdByUsername(username){const u=window.STATE.users.find(x=>normalizeUsername(x.username)===normalizeUsername(username));return u?u.id:null}
 function devProgramApprovalOf(programId,userId){return(window.STATE.devProgramApprovals||[]).find(a=>a.programId===programId&&a.userId===userId&&!a.stageId)||null}
-function devProgramParticipantProgress(program,userId){const stages=(program.stages||[]).slice().sort((a,b)=>(a.order||0)-(b.order||0));const doneList=stages.map(s=>devProgramStageDone(s,userId));const doneCount=doneList.filter(Boolean).length;const allDone=stages.length>0&&doneCount===stages.length;let approval=devProgramApprovalOf(program.id,userId);if(approval&&Array.isArray(approval.stageIds)){const decidedIds=new Set(approval.stageIds);if(stages.some(st=>st.id&&!decidedIds.has(st.id)))approval=null}let status;if(allDone&&approval&&approval.status==="approved")status="lulus";else if(allDone&&approval&&approval.status==="rejected")status="ditolak";else if(allDone)status="menunggu_approval";else status="berlangsung";return{stages:stages,doneList:doneList,doneCount:doneCount,totalCount:stages.length,allDone:allDone,approval:approval,status:status,sched:devProgramSchedule(program,userId,stages,doneList)}}
+function devProgramParticipantProgress(program,userId){const stages=(program.stages||[]).slice().sort((a,b)=>(a.order||0)-(b.order||0));const doneList=stages.map(s=>devProgramStageDone(s,userId));const doneCount=doneList.filter(Boolean).length;const allDone=stages.length>0&&doneCount===stages.length;let approval=devProgramApprovalOf(program.id,userId);if(approval&&Array.isArray(approval.stageIds)){const decidedIds=new Set(approval.stageIds);if(stages.some(st=>st.id&&!decidedIds.has(st.id)))approval=null}let status;if(allDone&&approval&&approval.status==="approved")status="lulus";else if(allDone&&approval&&approval.status==="rejected")status="ditolak";else if(allDone)status="menunggu_approval";else status="berlangsung";const sched=devProgramSchedule(program,userId,stages,doneList);let dispStages=stages;if(program&&program.deadlineMode==="hplus"&&sched.some(x=>x)){const st0=dpStartMs(program,userId);let prevEnd=st0>0?st0:NaN;dispStages=stages.map((s,i)=>{const sc=sched[i];if(!sc||!(prevEnd>=0))return s;const ext=sc.ext||0;const eff=Math.max(0,Math.round((sc.dueDate-ext*DP_DAY-prevEnd)/DP_DAY));prevEnd=sc.dueDate;return Object.assign({},s,{days:eff})})}return{stages:dispStages,doneList:doneList,doneCount:doneCount,totalCount:stages.length,allDone:allDone,approval:approval,status:status,sched:sched}}
 function devProgramStatusLabel(status){return status==="lulus"?"Lulus":status==="ditolak"?"Ditolak":status==="menunggu_approval"?"Menunggu Approval":"Berlangsung"}
 function devProgramStatusBadgeClass(status){if(status==="lulus")return"bg-emerald-50 text-emerald-600";if(status==="ditolak")return"bg-rose-50 text-rose-600";if(status==="menunggu_approval")return"bg-amber-50 text-amber-600";return"bg-sky-50 text-sky-600"}
 function renderDevProgramAdminList(){
@@ -3874,10 +3874,10 @@ window.dpGenerateTemplate90BatchOktober=function(opts){
       title:title,order:order,days:days,minReports:0,activities:[],rubric:[],passScore:0,reportFields:[]
     };
   }
-  function shareStage(title,days,order,bulanLabel){
+  function shareStage(title,days,order,bulanLabel,monthsAfterJoin){
     return{
       id:sid(),type:"manual",kind:"Assessment",refId:"",
-      title:title,order:order,days:days,minReports:1,
+      title:title,order:order,days:days,minReports:1,monthsAfterJoin:monthsAfterJoin||0,dueDay:15,
       activities:[act("Kuesioner "+bulanLabel,[
         field("Kendala utama bulan ini","textarea",true),
         field("Kesan selama bekerja bulan ini","textarea",true),
@@ -3902,7 +3902,7 @@ window.dpGenerateTemplate90BatchOktober=function(opts){
   devProgramDraft.certificateOnPass=true;
   devProgramDraft.reviewSlaDays=3;
   devProgramDraft.startDate="";
-  devProgramDraft.autoEnroll={groups:[{departments:[],designations:[]}],joinMonths:[joinMonth],joinFrom:"",joinTo:"",joinAgeMinDays:null,joinAgeMaxDays:null,cohortMode:"joinMonth",inviteDayOfMonth:15};
+  devProgramDraft.autoEnroll={groups:[{departments:[],designations:[]}],joinMonths:[joinMonth],joinFrom:"",joinTo:"",joinAgeMinDays:null,joinAgeMaxDays:null,cohortMode:"none",inviteDayOfMonth:15};
 
   var mentorNote="Dimentoring oleh Supervisor";
 
@@ -3916,7 +3916,7 @@ window.dpGenerateTemplate90BatchOktober=function(opts){
   /* 2. OJT 1 — H+30 */
   stages.push({
     id:sid(),type:"manual",kind:"OJT",refId:"",
-    title:"2. OJT 1 (H+30) · Fondasi lapangan",
+    title:"2. OJT 1 (s.d. 15 bln +1 join) · Fondasi lapangan",
     order:1,days:30,minReports:6,
     activities:[
       act("1. Visit lokasi — pahami detail produk (SWOT)",[
@@ -3964,7 +3964,7 @@ window.dpGenerateTemplate90BatchOktober=function(opts){
   });
 
   /* 3. Checkpoint 1 — ~15 +1 bulan join (≈ H+30 cohort) */
-  stages.push(shareStage("3. Sharing & Evaluation 1 / Checkpoint 1 (±15 +1 bln join)",30,2,"bulan pertama"));
+  stages.push(shareStage("3. Sharing & Evaluation 1 / Checkpoint 1 (±15 +1 bln join)",30,2,"bulan pertama",1));
 
   /* 4. Onboarding lanjutan — advance selling skill (buka setelah CP1) */
   stages.push(courseStage(
@@ -3975,7 +3975,7 @@ window.dpGenerateTemplate90BatchOktober=function(opts){
   /* 5. OJT 2 — H+60 */
   stages.push({
     id:sid(),type:"manual",kind:"OJT",refId:"",
-    title:"5. OJT 2 (H+60) · Proses konsumen & ambassador",
+    title:"5. OJT 2 (s.d. 15 bln +2 join) · Proses konsumen & ambassador",
     order:4,days:60,minReports:4,
     activities:[
       act("1. Co & Co oleh Supervisor (review & feedback atasan)",[
@@ -4007,7 +4007,7 @@ window.dpGenerateTemplate90BatchOktober=function(opts){
   });
 
   /* 6. Checkpoint 2 */
-  stages.push(shareStage("6. Sharing & Evaluation 2 / Checkpoint 2 (±15 +2 bln join)",60,5,"bulan kedua"));
+  stages.push(shareStage("6. Sharing & Evaluation 2 / Checkpoint 2 (±15 +2 bln join)",60,5,"bulan kedua",2));
 
   /* 7. Onboarding lanjutan — complaint handling & excellence service */
   stages.push(courseStage(
@@ -4018,7 +4018,7 @@ window.dpGenerateTemplate90BatchOktober=function(opts){
   /* 8. OJT 3 — H+90 */
   stages.push({
     id:sid(),type:"manual",kind:"OJT",refId:"",
-    title:"8. OJT 3 (H+90) · Handling & channel baru",
+    title:"8. OJT 3 (s.d. 15 bln +3 join) · Handling & channel baru",
     order:7,days:90,minReports:3,
     activities:[
       act("1. Co & Co oleh Supervisor (review & feedback atasan)",[
@@ -4045,7 +4045,7 @@ window.dpGenerateTemplate90BatchOktober=function(opts){
   });
 
   /* 9. Checkpoint 3 */
-  stages.push(shareStage("9. Sharing & Evaluation 3 / Checkpoint 3 (±15 +3 bln join)",90,8,"bulan ketiga"));
+  stages.push(shareStage("9. Sharing & Evaluation 3 / Checkpoint 3 (±15 +3 bln join)",90,8,"bulan ketiga",3));
 
   /* 10. Graduation — keputusan lanjut kontrak */
   stages.push({
@@ -4062,6 +4062,7 @@ window.dpGenerateTemplate90BatchOktober=function(opts){
     passScore:70,packageId:"",courseIds:[],typeIds:[],reportFields:[]
   });
 
+  stages.forEach(function(st,i){var pin=DP_TPL_PINS[i+1];if(pin){st.monthsAfterJoin=pin[0];st.dueDay=15;st.offsetDays=pin[1]}});
   devProgramDraft.stages=stages;
   try{window.dpSyncAutoParticipantsDraft()}catch(e){}
   window.rerenderDevProgramBuilder();
@@ -4348,7 +4349,7 @@ window.devProgSearch=function(kind,val){const d=devProgramDraft;if(kind==="stage
 window.devProgSearchEnter=function(ev,kind){if(ev.key!=="Enter"||ev.isComposing)return;ev.preventDefault();clearTimeout(window._dpST);if(kind==="stage"){const h=devProgStageHits()[0];if(h)window.addDevProgramStage(h.id)}else{const h=devProgParticipantHits()[0];if(h)window.toggleDevProgramParticipant(h.username)}};
 window.setDevProgramParticipantStart=function(username,val){const d=devProgramDraft;if(!d.participantStartDates||typeof d.participantStartDates!=="object")d.participantStartDates={};const k=normalizeUsername(username);if(val)d.participantStartDates[k]=val;else delete d.participantStartDates[k]};window.fillDevProgramStartsFromJoin=function(){const d=devProgramDraft;if(!d.participantStartDates||typeof d.participantStartDates!=="object")d.participantStartDates={};let n=0;d.participantUsernames.forEach(u=>{const e=(window.STATE.employees||[]).find(x=>x.username===u);const dt=dateOnlySafe(e&&e.tglBergabung);if(!dt)return;d.participantStartDates[normalizeUsername(u)]=dt.getFullYear()+"-"+String(dt.getMonth()+1).padStart(2,"0")+"-"+String(dt.getDate()).padStart(2,"0");n++});const c=document.getElementById("dp-participant-chips");if(c)c.innerHTML=devProgChipsHtml();window.toast(n+" dari "+d.participantUsernames.length+" peserta diisi dari tanggal bergabung"+(n<d.participantUsernames.length?" (sisanya belum punya tanggal bergabung di Data Karyawan)":""),n?"success":"warn")};
 window.toggleDevProgramParticipant=function(username){const arr=devProgramDraft.participantUsernames;const i=arr.indexOf(username);if(i===-1)arr.push(username);else{arr.splice(i,1);if(devProgramDraft.participantStartDates)delete devProgramDraft.participantStartDates[normalizeUsername(username)]}const c=document.getElementById("dp-participant-chips");if(c)c.innerHTML=devProgChipsHtml();const r=document.getElementById("dp-participant-results");if(r){const st=r.scrollTop;r.innerHTML=devProgParticipantResultsHtml();r.scrollTop=st}};
-window.saveDevProgramDraft=async function(){const d=devProgramDraft;if(!d.title.trim()){window.toast("Judul program wajib diisi","warn");return}if(!d.stages.length){window.toast("Tambahin minimal 1 journey (Training/Modul/OJT) dulu","warn");return}if((d.participantMode||"manual")==="auto"){try{window.dpSyncAutoParticipantsDraft()}catch(e){}}if(!d.participantUsernames.length){window.toast((d.participantMode==="auto"?"Belum ada karyawan yang cocok aturan otomatis":"Pilih minimal 1 peserta dulu"),"warn");return}try{const{col:col,addDoc:addDoc,setDoc:setDoc,ref:ref,serverTimestamp:serverTimestamp}=window.LMS_DB;const payload={title:d.title.trim(),description:d.description||"",fromLabel:d.fromLabel||"",toLabel:d.toLabel||"",stages:d.stages.map((s,i)=>({id:s.id,type:s.type,refId:s.refId||"",title:s.title||"",kind:s.kind||"",order:i,days:+s.days||0,minReports:+s.minReports||0,rubric:Array.isArray(s.rubric)?s.rubric:[],passScore:+s.passScore||0,packageId:s.packageId||"",courseIds:Array.isArray(s.courseIds)?s.courseIds.slice():[],typeIds:Array.isArray(s.typeIds)?s.typeIds.slice():[],activities:Array.isArray(s.activities)?s.activities.map(function(a){return{id:a.id,title:String(a.title||"").trim(),reportFields:Array.isArray(a.reportFields)?a.reportFields.map(function(f){return{id:f.id,label:String(f.label||"").trim(),type:f.type||"text",required:!!f.required,options:Array.isArray(f.options)?f.options.map(String):[]}}).filter(function(f){return f.label}):[]}}).filter(function(a){return a.title}):[],reportFields:[]})),participantMode:d.participantMode==="auto"?"auto":"manual",deadlineMode:d.deadlineMode==="hplus"?"hplus":"duration",autoEnroll:d.autoEnroll||null,participantUsernames:d.participantUsernames,startDate:d.startDate||"",participantStartDates:(()=>{const o={};const m=d.participantStartDates||{};(d.participantUsernames||[]).forEach(u=>{const k=normalizeUsername(u);if(m[k])o[k]=m[k]});return o})(),reviewSlaDays:+d.reviewSlaDays||3,certificateOnPass:!!d.certificateOnPass};if(d._id){await setDoc(ref("devPrograms",d._id),payload,{merge:true});await window.LMS_DB.updateDoc(ref("devPrograms",d._id),{participantStartDates:payload.participantStartDates})}else{payload.createdAt=serverTimestamp();await addDoc(col("devPrograms"),payload)}window.toast("Development Program berhasil disimpan","success");window.closeDevProgramBuilder()}catch(err){console.error(err);window.toast("Gagal menyimpan: "+(err.message||err),"error")}};
+window.saveDevProgramDraft=async function(){const d=devProgramDraft;if(!d.title.trim()){window.toast("Judul program wajib diisi","warn");return}if(!d.stages.length){window.toast("Tambahin minimal 1 journey (Training/Modul/OJT) dulu","warn");return}if((d.participantMode||"manual")==="auto"){try{window.dpSyncAutoParticipantsDraft()}catch(e){}}if(!d.participantUsernames.length){window.toast((d.participantMode==="auto"?"Belum ada karyawan yang cocok aturan otomatis":"Pilih minimal 1 peserta dulu"),"warn");return}try{const{col:col,addDoc:addDoc,setDoc:setDoc,ref:ref,serverTimestamp:serverTimestamp}=window.LMS_DB;const payload={title:d.title.trim(),description:d.description||"",fromLabel:d.fromLabel||"",toLabel:d.toLabel||"",stages:d.stages.map((s,i)=>({id:s.id,type:s.type,refId:s.refId||"",title:s.title||"",kind:s.kind||"",order:i,days:+s.days||0,monthsAfterJoin:+s.monthsAfterJoin||0,dueDay:+s.dueDay||15,offsetDays:+s.offsetDays||0,minReports:+s.minReports||0,rubric:Array.isArray(s.rubric)?s.rubric:[],passScore:+s.passScore||0,packageId:s.packageId||"",courseIds:Array.isArray(s.courseIds)?s.courseIds.slice():[],typeIds:Array.isArray(s.typeIds)?s.typeIds.slice():[],activities:Array.isArray(s.activities)?s.activities.map(function(a){return{id:a.id,title:String(a.title||"").trim(),reportFields:Array.isArray(a.reportFields)?a.reportFields.map(function(f){return{id:f.id,label:String(f.label||"").trim(),type:f.type||"text",required:!!f.required,options:Array.isArray(f.options)?f.options.map(String):[]}}).filter(function(f){return f.label}):[]}}).filter(function(a){return a.title}):[],reportFields:[]})),participantMode:d.participantMode==="auto"?"auto":"manual",deadlineMode:d.deadlineMode==="hplus"?"hplus":"duration",autoEnroll:d.autoEnroll||null,participantUsernames:d.participantUsernames,startDate:d.startDate||"",participantStartDates:(()=>{const o={};const m=d.participantStartDates||{};(d.participantUsernames||[]).forEach(u=>{const k=normalizeUsername(u);if(m[k])o[k]=m[k]});return o})(),reviewSlaDays:+d.reviewSlaDays||3,certificateOnPass:!!d.certificateOnPass};if(d._id){await setDoc(ref("devPrograms",d._id),payload,{merge:true});await window.LMS_DB.updateDoc(ref("devPrograms",d._id),{participantStartDates:payload.participantStartDates})}else{payload.createdAt=serverTimestamp();await addDoc(col("devPrograms"),payload)}window.toast("Development Program berhasil disimpan","success");window.closeDevProgramBuilder()}catch(err){console.error(err);window.toast("Gagal menyimpan: "+(err.message||err),"error")}};
 window.deleteDevProgram=function(id){const p=window.STATE.devPrograms.find(x=>x.id===id);if(!p)return;window.confirmDelete(`Hapus Development Program "${p.title}"? Data approval kelulusan dan konfirmasi journey manual (OJT dll), dan laporan/evidence peserta program ini juga akan ikut terhapus (file di Cloudinary tidak ikut terhapus). Progress training/modul masing-masing journey TIDAK ikut terhapus.`,async()=>{try{const{deleteDoc:deleteDoc,ref:ref,col:col,getDocs:getDocs,query:query,where:where}=window.LMS_DB;const snap=await getDocs(query(col("devProgramApprovals"),where("programId","==",id)));await Promise.all(snap.docs.map(d=>deleteDoc(ref("devProgramApprovals",d.id))));const evSnap=await getDocs(query(col("devProgramEvidence"),where("programId","==",id)));await Promise.all(evSnap.docs.map(d=>deleteDoc(ref("devProgramEvidence",d.id))));await deleteDoc(ref("devPrograms",id));window.toast("Development Program dihapus","success")}catch(err){console.error(err);window.toast("Gagal menghapus: "+(err.message||err),"error")}})};
 let devEvCtx=null;
 function devProgramEvidenceOf(programId,userId,stageId){return(window.STATE.devProgramEvidence||[]).filter(e=>e.programId===programId&&e.userId===userId&&e.stageId===stageId).sort((a,b)=>((b.createdAt&&b.createdAt.seconds)||9e9)-((a.createdAt&&a.createdAt.seconds)||9e9))}
@@ -4396,6 +4397,13 @@ function dpExtOf(pid,uid,sid){const a=(window.STATE.devProgramApprovals||[]).fin
 function dpPanelOf(pid,uid,sid){return(window.STATE.devProgramApprovals||[]).find(x=>x.programId===pid&&x.stageId===sid&&x.userId===uid&&x.status==="panel")||null}
 function dpDoneMs(s,uid){if(s.type==="manual"||s.type==="panel"){const c=devProgramManualCheck(s.id,uid);return c?tsMillis(c.doneAt):0}const c=s.type==="training"?certOfUserForTraining(s.refId,uid):certOfUser(s.refId,uid);return c?tsMillis(c.issuedAt):0}
 function dpStartStr(p,uid){const u=uid?(window.STATE.users||[]).find(x=>x.id===uid):null;const k=u?normalizeUsername(u.username):"";const m=p&&p.participantStartDates||{};return k&&m[k]||p&&p.startDate||""}function dpStartMs(p,uid){const sd=dpStartStr(p,uid);return sd?new Date(sd+"T00:00:00").getTime():NaN}
+/* Journey 90 hari (Batch): target ditentukan relatif ke BULAN JOIN, bukan H+ dari tgl mulai.
+   Anchor = tgl `dueDay` (default 15) di bulan join +N, lalu +offsetDays. Sharing & Evaluation 1/2/3 = N 1/2/3 offset 0.
+   Program lama yang belum punya field ini dikenali dari judul journey (khusus program "90 Hari Karyawan Baru"). */
+var DP_TPL_PINS={2:[1,0],3:[1,0],4:[1,15],5:[2,0],6:[2,0],7:[2,15],8:[3,0],9:[3,0],10:[3,15]};
+function dpAnchor(p,s){if(!s)return null;const n=+s.monthsAfterJoin||0;if(n>0)return{n:n,day:+s.dueDay||15,off:+s.offsetDays||0};const t=String(s.title||"");const r=/Sharing\s*&\s*Evaluation\s*(\d)/i.exec(t);if(s.kind==="Assessment"&&r&&+r[1]>0)return{n:+r[1],day:15,off:0};if(p&&/90\s*Hari\s*Karyawan\s*Baru/i.test(String(p.title||""))){const q=/^\s*(\d+)\s*\./.exec(t);const pin=q&&DP_TPL_PINS[+q[1]];if(pin)return{n:pin[0],day:15,off:pin[1]}}return null}
+function dpJoinOfUser(uid){try{const u=uid?(window.STATE.users||[]).find(x=>x.id===uid):null;const k=u?normalizeUsername(u.username):"";if(!k)return null;const e=(window.STATE.employees||[]).find(x=>normalizeUsername(x.username)===k);return e?window.dpJoinDateOnly(e):null}catch(err){return null}}
+function dpAnchorDue(p,s,uid,start){const a=dpAnchor(p,s);if(!a)return null;let jd=dpJoinOfUser(uid);if(!(jd&&!isNaN(jd))){const sd=new Date(start);const inv=window.dpNormalizeAutoEnroll(p&&p.autoEnroll).cohortMode!=="none";jd=new Date(sd.getFullYear(),sd.getMonth()-(inv?1:0),1)}return new Date(jd.getFullYear(),jd.getMonth()+a.n,a.day).getTime()+a.off*DP_DAY}
 function devProgramSchedule(p,uid,stages,doneList){
   const start=dpStartMs(p,uid);
   if(!(start>0))return stages.map(()=>null);
@@ -4405,6 +4413,7 @@ function devProgramSchedule(p,uid,stages,doneList){
     const days=+s.days||0;if(!days)return null;
     const ext=dpExtOf(p.id,uid,s.id);
     let dueDate;if(hplus){dueDate=start+(days+ext)*DP_DAY}else{acc+=(days+ext)*DP_DAY;dueDate=acc}
+    const anchDue=dpAnchorDue(p,s,uid,start);if(anchDue!=null)dueDate=anchDue+ext*DP_DAY;
     const due=dueDate+DP_DAY-1;
     const o={dueDate:dueDate,due:due,ext:ext};
     if(doneList[i]){const ms=dpDoneMs(s,uid);o.state=!ms?"selesai":ms<=due?"tepat":"telat_selesai";return o}
