@@ -4878,10 +4878,11 @@ function renderDevProgramProgress(id){const p=window.STATE.devPrograms.find(x=>x
     const rank=wait?0:nr?1:late?2:prog.status==="berlangsung"?3:lulus?4:5;
     items.push({rank:rank,html:dpAdminPCard(p,username,emp,name,uid,prog,{dn:dn,flags:flags,ci:ci})})});
   items.sort((a,b)=>a.rank-b.rank);
-  const progPct=sumTotal?Math.round(sumDone/sumTotal*100):0;const totDays=stages.reduce((a,s)=>a+(+s.days||0),0);const pStart=p.startDate?new Date(p.startDate+"T00:00:00").getTime():NaN;
+  const progPct=sumTotal?Math.round(sumDone/sumTotal*100):0;const hp=p.deadlineMode==="hplus";let maxDue=0;if(hp){(p.participantUsernames||[]).forEach(u=>{const id=devProgramUserIdByUsername(u);if(!id)return;devProgramParticipantProgress(p,id).sched.forEach(x=>{if(x&&x.dueDate>maxDue)maxDue=x.dueDate})})}const totDays=hp?Math.max(0,...stages.map(s=>+s.days||0)):stages.reduce((a,s)=>a+(+s.days||0),0);const pStart=p.startDate?new Date(p.startDate+"T00:00:00").getTime():NaN;
   const chip=(ic,t)=>`<span class="dpx-chip"><i class="fas ${ic}"></i>${t}</span>`;
-  let chips=chip("fa-route",stages.length+" journey");if(totDays)chips+=chip("fa-hourglass-half","Total waktu program "+totDays+" hari");
-  if(pStart>0){chips+=chip("fa-play","Mulai "+dpLongD(pStart));if(totDays)chips+=chip("fa-flag-checkered","Target selesai "+dpLongD(pStart+totDays*DP_DAY))}
+  let chips=chip("fa-route",stages.length+" journey");if(totDays)chips+=chip("fa-hourglass-half",hp?"Target maks H+"+totDays+" hari":"Total waktu program "+totDays+" hari");
+  const tEnd=hp&&maxDue>0?maxDue:(pStart>0&&totDays?pStart+totDays*DP_DAY:0);
+  if(pStart>0)chips+=chip("fa-play","Mulai "+dpLongD(pStart));if(tEnd>0)chips+=chip("fa-flag-checkered","Target selesai "+dpLongD(tEnd));
   const path=p.fromLabel||p.toLabel?`<div class="dpx-path"><span class="dpx-pill" title="${esc(p.fromLabel||"-")}">${esc(p.fromLabel||"-")}</span><span class="dpx-line"><i style="width:${progPct}%"></i></span><span class="dpx-pill to" title="${esc(p.toLabel||"-")}">${esc(p.toLabel||"-")}</span></div>`:"";
   const tile=(f,l,v,c)=>`<button type="button" data-f="${f}" onclick="window.dpSetFilter('${f}')" class="dpa-stat ${c||""}"><b>${v}</b><span>${l}</span></button>`;
   const tiles=tile("all","Peserta",(p.participantUsernames||[]).length)+tile("wait","Menunggu approval",nWait,nWait?"hot":"")+tile("review","Laporan perlu review",nRev,nRev?"hot":"")+tile("late","Terlambat",nLate,nLate?"bad":"")+tile("lulus","Lulus",nLulus);
