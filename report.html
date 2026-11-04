@@ -3666,7 +3666,12 @@ let devProgramDraft=null;
 window.devProgramRouteBlocked=function(key,id){if(!id||(key!=="courses"&&key!=="trainings"))return false;const me=window.STATE.user;if(!me)return false;if(window.sel&&window.sel.isAdmin&&window.sel.isAdmin())return false;const loaded=window._loadedStateKeys||new Set();if(!loaded.has("devPrograms")||!loaded.has("certificates")||!loaded.has("devProgramApprovals"))return false;const type=key==="trainings"?"training":"course";const uname=normalizeUsername(me.username||"");if(type==="course"){const __c=(window.STATE.courses||[]).find(x=>x.id===id);if(__c&&window.courseParticipantMatch(__c,window.sel.employeeOfUser(me),me))return false}let inProgram=false,open=false,blockedBy=null;(window.STATE.devPrograms||[]).forEach(p=>{if(!(p.participantUsernames||[]).some(u=>normalizeUsername(u)===uname))return;const stages=(p.stages||[]).slice().sort((a,b)=>(a.order||0)-(b.order||0));const idx=stages.findIndex(s=>s.type===type&&s.refId===id);if(idx===-1)return;inProgram=true;if(devProgramStageDone(stages[idx],me.id)){open=true;return}const prev=stages.findIndex((s,i)=>i<idx&&!devProgramStageDone(s,me.id));if(prev===-1)open=true;else if(!blockedBy)blockedBy={program:p.title,journey:prev+1}});if(inProgram&&!open&&blockedBy){window.hideRouteLoadingBar&&window.hideRouteLoadingBar();window.toast(`Journey ini masih terkunci. Selesaikan Journey ${blockedBy.journey} di "${blockedBy.program}" dulu.`,"warn");window.navigate("/dev-programs");return true}return false};
 window.closeDevProgramBuilder=function(){window.closeModal("modal-dev-program-builder");devProgramDraft=null;if(location.hash.replace(/^#/,"").replace(/\/$/,"")!=="/admin/dev-programs")window.navigate("/admin/dev-programs")};window.closeDevProgramProgress=function(){window.closeModal("modal-dev-program-progress");if(location.hash.replace(/^#/,"").replace(/\/$/,"")!=="/admin/dev-programs")window.navigate("/admin/dev-programs")};
 window.rerenderDevProgramBuilder=function(){renderDevProgramBuilder(devProgramDraft._id)};
-function renderDevProgramBuilder(id){if(!devProgramDraft||devProgramDraft._loadedId!==(id||"new")){const existing=id?window.STATE.devPrograms.find(p=>p.id===id):null;devProgramDraft=existing?JSON.parse(JSON.stringify(existing)):{title:"",description:"",fromLabel:"",toLabel:"",stages:[],participantUsernames:[],certificateOnPass:true};if(!Array.isArray(devProgramDraft.stages))devProgramDraft.stages=[];if(!Array.isArray(devProgramDraft.participantUsernames))devProgramDraft.participantUsernames=[];if(!devProgramDraft.participantStartDates||typeof devProgramDraft.participantStartDates!=="object")devProgramDraft.participantStartDates={};devProgramDraft._loadedId=id||"new";devProgramDraft._id=id||null;devProgramDraft._stageType="training";devProgramDraft._stageSearch="";devProgramDraft._participantSearch=""}const d=devProgramDraft;document.getElementById("dev-program-builder-title").innerHTML=`<i class="fas fa-arrow-trend-up mr-1"></i> ${d._id?"Edit Development Program":"Development Program Baru"}`;const stageCandidates=d._stageType==="training"?(window.STATE.trainings||[]):(window.STATE.courses||[]);const usedIds=new Set(d.stages.map(s=>s.refId));document.getElementById("dev-program-builder-body").innerHTML=`
+function renderDevProgramBuilder(id){if(!devProgramDraft||devProgramDraft._loadedId!==(id||"new")){const existing=id?window.STATE.devPrograms.find(p=>p.id===id):null;devProgramDraft=existing?JSON.parse(JSON.stringify(existing)):{title:"",description:"",fromLabel:"",toLabel:"",stages:[],participantUsernames:[],certificateOnPass:true};if(!Array.isArray(devProgramDraft.stages))devProgramDraft.stages=[];if(!Array.isArray(devProgramDraft.participantUsernames))devProgramDraft.participantUsernames=[];if(!devProgramDraft.participantStartDates||typeof devProgramDraft.participantStartDates!=="object")devProgramDraft.participantStartDates={};devProgramDraft._loadedId=id||"new";devProgramDraft._id=id||null;devProgramDraft._stageType="training";devProgramDraft._stageSearch="";devProgramDraft._participantSearch=""}const d=devProgramDraft;document.getElementById("dev-program-builder-title").innerHTML=`<i class="fas fa-arrow-trend-up mr-1"></i> ${d._id?"Edit Development Program":"Development Program Baru"}`;const stageCandidates=d._stageType==="training"?(window.STATE.trainings||[]):(window.STATE.courses||[]);const usedIds=new Set(d.stages.map(s=>s.refId));var __dpTplBanner=d._id?"":('<div class="rounded-xl border border-dpv-200 bg-dpv-50/60 px-3 py-2.5 mb-1 flex flex-wrap items-center gap-2">'
+      +'<div class="flex-1 min-w-[180px]"><p class="text-[11px] font-black text-dpv-700"><i class="fas fa-wand-magic-sparkles mr-1"></i>Template siap pakai</p>'
+      +'<p class="text-[10px] text-slate-500 leading-snug">Program 90 hari Batch Oktober (Sales): 10 journey — Onboarding → OJT → Checkpoint → training lanjutan → Graduation kontrak.</p></div>'
+      +'<button type="button" onclick="window.dpGenerateTemplate90BatchOktober()" class="text-[11px] font-black px-3 py-2 rounded-xl bg-dpv-600 hover:bg-dpv-700 text-white shrink-0"><i class="fas fa-bolt mr-1"></i>Generate Batch Oktober</button>'
+      +'</div>');
+document.getElementById("dev-program-builder-body").innerHTML=__dpTplBanner+`
     <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div class="sm:col-span-2">
             <label class="text-[10px] font-bold uppercase text-slate-400">Judul Program</label>
@@ -3956,7 +3961,7 @@ window.dpFormatFieldValues=function(e,stage){
 
 
 /* Auto enroll */
-window.dpNormalizeAutoEnroll=function(ae){ae=ae||{};var day=ae.inviteDayOfMonth==null||ae.inviteDayOfMonth===""?15:+ae.inviteDayOfMonth;if(isNaN(day)||day<1)day=15;if(day>28)day=28;return{groups:(Array.isArray(ae.groups)?ae.groups:[]).map(function(g){return{departments:(g.departments||[]).map(String).filter(Boolean),designations:(g.designations||[]).map(String).filter(Boolean)}}),joinFrom:ae.joinFrom||"",joinTo:ae.joinTo||"",joinAgeMinDays:ae.joinAgeMinDays==null||ae.joinAgeMinDays===""?null:+ae.joinAgeMinDays,joinAgeMaxDays:ae.joinAgeMaxDays==null||ae.joinAgeMaxDays===""?null:+ae.joinAgeMaxDays,cohortMode:ae.cohortMode==="none"?"none":"joinMonth",inviteDayOfMonth:day}};
+window.dpNormalizeAutoEnroll=function(ae){ae=ae||{};var day=ae.inviteDayOfMonth==null||ae.inviteDayOfMonth===""?15:+ae.inviteDayOfMonth;if(isNaN(day)||day<1)day=15;if(day>28)day=28;var jm=(Array.isArray(ae.joinMonths)?ae.joinMonths:[]).map(function(x){return String(x||"").slice(0,7)}).filter(function(x){return /^\d{4}-\d{2}$/.test(x)});return{groups:(Array.isArray(ae.groups)?ae.groups:[]).map(function(g){return{departments:(g.departments||[]).map(String).filter(Boolean),designations:(g.designations||[]).map(String).filter(Boolean)}}),joinFrom:ae.joinFrom||"",joinTo:ae.joinTo||"",joinMonths:jm,joinAgeMinDays:ae.joinAgeMinDays==null||ae.joinAgeMinDays===""?null:+ae.joinAgeMinDays,joinAgeMaxDays:ae.joinAgeMaxDays==null||ae.joinAgeMaxDays===""?null:+ae.joinAgeMaxDays,cohortMode:ae.cohortMode==="none"?"none":"joinMonth",inviteDayOfMonth:day}};
 /** Tanggal undangan batch: semua yang join di bulan yang sama diundang bareng di tgl `inviteDayOfMonth` bulan berikutnya. Cth join 1–31 Okt → undangan 15 Nov. */
 window.dpCohortInviteDate=function(joinDate,ae){
   ae=window.dpNormalizeAutoEnroll(ae);
@@ -3983,8 +3988,13 @@ window.dpEmployeeMatchesAuto=function(e,ae){
   var join=window.dpJoinDateOnly(e);
   if(ae.joinFrom){var f=new Date(ae.joinFrom+"T00:00:00");if(!join||join<f)return false}
   if(ae.joinTo){var t=new Date(ae.joinTo+"T00:00:00");if(!join||join>t)return false}
+  if(ae.joinMonths&&ae.joinMonths.length){
+    if(!join)return false;
+    var jk=join.getFullYear()+"-"+String(join.getMonth()+1).padStart(2,"0");
+    if(ae.joinMonths.indexOf(jk)<0)return false;
+  }
   if(join&&(ae.joinAgeMinDays!=null||ae.joinAgeMaxDays!=null)){var today=new Date();today.setHours(0,0,0,0);var age=Math.floor((today-join)/864e5);if(ae.joinAgeMinDays!=null&&!isNaN(ae.joinAgeMinDays)&&age<ae.joinAgeMinDays)return false;if(ae.joinAgeMaxDays!=null&&!isNaN(ae.joinAgeMaxDays)&&age>ae.joinAgeMaxDays)return false}
-  if(!ae.groups.length)return false;
+  if(!ae.groups.length)return true;
   var dept=window.dpNormKey(e.dept),des=window.dpNormKey(e.designation);
   return ae.groups.some(function(g){var okD=!g.departments.length||g.departments.some(function(x){return window.dpNormKey(x)===dept});var okS=!g.designations.length||g.designations.some(function(x){return window.dpNormKey(x)===des});return okD&&okS});
 };
@@ -4012,7 +4022,247 @@ window.dpRemoveAutoGroupItem=function(gi,field,ii){
 
 
 window.dpSetAutoGroupField=function(gi,field,raw){var g=devProgramDraft.autoEnroll&&devProgramDraft.autoEnroll.groups[gi];if(!g)return;g[field]=String(raw||"").split(/[,;]+/).map(function(x){return x.trim()}).filter(Boolean);window.dpSyncAutoParticipantsDraft();window.rerenderDevProgramBuilder()};
-window.dpSetAutoMeta=function(key,val){if(!devProgramDraft.autoEnroll)devProgramDraft.autoEnroll={};if(key==="inviteDayOfMonth")devProgramDraft.autoEnroll[key]=val===""||val==null?15:+val;else devProgramDraft.autoEnroll[key]=val;window.dpSyncAutoParticipantsDraft();window.rerenderDevProgramBuilder()};
+window.dpSetAutoMeta=function(key,val){if(!devProgramDraft.autoEnroll)devProgramDraft.autoEnroll={};if(key==="inviteDayOfMonth")devProgramDraft.autoEnroll[key]=val===""||val==null?15:+val;else if(key==="joinAgeMinDays"||key==="joinAgeMaxDays"){devProgramDraft.autoEnroll[key]=(val===""||val==null)?null:+val;if(devProgramDraft.autoEnroll[key]!=null&&isNaN(devProgramDraft.autoEnroll[key]))devProgramDraft.autoEnroll[key]=null;}else devProgramDraft.autoEnroll[key]=val;window.dpSyncAutoParticipantsDraft();window.rerenderDevProgramBuilder()};
+window.dpSid=function(){return "stage_"+Date.now().toString(36)+Math.random().toString(36).slice(2,6)};
+window.dpGenerateTemplate90BatchOktober=function(opts){
+  opts=opts||{};
+  if(!devProgramDraft){window.toast&&window.toast("Buka form Development Program dulu","warn");return}
+  var hasContent=(devProgramDraft.stages&&devProgramDraft.stages.length)||(devProgramDraft.title&&String(devProgramDraft.title).trim());
+  if(hasContent&&!opts.force){if(!window.confirm("Isi form saat ini akan diganti template Batch Oktober (10 journey). Lanjut?"))return}
+  var y=opts.year;if(!y){var now=new Date();y=now.getMonth()>=9?now.getFullYear():now.getFullYear()-1}
+  var joinMonth=String(y)+"-10";
+  var nid=window.dpNewId||function(){return "f_"+Date.now().toString(36)+Math.random().toString(36).slice(2,6)};
+  function field(label,type,req,optsArr){return{id:nid(),label:label,type:type||"text",required:!!req,options:Array.isArray(optsArr)?optsArr:[]}}
+  function act(title,fields){return{id:nid(),title:title,reportFields:fields||[]}}
+  function sid(){return window.dpSid?window.dpSid():("stage_"+Date.now().toString(36)+Math.random().toString(36).slice(2,6))}
+
+  /* Cari paket onboarding by keyword di nama */
+  function findPkg(keywords){
+    var pkgs=[];try{pkgs=window.onbPkgs()||[]}catch(e){pkgs=[]}
+    keywords=(keywords||[]).map(function(k){return String(k).toLowerCase()});
+    var best=null,bestScore=-1;
+    pkgs.forEach(function(p){
+      if(!p||!Array.isArray(p.courseIds)||!p.courseIds.length)return;
+      var name=String(p.name||p.title||p.id||"").toLowerCase();
+      var score=0;
+      keywords.forEach(function(k){if(k&&name.indexOf(k)>=0)score+=2});
+      if(score>bestScore){bestScore=score;best=p}
+    });
+    if(best)return best;
+    /* fallback: paket pertama yang punya modul */
+    for(var i=0;i<pkgs.length;i++){
+      if(pkgs[i]&&Array.isArray(pkgs[i].courseIds)&&pkgs[i].courseIds.length)return pkgs[i];
+    }
+    return null;
+  }
+  function courseStage(title,days,pkg,order){
+    var p=pkg||null;
+    return{
+      id:sid(),type:"course",kind:"",refId:p&&p.courseIds&&p.courseIds[0]?p.courseIds[0]:"",
+      packageId:p&&p.id?p.id:"",
+      courseIds:p&&p.courseIds?p.courseIds.slice():[],
+      typeIds:p&&Array.isArray(p.typeIds)?p.typeIds.slice():[],
+      title:title,order:order,days:days,minReports:0,activities:[],rubric:[],passScore:0,reportFields:[]
+    };
+  }
+  function shareStage(title,days,order,bulanLabel){
+    return{
+      id:sid(),type:"manual",kind:"Assessment",refId:"",
+      title:title,order:order,days:days,minReports:1,
+      activities:[act("Kuesioner "+bulanLabel,[
+        field("Kendala utama bulan ini","textarea",true),
+        field("Kesan selama bekerja bulan ini","textarea",true),
+        field("Pesan / saran untuk atasan & perusahaan","textarea",true),
+        field("Skor semangat kerja (1-5)","number",true),
+        field("Apakah target/peran sudah jelas?","select",true,["Ya","Sebagian","Belum"])
+      ])],
+      rubric:[],passScore:0,packageId:"",courseIds:[],typeIds:[],reportFields:[]
+    };
+  }
+
+  var pkgSales=findPkg(["sales staff","sales","staff","paket sales"]);
+  var pkgAdvance=findPkg(["advance selling","selling skill","advance","lanjutan"]);
+  var pkgComplaint=findPkg(["complaint","excellence service","service excellence","handling"]);
+
+  devProgramDraft.title="Program 90 Hari Karyawan Baru – Batch Oktober "+y+" (Sales)";
+  devProgramDraft.description="Journey 90 hari Batch Oktober "+y+": Onboarding Sales Staff → OJT → Checkpoint bulanan (15+1/2/3 bln) → training lanjutan → graduation (keputusan lanjut kontrak). Target H+ dari tanggal join; checkpoint dibahasakan 15 Nov / 15 Des / 15 Jan untuk cohort Oktober.";
+  devProgramDraft.fromLabel="Sales Staff baru";
+  devProgramDraft.toLabel="Lulus 90 hari / keputusan kontrak";
+  devProgramDraft.participantMode="auto";
+  devProgramDraft.deadlineMode="hplus";
+  devProgramDraft.certificateOnPass=true;
+  devProgramDraft.reviewSlaDays=3;
+  devProgramDraft.startDate="";
+  devProgramDraft.autoEnroll={groups:[{departments:[],designations:[]}],joinMonths:[joinMonth],joinFrom:"",joinTo:"",joinAgeMinDays:null,joinAgeMaxDays:null,cohortMode:"joinMonth",inviteDayOfMonth:15};
+
+  var mentorNote="Dimentoring oleh Supervisor";
+
+  var stages=[];
+  /* 1. Onboarding Paket Sales Staff — H+14 */
+  stages.push(courseStage(
+    "1. Onboarding Training (Paket Sales Staff)"+(pkgSales&&pkgSales.name?(" · "+pkgSales.name):""),
+    14, pkgSales, 0
+  ));
+
+  /* 2. OJT 1 — H+30 */
+  stages.push({
+    id:sid(),type:"manual",kind:"OJT",refId:"",
+    title:"2. OJT 1 (H+30) · Fondasi lapangan",
+    order:1,days:30,minReports:6,
+    activities:[
+      act("1. Visit lokasi — pahami detail produk (SWOT)",[
+        field("Lokasi / project yang dikunjungi","text",true),
+        field("Strength / kelebihan produk","textarea",true),
+        field("Weakness / kekurangan produk","textarea",true),
+        field("Opportunity","textarea",false),
+        field("Threat","textarea",false),
+        field("Catatan mentoring Supervisor","textarea",false)
+      ]),
+      act("2. Optimalisasi promosi ke database Ring 1 (WA)",[
+        field("Jumlah kontak Ring 1 dihubungi","number",true),
+        field("Channel (WA dll)","text",true),
+        field("Respons / hasil singkat","textarea",true),
+        field("Catatan mentoring Supervisor","textarea",false)
+      ]),
+      act("3. Canvasing Ring 1 (1 KM), Ring 2 (2 KM), Ring 3 (3 KM)",[
+        field("Area / project","text",true),
+        field("Ring yang dikerjakan (1/2/3)","text",true),
+        field("Jumlah titik / orang dikunjungi","number",true),
+        field("Hasil canvasing","textarea",true),
+        field("Catatan mentoring Supervisor","textarea",false)
+      ]),
+      act("4. Promosi medsos (TikTok, IG, FB) — post min 3x/hari, live min 1 jam/hari",[
+        field("Tanggal","date",true),
+        field("Platform (TikTok/IG/FB)","text",true),
+        field("Jumlah posting hari ini","number",true),
+        field("Durasi live (menit)","number",true),
+        field("Link / ringkasan konten","textarea",false),
+        field("Catatan mentoring Supervisor","textarea",false)
+      ]),
+      act("5. Efektif follow-up ceklokasi & booking",[
+        field("Jumlah follow-up","number",true),
+        field("Yang di-follow-up (ceklokasi/booking)","textarea",true),
+        field("Hasil","textarea",true),
+        field("Catatan mentoring Supervisor","textarea",false)
+      ]),
+      act("6. Efektif closing / pendampingan ceklokasi & booking",[
+        field("Aktivitas (closing / dampingan ceklokasi / booking)","text",true),
+        field("Hasil","textarea",true),
+        field("Catatan mentoring Supervisor","textarea",false)
+      ])
+    ],
+    rubric:[],passScore:0,packageId:"",courseIds:[],typeIds:[],reportFields:[]
+  });
+
+  /* 3. Checkpoint 1 — ~15 +1 bulan join (≈ H+30 cohort) */
+  stages.push(shareStage("3. Sharing & Evaluation 1 / Checkpoint 1 (±15 +1 bln join)",30,2,"bulan pertama"));
+
+  /* 4. Onboarding lanjutan — advance selling skill (buka setelah CP1) */
+  stages.push(courseStage(
+    "4. Onboarding Training lanjutan · Advance Selling Skill"+(pkgAdvance&&pkgAdvance.name?(" · "+pkgAdvance.name):""),
+    45, pkgAdvance && pkgAdvance!==pkgSales ? pkgAdvance : null, 3
+  ));
+
+  /* 5. OJT 2 — H+60 */
+  stages.push({
+    id:sid(),type:"manual",kind:"OJT",refId:"",
+    title:"5. OJT 2 (H+60) · Proses konsumen & ambassador",
+    order:4,days:60,minReports:4,
+    activities:[
+      act("1. Co & Co oleh Supervisor (review & feedback atasan)",[
+        field("Tanggal Co & Co","date",true),
+        field("Poin review atasan","textarea",true),
+        field("Feedback yang diterima","textarea",true),
+        field("Rencana perbaikan","textarea",true)
+      ]),
+      act("2. Pendampingan pemberkasan konsumen",[
+        field("Nama / kode konsumen","text",true),
+        field("Tahap pemberkasan","text",true),
+        field("Kendala & penyelesaian","textarea",true),
+        field("Catatan mentoring Supervisor","textarea",false)
+      ]),
+      act("3. Pendampingan akad & serah terima kunci",[
+        field("Nama / kode konsumen","text",true),
+        field("Jenis (akad / serah terima kunci)","text",true),
+        field("Ringkasan proses","textarea",true),
+        field("Catatan mentoring Supervisor","textarea",false)
+      ]),
+      act("4. Optimalisasi ambassador (referensi dari konsumen)",[
+        field("Konsumen / ambassador yang dihubungi","text",true),
+        field("Jumlah referensi didapat","number",true),
+        field("Tindak lanjut","textarea",true),
+        field("Catatan mentoring Supervisor","textarea",false)
+      ])
+    ],
+    rubric:[],passScore:0,packageId:"",courseIds:[],typeIds:[],reportFields:[]
+  });
+
+  /* 6. Checkpoint 2 */
+  stages.push(shareStage("6. Sharing & Evaluation 2 / Checkpoint 2 (±15 +2 bln join)",60,5,"bulan kedua"));
+
+  /* 7. Onboarding lanjutan — complaint handling & excellence service */
+  stages.push(courseStage(
+    "7. Onboarding Training lanjutan · Complaint Handling & Excellence Service"+(pkgComplaint&&pkgComplaint.name?(" · "+pkgComplaint.name):""),
+    75, pkgComplaint && pkgComplaint!==pkgSales && pkgComplaint!==pkgAdvance ? pkgComplaint : null, 6
+  ));
+
+  /* 8. OJT 3 — H+90 */
+  stages.push({
+    id:sid(),type:"manual",kind:"OJT",refId:"",
+    title:"8. OJT 3 (H+90) · Handling & channel baru",
+    order:7,days:90,minReports:3,
+    activities:[
+      act("1. Co & Co oleh Supervisor (review & feedback atasan)",[
+        field("Tanggal Co & Co","date",true),
+        field("Poin review atasan","textarea",true),
+        field("Feedback yang diterima","textarea",true),
+        field("Rencana perbaikan","textarea",true)
+      ]),
+      act("2. Handling complaint",[
+        field("Kasus / jenis complaint","textarea",true),
+        field("Langkah penanganan","textarea",true),
+        field("Hasil / status","textarea",true),
+        field("Catatan mentoring Supervisor","textarea",false)
+      ]),
+      act("3. New channeling database (corporate / instansi / komunitas)",[
+        field("Jenis channel (corporate/instansi/komunitas)","text",true),
+        field("Nama instansi / komunitas","text",true),
+        field("Hasil kunjungan / pendekatan","textarea",true),
+        field("Potensi database","textarea",false),
+        field("Catatan mentoring Supervisor","textarea",false)
+      ])
+    ],
+    rubric:[],passScore:0,packageId:"",courseIds:[],typeIds:[],reportFields:[]
+  });
+
+  /* 9. Checkpoint 3 */
+  stages.push(shareStage("9. Sharing & Evaluation 3 / Checkpoint 3 (±15 +3 bln join)",90,8,"bulan ketiga"));
+
+  /* 10. Graduation — keputusan lanjut kontrak */
+  stages.push({
+    id:sid(),type:"panel",kind:"Panel",refId:"",
+    title:"10. Graduation Dev Program · Keputusan lanjut kontrak",
+    order:9,days:90,minReports:0,activities:[],
+    rubric:[
+      "Pemahaman produk & area (SWOT)",
+      "Disiplin aktivitas OJT & mentoring",
+      "Hasil follow-up / booking / closing",
+      "Sikap, service & handling complaint",
+      "Potensi berkembang & rekomendasi kontrak"
+    ],
+    passScore:70,packageId:"",courseIds:[],typeIds:[],reportFields:[]
+  });
+
+  devProgramDraft.stages=stages;
+  try{window.dpSyncAutoParticipantsDraft()}catch(e){}
+  window.rerenderDevProgramBuilder();
+  var notes=[];
+  if(!pkgSales)notes.push("Paket Sales Staff belum terdeteksi — pilih manual di journey 1");
+  if(!pkgAdvance)notes.push("Journey 4 (Advance Selling) belum terisi paket — pilih setelah CP1");
+  if(!pkgComplaint)notes.push("Journey 7 (Complaint Handling) belum terisi paket — pilih setelah CP2");
+  window.toast&&window.toast("Template 10 journey Batch Oktober "+y+" siap. "+(notes.length?notes.join(". ")+".":"Paket onboarding terisi otomatis."),notes.length?"warn":"success");
+};
+
 window.dpAddJoinMonth=function(){
   if(!devProgramDraft.autoEnroll)devProgramDraft.autoEnroll={};
   var el=document.getElementById("dp-auto-join-month");
@@ -4062,6 +4312,52 @@ window.dpAutoPreviewHtml=function(){
     ?('Batch seperti onboarding: yang join sebulan penuh diundang bareng tgl <b>'+ae.inviteDayOfMonth+' bulan berikutnya</b> (cth. join Okt → undangan '+ae.inviteDayOfMonth+' Nov).')
     :'Tanpa batch bulanan — mulai journey = tanggal bergabung.';
   return'<div class="text-[11px] text-slate-600 bg-emerald-50/60 border border-emerald-100 rounded-xl px-3 py-2 space-y-1.5"><div><b class="text-emerald-700">'+list.length+' karyawan</b> cocok & terdaftar otomatis.</div><p class="text-[10px] text-slate-500 leading-relaxed">'+modeNote+'</p>'+(rows?('<div class="mt-1">'+rows+'</div>'):'')+'</div>';
+};
+window.dpAllDepartments=function(){
+  var set={},out=[];
+  (window.STATE.employees||[]).forEach(function(e){
+    if(!e||e.tglResign)return;
+    var d=String(e.dept||"").trim();if(!d||set[d])return;set[d]=1;out.push(d);
+  });
+  return out.sort(function(a,b){return a.localeCompare(b,"id",{sensitivity:"base"})});
+};
+window.dpAllDesignations=function(depts){
+  var allow=null;
+  if(Array.isArray(depts)&&depts.length){
+    allow={};
+    depts.forEach(function(d){allow[String(d||"").toLowerCase().replace(/\s+/g," ").trim()]=1});
+  }
+  var set={},out=[];
+  (window.STATE.employees||[]).forEach(function(e){
+    if(!e||e.tglResign)return;
+    if(allow){
+      var ed=String(e.dept||"").toLowerCase().replace(/\s+/g," ").trim();
+      if(!allow[ed])return;
+    }
+    var d=String(e.designation||e.posisi||"").trim();if(!d||set[d])return;set[d]=1;out.push(d);
+  });
+  return out.sort(function(a,b){return a.localeCompare(b,"id",{sensitivity:"base"})});
+};
+window.dpAvailableJoinMonths=function(){
+  var set={},out=[];
+  (window.STATE.employees||[]).forEach(function(e){
+    if(!e||e.tglResign)return;
+    var join=null;
+    try{join=window.dpJoinDateOnly(e)}catch(err){join=null}
+    if(!join)return;
+    var k=join.getFullYear()+"-"+String(join.getMonth()+1).padStart(2,"0");
+    if(set[k])return;set[k]=1;out.push(k);
+  });
+  /* pastikan opsi 12 bulan terakhir + 3 bulan ke depan tetap ada walau belum ada karyawan */
+  try{
+    var now=new Date(),y=now.getFullYear(),m=now.getMonth();
+    for(var i=-11;i<=3;i++){
+      var dt=new Date(y,m+i,1);
+      var k=dt.getFullYear()+"-"+String(dt.getMonth()+1).padStart(2,"0");
+      if(!set[k]){set[k]=1;out.push(k)}
+    }
+  }catch(e){}
+  return out.sort().reverse();
 };
 window.dpAutoRulesHtml=function(){
   var d=devProgramDraft,E=window.escapeHtml;
@@ -4119,7 +4415,17 @@ window.dpAutoRulesHtml=function(){
     +'<div class="border border-slate-200 rounded-xl p-2.5 space-y-1.5 bg-white">'
     +'<div class="text-[10px] font-black uppercase text-slate-400">Diterapkan ke bulan join</div>'
     +jmChips+jmSelect
-    +'<p class="text-[9px] text-slate-400">Contoh: pilih Okt &amp; Nov 2026 → hanya karyawan join di bulan itu yang masuk gelombang program.</p>'
+    +'<p class="text-[9px] text-slate-400">Contoh: pilih Okt &amp; Nov 2026 → hanya karyawan yang join di bulan itu yang masuk program (cocok untuk gelombang 90 hari per cohort). Kosong = semua bulan join.</p>'
+    +'</div>'
+    +'<div class="border border-slate-200 rounded-xl p-2.5 space-y-2 bg-white">'
+    +'<div class="text-[10px] font-black uppercase text-slate-400">Rentang tanggal join &amp; masa kerja</div>'
+    +'<div class="grid grid-cols-2 gap-2">'
+    +'<div><label class="text-[10px] font-bold text-slate-500">Join dari</label><input type="date" value="'+(ae.joinFrom||'')+'" onchange="window.dpSetAutoMeta(\'joinFrom\',this.value)" class="w-full border border-slate-200 rounded-lg px-2 py-1.5 text-[11px] mt-0.5"></div>'
+    +'<div><label class="text-[10px] font-bold text-slate-500">Join sampai</label><input type="date" value="'+(ae.joinTo||'')+'" onchange="window.dpSetAutoMeta(\'joinTo\',this.value)" class="w-full border border-slate-200 rounded-lg px-2 py-1.5 text-[11px] mt-0.5"></div>'
+    +'<div><label class="text-[10px] font-bold text-slate-500">Min. hari sejak join</label><input type="number" min="0" placeholder="opsional" value="'+(ae.joinAgeMinDays!=null?ae.joinAgeMinDays:'')+'" onchange="window.dpSetAutoMeta(\'joinAgeMinDays\',this.value)" class="w-full border border-slate-200 rounded-lg px-2 py-1.5 text-[11px] mt-0.5"></div>'
+    +'<div><label class="text-[10px] font-bold text-slate-500">Max. hari sejak join</label><input type="number" min="0" placeholder="cth: 90" value="'+(ae.joinAgeMaxDays!=null?ae.joinAgeMaxDays:'')+'" onchange="window.dpSetAutoMeta(\'joinAgeMaxDays\',this.value)" class="w-full border border-slate-200 rounded-lg px-2 py-1.5 text-[11px] mt-0.5"></div>'
+    +'</div>'
+    +'<p class="text-[9px] text-slate-400">Untuk program 90 hari: set max 90 hari sejak join, atau pilih bulan join cohort di atas.</p>'
     +'</div>'
     +'<div class="border border-slate-200 rounded-xl p-2.5 space-y-2 bg-white">'
     +'<div class="text-[10px] font-black uppercase text-slate-400">Jadwal undangan batch journey</div>'
