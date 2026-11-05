@@ -12357,10 +12357,12 @@ var st=document.createElement("style");st.id="faq-style";st.textContent=css;docu
 
 /* ---------- Data ---------- */
 var CATS=[
+ {id:"panduan", label:"Mulai Dari Sini",      icon:"fa-compass"},
  {id:"akun",    label:"Akun & Login",         icon:"fa-user-lock"},
  {id:"onboard", label:"Onboarding Training",  icon:"fa-book-open"},
  {id:"tna",     label:"Training By TNA",      icon:"fa-chalkboard-user"},
  {id:"dev",     label:"Development Program",  icon:"fa-arrow-trend-up"},
+ {id:"trusmi",  label:"Trusmi Smart",         icon:"fa-book-open-reader"},
  {id:"nilai",   label:"Nilai, Sertifikat & KPI", icon:"fa-award"},
  {id:"teknis",  label:"Aplikasi & Kendala Teknis", icon:"fa-screwdriver-wrench"},
  {id:"admin",   label:"Khusus Admin",         icon:"fa-user-shield", adminOnly:true}
@@ -12518,7 +12520,7 @@ var ITEMS=[
 /* ===== NILAI ===== */
 {id:"lihat-sertifikat",cat:"nilai",q:"Di mana saya melihat sertifikat?",a:`
 <p>Semua sertifikat yang sudah terbit (dari Onboarding maupun Training By TNA) ada di menu <a href="#/certificates">Sertifikat Saya</a>. Jumlahnya juga tampil sebagai kartu <b>Sertifikat</b> di Dashboard.</p>`},
-{id:"lencana-trusmi",cat:"nilai",q:"Apa penghargaan untuk materi Trusmi Smart?",a:`
+{id:"lencana-trusmi",cat:"trusmi",q:"Apa penghargaan untuk materi Trusmi Smart?",a:`
 <p>Materi Trusmi Smart tidak memakai sertifikat. Setiap materi yang kamu selesaikan memberi <b>lencana</b>, ada lencana milestone di <b>5, 10, dan 25 materi</b>, dan levelmu naik dari <b>Pembelajar Baru</b> ke <b>Pembelajar Aktif</b> lalu <b>Pembelajar Sejati</b>. Semuanya bisa dilihat di <a href="#/profile">Profil Saya</a>, dan Top Learner bulanan tampil di halaman Trusmi Smart.</p>`},
 {id:"sertifikat-belum",cat:"nilai",q:"Sertifikat saya belum muncul, kenapa?",a:`
 <p>Sertifikat terbit saat kamu menekan tombol <b>Selesaikan &amp; Ambil Sertifikat</b>, dan tombol itu baru aktif kalau semua syarat sudah lengkap:</p>
@@ -12561,6 +12563,112 @@ var ITEMS=[
 <li>Pastikan formatnya sesuai (foto profil harus gambar, maksimal 5 MB).</li>
 <li>Coba kecilkan ukuran file lalu unggah ulang.</li></ul>`},
 
+/* ===== MANUAL: MULAI DARI SINI ===== */
+{id:"panduan-singkat",cat:"panduan",q:"Panduan singkat: dari login sampai selesai belajar",a:`
+<p>Gambaran besar cara memakai NingratEdu, dari hari pertama sampai kamu menyelesaikan pembelajaran:</p>
+<ol class="faq-steps"><li><b>Login</b> memakai username dan password dari Admin HR Training &amp; Development. Panduannya ada di <a href="#/faq/cara-login">Cara login</a>.</li>
+<li>Buka <a href="#/dashboard">Dashboard</a> untuk melihat ringkasan: training yang sedang dikerjakan, jadwal terdekat, progres, sertifikat, dan KPI. Penjelasan tiap kartu ada di <a href="#/faq/baca-dashboard">Cara membaca Dashboard</a>.</li>
+<li>Selesaikan <a href="#/courses">Onboarding Training</a> yang ditugaskan kepadamu. Training dikerjakan <b>berurutan</b>, jadi selesaikan satu per satu. Alurnya ada di <a href="#/faq/alur-onboarding">Alur belajar Onboarding Training</a>.</li>
+<li>Ikuti <a href="#/trainings">Training By TNA</a> sesuai jadwal yang ditujukan untukmu: daftar, hadir dan presensi, kerjakan tes, lalu isi Rating &amp; Feedback. Panduannya ada di <a href="#/faq/ikut-training">Cara mengikuti Training By TNA</a>.</li>
+<li>Kalau kamu terdaftar di <a href="#/dev-programs">Development Program</a>, ikuti journey-nya tahap demi tahap.</li>
+<li>Belajar mandiri kapan saja lewat <a href="#/library">Trusmi Smart</a>. Menu ini tidak punya jadwal dan tidak dihitung sebagai training wajib.</li>
+<li>Cek hasilmu di <a href="#/certificates">Sertifikat Saya</a>, lalu lihat lencana dan kompetensimu di <a href="#/profile">Profil Saya</a>.</li></ol>
+<div class="faq-tip"><i class="fas fa-lightbulb"></i><div>Bingung di tengah jalan? Ketik kata kunci di kolom pencarian di atas, misalnya <i>terkunci</i>, <i>post-test</i>, atau <i>presensi</i>.</div></div>`},
+{id:"peta-menu",cat:"panduan",q:"Apa fungsi setiap menu di sidebar?",a:`
+<p>Berikut fungsi menu yang ada di sidebar (sebagian menu hanya muncul kalau kamu memenuhi syaratnya):</p>
+<ul><li><a href="#/dashboard">Dashboard</a>: ringkasan progres belajar, jadwal terdekat, sertifikat, dan grafik Performa KPI Bulanan.</li>
+<li><a href="#/courses">Onboarding Training</a>: training wajib yang ditugaskan kepadamu, dikerjakan berurutan, lengkap dengan Pre-test, Post-test, dan sertifikat.</li>
+<li><a href="#/trainings">Training By TNA</a>: sesi training berjadwal yang disusun dari analisis kebutuhan (TNA). Ada pendaftaran, presensi, tes, dan sertifikat.</li>
+<li><a href="#/dev-programs">Development Program</a>: program pengembangan berbentuk journey bertahap.</li>
+<li><a href="#/library">Trusmi Smart (Perpustakaan Digital)</a>: materi belajar mandiri tanpa jadwal. Hasilnya berupa lencana, bukan sertifikat.</li>
+<li><a href="#/certificates">Sertifikat Saya</a>: semua sertifikat yang sudah terbit.</li>
+<li><a href="#/leaderboard">Leaderboard KPI</a>: peringkat karyawan berdasarkan KPI.</li>
+<li><a href="#/tna-input">Request Training</a>: pengajuan kebutuhan training. Hanya muncul untuk level jabatan tertentu.</li>
+<li><b>Asesmen Kompetensi</b>: hanya muncul kalau kamu sedang ditugaskan di sebuah siklus asesmen.</li>
+<li><a href="#/faq">FAQ &amp; Bantuan</a>: halaman ini.</li></ul>
+<p>Di pojok kanan atas, klik foto/nama profil untuk <b>Edit Profil</b>, mengganti tema terang/gelap, atau keluar. Lencana dan kompetensimu bisa dilihat di <a href="#/profile">Profil Saya</a>.</p>`},
+{id:"tiga-jalur",cat:"panduan",q:"Apa bedanya Onboarding Training, Training By TNA, dan Trusmi Smart?",a:`
+<ul><li><b>Onboarding Training</b>: training wajib yang <b>ditugaskan</b> kepadamu. Dikerjakan <b>berurutan</b>, ada Pre-test, Post-test, Rating &amp; Feedback, tugas (kalau ada), dan berakhir dengan <b>sertifikat</b>. Inilah yang dihitung di kartu Training Onboarding.</li>
+<li><b>Training By TNA</b>: training <b>berjadwal</b> yang berangkat dari analisis kebutuhan. Kamu perlu mendaftar, hadir (presensi), mengerjakan tes, lalu mendapat <b>sertifikat</b>.</li>
+<li><b>Trusmi Smart</b>: perpustakaan materi untuk <b>belajar mandiri</b>. Tidak ada jadwal, tidak ada penugasan, urutan antar materi bebas, dan tidak ada tugas. Hasilnya berupa <b>lencana</b>, bukan sertifikat.</li></ul>
+<div class="faq-tip"><i class="fas fa-lightbulb"></i><div>Materi Trusmi Smart <b>tidak dihitung</b> sebagai training yang harus dikerjakan, jadi tidak mempengaruhi angka X/Y onboarding maupun Progres keseluruhan di Dashboard. Detailnya ada di <a href="#/faq/trusmi-hitungan">Apakah materi Trusmi Smart masuk hitungan onboarding?</a></div></div>`},
+{id:"baca-dashboard",cat:"panduan",q:"Cara membaca Dashboard",a:`
+<p>Bagian paling atas Dashboard adalah banner <b>Fokus kamu</b> dengan empat kartu:</p>
+<ul><li><b>Lanjutkan onboarding training</b>: training onboarding yang sedang kamu kerjakan beserta persentase progresnya. Kalau belum ada yang berjalan, kartu ini mengajakmu memulai training berikutnya.</li>
+<li><b>Jadwal terdekat</b>: sesi Training By TNA berikutnya yang ditujukan untukmu.</li>
+<li><b>Development Program</b>: pintasan ke program yang kamu ikuti.</li>
+<li><b>Progres keseluruhan</b>: persentase gabungan training <b>onboarding dan TNA</b> yang sudah selesai, plus jumlah sertifikatmu. Materi Trusmi Smart tidak ikut dihitung.</li></ul>
+<div class="faq-tip"><i class="fas fa-lightbulb"></i><div>Kalau semua onboarding sudah selesai, kartu <b>Jadwal terdekat</b> naik ke posisi pertama dan kartu pertama berganti menjadi <b>Belajar di Trusmi Smart</b>.</div></div>
+<p>Di bawah banner ada kartu ringkasan: <b>Training Onboarding</b> (X/Y selesai), <b>Training by TNA</b>, <b>Development Program</b>, <b>Progres Training</b> (rata-rata nilai Pre-test dan Post-test), dan <b>Sertifikat</b>. Klik kartunya untuk melihat rinciannya. Setelah itu ada grafik <b>Performa KPI Bulanan</b>, dijelaskan di <a href="#/faq/grafik-kpi">Cara membaca grafik KPI</a>.</p>`},
+{id:"glosarium",cat:"panduan",q:"Istilah yang sering muncul di NingratEdu",a:`
+<ul><li><b>Onboarding Training</b>: training wajib untuk karyawan, dikerjakan berurutan.</li>
+<li><b>TNA (Training Need Analysis)</b>: analisis kebutuhan training. Hasilnya menjadi dasar Training By TNA.</li>
+<li><b>Pre-test</b>: kuis awal sebelum materi dibuka. Fungsinya mengukur pemahaman awal.</li>
+<li><b>Post-test</b>: kuis akhir yang harus mencapai nilai minimum lulus.</li>
+<li><b>Rating &amp; Feedback</b>: penilaian dan masukanmu untuk training. Wajib diisi sebelum Post-test dan sertifikat.</li>
+<li><b>Presensi</b>: pencatatan kehadiran di sesi Training By TNA, biasanya lewat scan QR.</li>
+<li><b>Journey</b>: satu tahap dalam Development Program.</li>
+<li><b>Sertifikat</b>: bukti kelulusan Onboarding Training atau Training By TNA.</li>
+<li><b>Lencana</b>: penghargaan untuk materi Trusmi Smart yang diselesaikan.</li>
+<li><b>KPI</b>: capaian kinerja bulananmu, dilihat di Dashboard dan Leaderboard KPI.</li></ul>`},
+
+/* ===== MANUAL: ONBOARDING (TAMBAHAN) ===== */
+{id:"progres-onboarding-xy",cat:"onboard",q:"Apa arti angka X/Y di kartu Training Onboarding?",a:`
+<p><b>Y</b> adalah jumlah Onboarding Training yang sudah terbit dan ditujukan untuk departemen/targetmu. <b>X</b> adalah jumlah yang sudah kamu selesaikan. Persentase di donut dihitung dari X dibagi Y.</p>
+<ul><li>Materi <b>Trusmi Smart tidak ikut dihitung</b>, karena itu belajar mandiri dan bukan training yang ditugaskan.</li>
+<li>Angka Y bisa berubah kalau admin menambah training baru atau mengubah targetnya.</li>
+<li>Klik kartunya untuk melihat daftar training beserta statusnya.</li></ul>`},
+
+/* ===== MANUAL: TRUSMI SMART ===== */
+{id:"apa-trusmi",cat:"trusmi",q:"Apa itu Trusmi Smart dan apakah wajib?",a:`
+<p><a href="#/library">Trusmi Smart</a> adalah perpustakaan digital untuk <b>belajar mandiri</b> kapan saja dan di mana saja. Kamu bebas memilih materi yang ingin dipelajari.</p>
+<ul><li><b>Tidak wajib</b>: tidak ada jadwal, tidak ada penugasan, dan tidak ada tenggat.</li>
+<li><b>Urutan bebas</b>: kamu boleh membuka materi mana saja, tidak harus berurutan antar materi.</li>
+<li><b>Tanpa tugas dan sertifikat</b>: hasilnya berupa lencana dan level belajar.</li>
+<li>Materi yang tampil menyesuaikan <b>akses</b> yang diatur admin.</li></ul>`},
+{id:"alur-trusmi",cat:"trusmi",q:"Bagaimana alur belajar di Trusmi Smart?",a:`
+<p>Buka <a href="#/library">Trusmi Smart</a>, pilih materi, lalu ikuti urutan ini:</p>
+<ol class="faq-steps"><li>Tekan <b>Mulai Belajar</b> untuk membuka akses materi.</li>
+<li>Kerjakan <b>Pre-test</b> lebih dulu (kalau materi punya kuis). Materi baru terbuka setelah Pre-test dikumpulkan.</li>
+<li>Pelajari isi materi sampai semuanya selesai.</li>
+<li>Isi <b>Rating &amp; Feedback</b> untuk materi tersebut.</li>
+<li>Kerjakan <b>Post-test</b> sampai lulus (kalau materi punya kuis).</li>
+<li>Tekan <b>Selesaikan Materi &amp; Dapat Lencana</b>.</li></ol>
+<div class="faq-tip"><i class="fas fa-lightbulb"></i><div>Bedanya dengan Onboarding Training: tidak ada tugas dan tidak ada sertifikat, dan kamu tidak perlu menunggu materi lain selesai. Aturan penilaian Pre-test dan Post-test sama seperti yang dijelaskan di <a href="#/faq/posttest-lulus">Nilai minimum lulus Post-test</a>.</div></div>`},
+{id:"trusmi-cari",cat:"trusmi",q:"Cara mencari dan memfilter materi di Trusmi Smart",a:`
+<ul><li>Ketik judul atau kategori di kolom <b>pencarian</b>.</li>
+<li>Pakai chip <b>kategori</b> di atas daftar untuk mempersempit materi, atau pilih <b>Semua Kategori</b> untuk melihat semuanya.</li>
+<li>Status belajar tiap materi ditunjukkan oleh <b>badge di kartunya</b>, jadi kamu bisa langsung tahu mana yang sudah selesai atau sedang berjalan.</li>
+<li>Banner di bagian atas halaman merangkum jumlah materi tersedia, yang sudah selesai, yang sedang dipelajari, dan levelmu.</li></ul>`},
+{id:"trusmi-akses",cat:"trusmi",q:"Materi Trusmi Smart tidak muncul atau \"tidak tersedia untuk departemen kamu\"",a:`
+<p>Setiap materi punya pengaturan <b>akses</b> dari admin, misalnya hanya untuk departemen atau level tertentu. Materi di luar aksesmu tidak tampil di daftar, dan kalau dibuka lewat tautan akan muncul pesan bahwa materi tidak tersedia untuk departemenmu.</p>
+<p>Kalau menurutmu kamu seharusnya punya akses, hubungi Admin HR Training &amp; Development dan sebutkan judul materinya.</p>`},
+{id:"trusmi-hitungan",cat:"trusmi",q:"Apakah materi Trusmi Smart masuk hitungan onboarding?",a:`
+<p><b>Tidak.</b> Trusmi Smart adalah belajar mandiri, jadi tidak dihitung sebagai training yang harus dikerjakan:</p>
+<ul><li>Tidak masuk angka X/Y dan persentase di kartu <b>Training Onboarding</b>.</li>
+<li>Tidak masuk <b>Progres keseluruhan</b> di Dashboard.</li>
+<li>Tidak masuk pengingat dan target waktu onboarding.</li>
+<li>Tidak ada tugas dan sertifikat. Penghargaannya berupa lencana, lihat <a href="#/faq/lencana-trusmi">Penghargaan materi Trusmi Smart</a>.</li></ul>
+<p>Progres belajarmu di Trusmi Smart tetap tersimpan dan bisa dilihat di halaman Trusmi Smart itu sendiri.</p>`},
+
+/* ===== MANUAL: NILAI & KPI (TAMBAHAN) ===== */
+{id:"grafik-kpi",cat:"nilai",q:"Cara membaca grafik Performa KPI Bulanan",a:`
+<ul><li>Garis menampilkan KPI-mu per bulan dari Januari sampai Desember pada tahun berjalan. Bulan yang belum ada datanya dibiarkan kosong.</li>
+<li>Titik dan angka berwarna <b>hijau</b> menandai bulan dengan KPI tertinggi, sedangkan <b>merah</b> menandai bulan terendah.</li>
+<li>Skala sumbu vertikal dimulai dari 0% sampai minimal 100%. Kalau ada bulan dengan KPI <b>di atas 100%</b>, skalanya otomatis melebar supaya titik tidak terpotong.</li>
+<li>Arahkan kursor (atau ketuk di HP) ke sebuah titik untuk melihat nilainya, lalu klik untuk membuka <b>detail indikator</b> bulan tersebut.</li>
+<li>Di bawah grafik ada ringkasan singkat yang membandingkan KPI bulan terakhir dengan bulan sebelumnya.</li></ul>
+<p>Kalau data KPI belum muncul atau terlihat salah, lihat <a href="#/faq/kpi-salah">Data KPI saya belum muncul atau terlihat salah</a>.</p>`},
+
+/* ===== MANUAL: BANTUAN ===== */
+{id:"bantuan-admin",cat:"teknis",q:"Kapan dan bagaimana menghubungi admin?",a:`
+<p>Hubungi <b>Admin HR Training &amp; Development</b> untuk hal yang tidak bisa kamu atur sendiri, misalnya reset password, akun non-aktif, akses training atau materi, membuka kembali kesempatan Post-test, dan data KPI yang keliru.</p>
+<p>Supaya cepat ditangani, sertakan:</p>
+<ul><li>Nama lengkap dan <b>username</b>.</li>
+<li>Menu atau training/materi yang bermasalah.</li>
+<li><b>Tangkapan layar</b> pesan atau halaman yang muncul.</li>
+<li>Perkiraan jam kejadian dan langkah yang sudah kamu coba.</li></ul>`},
+
 /* ===== ADMIN ===== */
 {id:"admin-akun",cat:"admin",admin:true,q:"Bagaimana mengelola akun dan mereset password peserta?",a:`
 <p>Gunakan menu <a href="#/admin/users">Kelola Akun</a> untuk menambah akun, mengubah data, mengatur status aktif/non-aktif, dan membantu peserta yang lupa password. Data profil karyawan (departemen, jabatan, mentor/SPV, dst) dikelola di <a href="#/admin/employees">Data Karyawan</a>.</p>`},
@@ -12577,7 +12685,30 @@ var ITEMS=[
 {id:"admin-import",cat:"admin",admin:true,q:"Data apa saja yang bisa diimport lewat Excel?",a:`
 <p>Beberapa modul menyediakan tombol <b>Template</b>, <b>Import Excel</b>, dan <b>Export Excel</b> di halamannya, seperti Hasil TNA, Data Karyawan, data KPI bulanan, dan import training lama. Unduh template dulu, isi sesuai kolomnya, lalu import. Cek ringkasan konfirmasi sebelum melanjutkan karena import dapat memperbarui data yang sudah ada.</p>`},
 {id:"admin-refresh",cat:"admin",admin:true,q:"Angka di Dashboard admin belum terbaru, bagaimana menyegarkannya?",a:`
-<p>Data laporan dimuat dengan cache supaya cepat. Gunakan tombol <b>segarkan/perbarui data</b> di bagian bawah sidebar untuk menarik data terbaru. Keterangan waktu pembaruan terakhir juga tampil di menu profil.</p>`}
+<p>Data laporan dimuat dengan cache supaya cepat. Gunakan tombol <b>segarkan/perbarui data</b> di bagian bawah sidebar untuk menarik data terbaru. Keterangan waktu pembaruan terakhir juga tampil di menu profil.</p>`},
+{id:"admin-peta-menu",cat:"admin",admin:true,q:"Apa saja menu Kelola dan fungsinya?",a:`
+<ul><li><a href="#/admin/reports">Dashboard Admin</a>: ringkasan laporan, tugas yang perlu dinilai, dan hal yang perlu perhatian.</li>
+<li><a href="#/admin/onboarding-schedule">Kelola Onboarding Training</a>: mengelola training onboarding, penjadwalan, dan pemantauan progres peserta.</li>
+<li><a href="#/admin/trainings">Kelola Training By TNA</a>: jadwal sesi, hasil TNA, presensi, dan laporan.</li>
+<li><a href="#/admin/dev-programs">Kelola Development Program</a>: program, journey, dan pesertanya.</li>
+<li><a href="#/admin/library">Kelola Trusmi Smart</a>: materi perpustakaan digital untuk belajar mandiri.</li>
+<li><a href="#/admin/employees">Data Karyawan</a>: data profil karyawan, termasuk upload data KPI bulanan.</li>
+<li><a href="#/admin/leaderboard">Kelola Leaderboard</a>, <a href="#/admin/training-import">Import Training Lama</a>, dan <a href="#/admin/trainer-summary">Summary Trainer</a>.</li>
+<li><a href="#/admin/users">Kelola Akun</a>: menambah akun, status aktif/non-aktif, dan reset password.</li></ul>`},
+{id:"admin-trusmi",cat:"admin",admin:true,q:"Bagaimana mengelola materi Trusmi Smart?",a:`
+<p>Buka <a href="#/admin/library">Kelola Trusmi Smart</a>. Di sana kamu bisa menambah materi baru, mengubah, menerbitkan, dan mengatur urutan tampilnya dengan panah naik/turun.</p>
+<ul><li>Kolom <b>Akses</b> di daftar menunjukkan siapa yang bisa membuka materi. Aksesnya diatur di blok <b>Akses Materi (opsional)</b> pada form materi.</li>
+<li>Biarkan semua filter pada <b>Semua</b> kalau materi harus terbuka untuk seluruh karyawan. Sistem menampilkan jumlah karyawan yang saat ini punya akses.</li>
+<li>Materi Trusmi Smart tidak memakai tugas dan sertifikat. Penghargaannya berupa lencana untuk peserta.</li>
+<li>Materi ini <b>tidak dihitung</b> sebagai onboarding di dashboard, rekap, maupun pengingat.</li></ul>`},
+{id:"admin-hitungan-onboarding",cat:"admin",admin:true,q:"Training apa saja yang dihitung sebagai onboarding?",a:`
+<p>Yang dihitung hanya <b>Onboarding Training</b> yang sudah terbit dan sesuai target pesertanya. Hitungan ini dipakai di kartu Dashboard peserta, rekap dan progres batch onboarding, tracker induksi, serta pengingat target waktu.</p>
+<p>Materi <b>Trusmi Smart</b> sengaja dikecualikan dari semua hitungan tersebut, sehingga persentase onboarding peserta tidak turun hanya karena ada materi belajar mandiri.</p>`},
+{id:"admin-lap-keterlaksanaan",cat:"admin",admin:true,q:"Cara membaca Laporan Keterlaksanaan",a:`
+<p>Buka lewat ikon grafik di daftar course atau training. Isinya sedikit berbeda untuk tiap jenis:</p>
+<ul><li><b>Onboarding Training</b>: Jumlah Target Peserta, Keterlaksanaan (Selesai) dalam bentuk selesai/target, Kelulusan dari peserta yang sudah mulai, Rata-rata Rating Feedback, dan progres Pre/Post-test. Kalau course punya tugas, ada juga Penyelesaian Tugas. Tabel rincian per peserta bisa difilter berdasarkan status.</li>
+<li><b>Trusmi Smart</b>: sama seperti di atas, tetapi memakai istilah <b>Karyawan yang Punya Akses</b> karena materinya tidak ditargetkan, hanya dibuka aksesnya.</li>
+<li><b>Training By TNA</b>: Jumlah Target Peserta, Kehadiran, Kelulusan, dan rating. Laporannya bisa diunduh ke Excel.</li></ul>`}
 ];
 
 var QUICK=[
@@ -12586,7 +12717,10 @@ var QUICK=[
  {id:"sertifikat-belum",icon:"fa-award",t:"Sertifikat belum muncul",s:"Cek syarat penerbitan"},
  {id:"training-terkunci",icon:"fa-lock",t:"Training terkunci",s:"Daftar & target peserta"},
  {id:"scan-qr",icon:"fa-qrcode",t:"Scan QR gagal",s:"Presensi training"},
- {id:"install-hp",icon:"fa-mobile-screen",t:"Pasang di HP",s:"Instal sebagai aplikasi"}
+ {id:"install-hp",icon:"fa-mobile-screen",t:"Pasang di HP",s:"Instal sebagai aplikasi"},
+ {id:"panduan-singkat",icon:"fa-compass",t:"Panduan singkat",s:"Dari login sampai selesai"},
+ {id:"peta-menu",icon:"fa-map",t:"Fungsi tiap menu",s:"Peta menu sidebar"},
+ {id:"apa-trusmi",icon:"fa-book-open-reader",t:"Trusmi Smart",s:"Belajar mandiri & lencana"}
 ];
 
 /* ---------- Util ---------- */
@@ -12672,11 +12806,11 @@ function quickHtml(){
 
 function pageHtml(){
   return '<div class="faq-wrap" id="faq-root">'
-   +'<div class="faq-hero"><span class="faq-hero-badge"><i class="fas fa-life-ring"></i> Pusat Bantuan</span>'
+   +'<div class="faq-hero"><span class="faq-hero-badge"><i class="fas fa-life-ring"></i> Pusat Bantuan &amp; Panduan</span>'
    +'<h1>Ada yang bisa kami bantu?</h1>'
-   +'<p>Cari jawaban seputar akun, training, sertifikat, dan kendala teknis di NingratEdu. Ketik kata kunci atau pilih kategori di bawah.</p>'
+   +'<p>Panduan penggunaan NingratEdu dari awal sampai akhir: akun, onboarding, Training By TNA, Development Program, Trusmi Smart, sertifikat, KPI, dan kendala teknis. Ketik kata kunci, pilih kategori, atau mulai dari kategori <b>Mulai Dari Sini</b>.</p>'
    +'<div class="faq-search"><i class="fas fa-magnifying-glass faq-s-ico"></i>'
-   +'<input id="faq-search" type="search" autocomplete="off" placeholder="Contoh: lupa password, post-test, sertifikat..." aria-label="Cari pertanyaan" value="'+esc(S.q)+'">'
+   +'<input id="faq-search" type="search" autocomplete="off" placeholder="Contoh: lupa password, post-test, Trusmi Smart, KPI..." aria-label="Cari pertanyaan" value="'+esc(S.q)+'">'
    +'<button type="button" class="faq-clear'+(S.q?' show':'')+'" id="faq-clear" data-act="clear" aria-label="Hapus pencarian"><i class="fas fa-xmark"></i></button></div></div>'
    +'<div id="faq-quick-wrap"><div class="faq-sec-title"><i class="fas fa-bolt"></i> Bantuan cepat</div><div class="faq-quick">'+quickHtml()+'</div></div>'
    +'<div class="faq-toolbar"><div class="faq-chips" id="faq-chips">'+chipsHtml()+'</div></div>'
