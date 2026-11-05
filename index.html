@@ -12117,7 +12117,7 @@ window.dashHeroUser=function(){
   try{
     var S=window.STATE,u=S.user;if(!u)return"";
     var myEnr=S.enrollments.filter(function(e){return e.userId===u.id});
-    var assigned=S.courses.filter(function(c){return c.published&&window.deptAllowed(c)});
+    var assigned=S.courses.filter(function(c){return c.published&&window.isOnboardingCourse(c)&&window.deptAllowed(c)});
     var ids=new Set(assigned.map(function(c){return c.id}));
     var doneC=myEnr.filter(function(e){return e.status==="completed"&&ids.has(e.courseId)}).length;
     var certs=S.certificates.filter(function(c){return c.userId===u.id});
@@ -12131,9 +12131,17 @@ window.dashHeroUser=function(){
     var today=dayStart(Date.now());
     var soon=up.filter(function(t){return dayStart(t.date)-today<=7*864e5}).length;
     var sub="Ini ringkasan progres belajar kamu.";
-    var t1=run.length
-      ?'<a class="dh-tile" href="#/courses/'+esc(run[0].c.id)+'"><span class="dh-ico"><i class="fas fa-play"></i></span><span class="dh-body"><span class="dh-k">Lanjutkan belajar</span><span class="dh-v">'+esc(run[0].c.title)+'</span><span class="dh-bar"><i style="width:'+run[0].p+'%"></i></span><span class="dh-s">'+run[0].p+'% selesai</span></span></a>'
-      :'<a class="dh-tile" href="#/courses"><span class="dh-ico"><i class="fas fa-play"></i></span><span class="dh-body"><span class="dh-k">Lanjutkan belajar</span><span class="dh-v">'+(assigned.length&&doneC>=assigned.length?'Semua training selesai 🎉':doneC>0?'Siap lanjut ke training berikutnya':'Belum mulai belajar')+'</span><span class="dh-s">'+(assigned.length&&doneC>=assigned.length?'Lihat training lainnya →':doneC>0?'Pilih training selanjutnya →':'Mulai training pertamamu →')+'</span></span></a>';
+    var onbDone=assigned.length>0&&doneC>=assigned.length;
+    var libRun=myEnr.filter(function(e){return e.status!=="completed"}).map(function(e){
+      var c=S.courses.find(function(x){return x.id===e.courseId});
+      return c&&c.published&&window.isLibraryCourse(c)&&window.deptAllowed(c)?{c:c,p:Number(window.sel.courseProgress(c.id))||0}:null}).filter(Boolean)
+      .sort(function(a,b){return b.p-a.p});
+    var tile=function(href,ico,k,v,s,bar){return '<a class="dh-tile" href="'+href+'"><span class="dh-ico"><i class="fas '+ico+'"></i></span><span class="dh-body"><span class="dh-k">'+k+'</span><span class="dh-v">'+v+'</span>'+(bar==null?'':'<span class="dh-bar"><i style="width:'+bar+'%"></i></span>')+'<span class="dh-s">'+s+'</span></span></a>'};
+    var t1;
+    if(run.length)t1=tile(window.coursePath(run[0].c),'fa-play','Lanjutkan onboarding training',esc(run[0].c.title),run[0].p+'% selesai',run[0].p);
+    else if(assigned.length&&!onbDone)t1=tile('#/courses','fa-play','Lanjutkan onboarding training',doneC>0?'Siap lanjut ke training berikutnya':'Belum mulai onboarding training',doneC>0?'Pilih training selanjutnya →':'Mulai training pertamamu →');
+    else if(libRun.length)t1=tile(window.coursePath(libRun[0].c),'fa-book-open-reader','Belajar di Trusmi Smart',esc(libRun[0].c.title),libRun[0].p+'% selesai',libRun[0].p);
+    else t1=tile('#/library','fa-book-open-reader','Belajar di Trusmi Smart',onbDone?'Onboarding training selesai 🎉':'Jelajahi materi mandiri',onbDone?'Lanjut belajar mandiri di Trusmi Smart →':'Pilih materi untuk dipelajari →');
     var t2;
     if(up.length){var nx=up[0],df=Math.round((dayStart(nx.date)-today)/864e5);var rel=df<=0?"Hari ini":df===1?"Besok":df+" hari lagi";
       t2='<a class="dh-tile" href="#/trainings"><span class="dh-ico"><i class="fas fa-calendar-check"></i></span><span class="dh-body"><span class="dh-k">Jadwal terdekat</span><span class="dh-v">'+esc(nx.title||nx.name||"Training")+'</span><span class="dh-s">'+esc(fmtShort(nx.date))+' · '+rel+'</span></span></a>'}
@@ -12166,11 +12174,11 @@ window.dashHeroUser=function(){
       }
     }catch(err){console.warn("[dashHeroUser:devprogram]",err);
       t4='<a class="dh-tile" href="#/dev-programs"><span class="dh-ico"><i class="fas fa-arrow-trend-up"></i></span><span class="dh-body"><span class="dh-k">Development Program</span><span class="dh-v">Lihat program</span><span class="dh-s">Buka halaman program →</span></span></a>'}
-    var t3='<div class="dh-tile"><span class="dh-ico"><i class="fas fa-chart-pie"></i></span><span class="dh-body"><span class="dh-k">Progres keseluruhan</span><span class="dh-v">'+pct+'%</span><span class="dh-bar"><i style="width:'+pct+'%"></i></span><span class="dh-s">'+done+'/'+total+' training selesai · '+certs.length+' sertifikat</span></span></div>';
+    var t3='<div class="dh-tile"><span class="dh-ico"><i class="fas fa-chart-pie"></i></span><span class="dh-body"><span class="dh-k">Progres keseluruhan</span><span class="dh-v">'+pct+'%</span><span class="dh-bar"><i style="width:'+pct+'%"></i></span><span class="dh-s">'+done+'/'+total+' training onboarding & TNA selesai · '+certs.length+' sertifikat</span></span></div>';
     return '<div class="dh-hero"><span class="dh-badge"><i class="fas fa-graduation-cap"></i> Ruang Pembelajar</span>'
       +'<h1>'+greet()+', '+esc(fullName(u))+' 👋</h1><p class="dh-sub">'+esc(sub)+'</p>'
       +'<div class="dh-actions"><a class="dh-pill" href="#/profile"><i class="fas fa-id-badge"></i> Profil &amp; kompetensiku</a></div>'
-      +'<div class="dh-sec"><i class="fas fa-bullseye"></i> Fokus kamu</div><div class="dh-tiles t4u">'+t1+t2+t4+t3+'</div></div>';
+      +'<div class="dh-sec"><i class="fas fa-bullseye"></i> Fokus kamu</div><div class="dh-tiles t4u">'+(onbDone?t2+t1:t1+t2)+t4+t3+'</div></div>';
   }catch(e){console.warn("[dashHeroUser]",e);return""}
 };
 
