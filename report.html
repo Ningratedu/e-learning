@@ -4463,14 +4463,7 @@ window.dpBuildAutoBatchPayload=function(ym){
       return st;
     });
     ae=Object.assign({},window.dpNormalizeAutoEnroll(src.autoEnroll),{joinMonths:[ym],joinFrom:"",joinTo:""});
-  }else{
-    var prev=devProgramDraft;
-    try{
-      devProgramDraft={title:"",stages:[],participantUsernames:[],participantStartDates:{}};
-      window.dpGenerateTemplate90BatchOktober({joinMonth:ym,silent:true,force:true});
-      base=devProgramDraft;stages=base.stages;ae=window.dpNormalizeAutoEnroll(base.autoEnroll);
-    }finally{devProgramDraft=prev}
-  }
+  }else return null; /* tanpa batch sumber: tidak dibuat (template = program batch yang sudah ada) */
   var list=window.dpListAutoEmployees(ae);
   if(!list.length)return null;
   var users=[],starts={};
