@@ -6483,6 +6483,8 @@ const SALES=["sales","sales counter","sales counter strategic","commercial marke
 const emps=()=>(window.STATE&&window.STATE.employees)||[];
 const isBM=e=>!!e&&/^(pjs )?(branch manager|bm)$/.test(nn(e.designation));
 const isSales=e=>!!e&&SALES.includes(nn(e.designation));
+const isRM=e=>!!e&&/^(pjs )?(regional manager|rm)$/.test(nn(e.designation));
+const isLead=e=>isBM(e)||isRM(e);
 const nv=v=>(v===""||v==null||isNaN(+v))?null:+v;
 const periodLabel=p=>{const m=String(p||"").match(/^(\d{4})-(\d{2})$/);return m?MN[+m[2]-1]+" "+m[1]:"-"};
 const pct=k=>typeof k==="number"?(Math.round(k*1000)/10).toLocaleString("id-ID")+"%":"-";
@@ -6492,43 +6494,53 @@ function creatorEmp(d){const un=(d&&d.createdByUsername)||(window.STATE&&window.
 /* anggota tim = karyawan Sales yang kolom BM-nya berisi nama/username si Branch Manager */
 function bmKeys(bm){const full=nn(bm.nama),first=full.split(" ")[0]||"",un=nn(bm.username),unNoDigit=un.replace(/\d+$/,"").trim();
  const exact=new Set([full,un,unNoDigit].filter(Boolean));
- const firstUnique=!!first&&!emps().some(o=>o&&o.id!==bm.id&&!o.tglResign&&isBM(o)&&(nn(o.nama).split(" ")[0]===first||nn(o.username).replace(/\d+$/,"").trim()===first));
+ const firstUnique=!!first&&!emps().some(o=>o&&o.id!==bm.id&&!o.tglResign&&(isRM(bm)?isRM(o):isBM(o))&&(nn(o.nama).split(" ")[0]===first||nn(o.username).replace(/\d+$/,"").trim()===first));
  return{full,first,exact,firstUnique}}
 function bmHas(k,v){if(!v)return false;if(k.exact.has(v))return true;return k.firstUnique&&(v===k.first||k.full.startsWith(v+" "))}
 const SPV_RE=/supervisor|\bspv\b|asst?n?\.? ?bm|assten|asisten|assistant/;
-/* tim BM = anggota Sales yang kolom BM-nya si BM + SPV-nya.
-   SPV dikenali dari (1) nama yang tercatat di kolom SPV/mentor para Sales timnya, atau (2) karyawan ber-designation/posisi SPV yang kolom BM-nya si BM. */
-function team(bm){
- const k=bmKeys(bm);
- const sales=emps().filter(e=>e&&e.id!==bm.id&&isSales(e)&&bmHas(k,nn(e.bm)));
+function spvFor(sales,cand,inScope){
  const used=new Set(sales.map(e=>e.id));
  const mentors=new Set(sales.map(e=>nn(e.mentor)).filter(Boolean));
- const cand=emps().filter(e=>e&&e.id!==bm.id&&!e.tglResign&&!isBM(e)&&!isSales(e));
  const fst=e=>nn(e.nama).split(" ")[0]||"",unN=e=>nn(e.username).replace(/\d+$/,"").trim();
  const byMentor=e=>{const full=nn(e.nama),un=nn(e.username);
   if(mentors.has(full)||mentors.has(un)||mentors.has(unN(e)))return true;
   for(const v of mentors){if(fst(e)===v||full.startsWith(v+" ")||unN(e)===v){
     if(!cand.some(o=>o.id!==e.id&&(fst(o)===v||nn(o.nama).startsWith(v+" ")||unN(o)===v)))return true}}
   return false};
- const spv=cand.filter(e=>!used.has(e.id)&&(byMentor(e)||(bmHas(k,nn(e.bm))&&SPV_RE.test(nn(e.designation)+" "+nn(e.posisi)))));
- return sales.concat(spv)}
+ return cand.filter(e=>!used.has(e.id)&&(byMentor(e)||(inScope(e)&&SPV_RE.test(nn(e.designation)+" "+nn(e.posisi)))))}
+/* tim BM = Sales yang kolom BM-nya si BM + SPV-nya.
+   tim RM = Sales yang kolom RM-nya si RM (atau yang BM-nya berada di bawah RM) + para BM di bawah RM + SPV-nya.
+   SPV dikenali dari (1) nama di kolom SPV/mentor para Sales timnya, atau (2) karyawan ber-designation/posisi SPV yang kolom BM/RM-nya masuk lingkup. */
+function team(lead){
+ if(isRM(lead)){
+  const rk=bmKeys(lead);
+  const bms=emps().filter(e=>e&&e.id!==lead.id&&!e.tglResign&&isBM(e)&&bmHas(rk,nn(e.rm)));
+  const bks=bms.map(bmKeys),underBm=v=>!!v&&bks.some(k=>bmHas(k,v));
+  const inScope=e=>bmHas(rk,nn(e.rm))||underBm(nn(e.bm));
+  const sales=emps().filter(e=>e&&e.id!==lead.id&&isSales(e)&&inScope(e));
+  const cand=emps().filter(e=>e&&e.id!==lead.id&&!e.tglResign&&!isBM(e)&&!isRM(e)&&!isSales(e));
+  return sales.concat(bms,spvFor(sales,cand,inScope))}
+ const k=bmKeys(lead);
+ const sales=emps().filter(e=>e&&e.id!==lead.id&&isSales(e)&&bmHas(k,nn(e.bm)));
+ const cand=emps().filter(e=>e&&e.id!==lead.id&&!e.tglResign&&!isBM(e)&&!isSales(e));
+ return sales.concat(spvFor(sales,cand,e=>bmHas(k,nn(e.bm))))}
 function periods(list){const set=new Set,cy=new Date().getFullYear();list.forEach(e=>{const ys=new Set(Object.keys(e.kpiByYear||{}));ys.add(String(cy));ys.forEach(y=>{for(let m=1;m<=12;m++){if(typeof kpiOf(e,+y,m)==="number")set.add(y+"-"+String(m).padStart(2,"0"))}})});return[...set].sort().reverse()}
 function indOf(e,y,m){const by=e.kpiIndByYear||{},iy=by[y]||by[String(y)]||{},arr=iy[m]||iy[String(m)]||[];if(!Array.isArray(arr))return null;return arr.find(o=>o&&/penjualan/i.test(o.i||"")&&/usia join/i.test(o.i||""))||arr.find(o=>o&&o.s==="booking")||null}
 function build(bm,period){const m=String(period||"").match(/^(\d{4})-(\d{2})$/);if(!m||!bm)return null;const y=+m[1],mo=+m[2],rows=[];
  team(bm).forEach(e=>{const k=kpiOf(e,y,mo),has=typeof k==="number";if(!has&&e.tglResign)return;const ind=indOf(e,y,mo);
-  rows.push({n:String(e.nama||e.username||""),u:String(e.username||""),d:String(e.designation||""),s:String(e.mentor||""),j:String(ind&&ind.j||""),c:String(ind&&ind.c||""),t:ind?nv(ind.t):null,p:ind?nv(ind.p):null,k:has?k:null,v:isSales(e)?0:1})});
+  rows.push({n:String(e.nama||e.username||""),u:String(e.username||""),d:String(e.designation||""),s:String(e.mentor||""),j:String(ind&&ind.j||""),c:String(ind&&ind.c||""),t:ind?nv(ind.t):null,p:ind?nv(ind.p):null,k:has?k:null,v:isSales(e)?0:1,rl:isSales(e)?"":(isBM(e)?"BM":"SPV")})});
  if(!rows.length)return null;
  rows.sort((a,b)=>((a.k==null)-(b.k==null))||((b.k||0)-(a.k||0))||a.n.localeCompare(b.n,"id"));
  const sr=rows.filter(r=>!r.v),ks=sr.filter(r=>r.k!=null);
- const sum={n:sr.length,spv:rows.length-sr.length,nk:ks.length,ach:ks.filter(r=>r.k>=1).length,avg:ks.length?ks.reduce((a,r)=>a+r.k,0)/ks.length:null,t:sr.reduce((a,r)=>a+(r.t||0),0),p:sr.reduce((a,r)=>a+(r.p||0),0)};
+ const sum={n:sr.length,spv:rows.filter(r=>r.v&&r.rl!=="BM").length,bm:rows.filter(r=>r.rl==="BM").length,nk:ks.length,ach:ks.filter(r=>r.k>=1).length,avg:ks.length?ks.reduce((a,r)=>a+r.k,0)/ks.length:null,t:sr.reduce((a,r)=>a+(r.t||0),0),p:sr.reduce((a,r)=>a+(r.p||0),0)};
  return{period:String(period),bmName:String(bm.nama||""),bmUsername:String(bm.username||""),bmDesignation:String(bm.designation||""),capturedAt:new Date().toISOString(),rows,sum}}
 function stat(r){if(r.t!=null&&r.p!=null)return r.p>=r.t?"ok":"no";if(r.k!=null)return r.k>=1?"ok":"no";return"na"}
 const BADGE={ok:'<span class="text-[10px] font-black px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-600">Tercapai</span>',no:'<span class="text-[10px] font-black px-2 py-0.5 rounded-full bg-rose-50 text-rose-600">Belum tercapai</span>',na:'<span class="text-slate-300 text-xs">-</span>'};
 function snapHtml(s){const x=s.sum||{};
- const tiles=[["Jumlah Tim",(x.n||0)+" Sales"+(x.spv?" + "+x.spv+" SPV":"")],["Tercapai",(x.ach||0)+" / "+(x.nk||0)],["Rata-rata KPI",pct(x.avg)],["Booking / Target",(x.p||0)+" / "+(x.t||0)]].map(a=>`<div class="rounded-xl bg-slate-50 border border-slate-100 px-3 py-2"><div class="text-[9px] font-black uppercase text-slate-400">${a[0]}</div><div class="text-sm font-black text-slate-700">${E(a[1])}</div></div>`).join("");
- const body=(s.rows||[]).map((r,i)=>`<tr class="border-b border-slate-50 align-top"><td class="px-2.5 py-2 text-center text-[11px] text-slate-500">${i+1}</td><td class="px-2.5 py-2 text-[11px] text-slate-700 min-w-[130px]"><div class="font-bold">${E(r.n)}${r.v?' <span class="text-[9px] font-black px-1.5 py-0.5 rounded-full bg-indigo-50 text-indigo-600 align-middle">SPV</span>':""}${r.x?' <span class="text-[9px] font-black px-1.5 py-0.5 rounded-full bg-amber-50 text-amber-600 align-middle">Peserta</span>':""}</div><div class="text-[10px] text-slate-400">${E(r.u)}</div></td><td class="px-2.5 py-2 text-[11px] text-slate-600 whitespace-nowrap">${E(r.d||"-")}</td><td class="px-2.5 py-2 text-[11px] text-slate-600 whitespace-nowrap">${E(r.s||"-")}</td><td class="px-2.5 py-2 text-[11px] text-slate-600 whitespace-nowrap">${E(r.c||"-")}${r.j?`<div class="text-[10px] text-slate-400">Join ${E(r.j)}</div>`:""}</td><td class="px-2.5 py-2 text-center text-[11px] text-slate-600">${r.t==null?"-":E(r.t)}</td><td class="px-2.5 py-2 text-center text-[11px] text-slate-600">${r.p==null?"-":E(r.p)}</td><td class="px-2.5 py-2 text-center text-[11px] font-black text-slate-700">${pct(r.k)}</td><td class="px-2.5 py-2 text-center">${BADGE[stat(r)]}</td></tr>`).join("");
+ const tiles=[["Jumlah Tim",(x.n||0)+" Sales"+(x.spv?" + "+x.spv+" SPV":"")+(x.bm?" + "+x.bm+" BM":"")],["Tercapai",(x.ach||0)+" / "+(x.nk||0)],["Rata-rata KPI",pct(x.avg)],["Booking / Target",(x.p||0)+" / "+(x.t||0)]].map(a=>`<div class="rounded-xl bg-slate-50 border border-slate-100 px-3 py-2"><div class="text-[9px] font-black uppercase text-slate-400">${a[0]}</div><div class="text-sm font-black text-slate-700">${E(a[1])}</div></div>`).join("");
+ const body=(s.rows||[]).map((r,i)=>`<tr class="border-b border-slate-50 align-top"><td class="px-2.5 py-2 text-center text-[11px] text-slate-500">${i+1}</td><td class="px-2.5 py-2 text-[11px] text-slate-700 min-w-[130px]"><div class="font-bold">${E(r.n)}${r.v?' <span class="text-[9px] font-black px-1.5 py-0.5 rounded-full bg-indigo-50 text-indigo-600 align-middle">'+E(r.rl||"SPV")+'</span>':""}${r.x?' <span class="text-[9px] font-black px-1.5 py-0.5 rounded-full bg-amber-50 text-amber-600 align-middle">Peserta</span>':""}</div><div class="text-[10px] text-slate-400">${E(r.u)}</div></td><td class="px-2.5 py-2 text-[11px] text-slate-600 whitespace-nowrap">${E(r.d||"-")}</td><td class="px-2.5 py-2 text-[11px] text-slate-600 whitespace-nowrap">${E(r.s||"-")}</td><td class="px-2.5 py-2 text-[11px] text-slate-600 whitespace-nowrap">${E(r.c||"-")}${r.j?`<div class="text-[10px] text-slate-400">Join ${E(r.j)}</div>`:""}</td><td class="px-2.5 py-2 text-center text-[11px] text-slate-600">${r.t==null?"-":E(r.t)}</td><td class="px-2.5 py-2 text-center text-[11px] text-slate-600">${r.p==null?"-":E(r.p)}</td><td class="px-2.5 py-2 text-center text-[11px] font-black text-slate-700">${pct(r.k)}</td><td class="px-2.5 py-2 text-center">${BADGE[stat(r)]}</td></tr>`).join("");
  const th=["No","Nama","Designation","SPV","Usia Join","Target","Booking","KPI","Status"].map(h=>`<th class="sticky top-0 z-10 px-2.5 py-2 text-[10px] font-black uppercase text-slate-400 bg-slate-50 whitespace-nowrap border-b border-slate-100">${h}</th>`).join("");
- return`<div class="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-3">${tiles}</div><div class="overflow-auto max-h-[50vh] rounded-xl border border-slate-100"><table class="w-full text-left border-separate border-spacing-0"><thead><tr>${th}</tr></thead><tbody>${body}</tbody></table></div><p class="text-[10px] text-slate-400 mt-1.5">Diurutkan dari KPI tertinggi. Sales yang bergabung terlalu dekat dengan akhir bulan atau resign lebih awal tidak punya KPI bulan tersebut.${x.spv?" Ringkasan di atas dihitung dari Sales saja; SPV ditampilkan sebagai calon peserta.":""}</p>`}
+ return`<div class="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-3">${tiles}</div><div class="overflow-auto max-h-[50vh] rounded-xl border border-slate-100"><table class="w-full text-left border-separate border-spacing-0"><thead><tr>${th}</tr></thead><tbody>${body}</tbody></table></div><p class="text-[10px] text-slate-400 mt-1.5">Diurutkan dari KPI tertinggi. Sales yang bergabung terlalu dekat dengan akhir bulan atau resign lebih awal tidak punya KPI bulan tersebut.${x.spv?" Ringkasan di atas dihitung dari Sales saja; SPV/BM ditampilkan sebagai calon peserta.":""}</p>`}
 function initSt(d,emp){if(d._kpiSt)return d._kpiSt;const ex=d.kpiSalesAttachment,ps=periods(team(emp));d._kpiSt={on:d._id?!!ex:true,period:(ex&&ex.period)||ps[0]||"",ps,mode:d.kpiTargetMode||null,custom:Array.isArray(d.kpiTargetUsers)?d.kpiTargetUsers.slice():[]};return d._kpiSt}
 const normU=u=>String(u||"").trim().toLowerCase();
 const MODE_LBL={all:"Semua anggota tim",under:"Underperform saja",custom:"Custom"};
@@ -6556,10 +6568,10 @@ window.tnaKpiAttachCardHtml=function(d,isAdminCtx){try{
  if(isAdminCtx){const a=d.kpiSalesAttachment,hasA=!!(a&&a.rows),tm=d.kpiTargetMode&&MODE_LBL[d.kpiTargetMode];if(!hasA&&!tm)return"";
   const tline=tm?`<p class="text-[11px] font-bold text-amber-600 bg-amber-50 rounded-lg px-2.5 py-1.5"><i class="fas fa-users mr-1"></i>Target peserta dipilih pemohon: ${E(tm)} (${(d.kpiTargetUsers||[]).length} orang)</p>`:"";
   return wrap(tline+(hasA?`<p class="text-[11px] text-slate-400">KPI Sales tim <b>${E(a.bmName)}</b> periode <b>${E(periodLabel(a.period))}</b>. Snapshot saat request disimpan (${E(fmtAt(a.capturedAt))}).</p>${snapHtml(a)}`:""))}
- const emp=creatorEmp(d);if(!isBM(emp))return"";
+ const emp=creatorEmp(d);if(!isLead(emp))return"";
  const s=initSt(d,emp),list=team(emp);
  const tip=t=>`<p class="text-[11px] text-slate-500 bg-slate-50 rounded-lg px-2.5 py-1.5"><i class="fas fa-circle-info mr-1"></i>${t}</p>`;
- if(!list.length)return wrap(tip(`Belum ada anggota Sales yang kolom BM-nya terisi "${E(emp.nama||emp.username)}" di Data Karyawan, jadi belum ada KPI yang bisa dilampirkan. Atur target peserta lewat filter di bawah.`));
+ if(!list.length)return wrap(tip(`Belum ada anggota Sales yang kolom ${isRM(emp)?"RM":"BM"}-nya terisi "${E(emp.nama||emp.username)}" di Data Karyawan, jadi belum ada KPI yang bisa dilampirkan. Atur target peserta lewat filter di bawah.`));
  if(!s.ps.length)return wrap(tip(`Data KPI bulanan tim kamu belum diisi oleh Admin/Tim Training. Atur target peserta lewat filter di bawah.`));
  const calc=build(emp,s.period),snap=s.on?flagTarget(calc?JSON.parse(JSON.stringify(calc)):null,d):null;
  const opts=s.ps.map(p=>`<option value="${E(p)}" ${p===s.period?"selected":""}>${E(periodLabel(p))}</option>`).join("");
@@ -6577,10 +6589,10 @@ window.tnaKpiAttachCardHtml=function(d,isAdminCtx){try{
  if(!s.mode)pick+=`<p class="text-[11px] text-slate-400">Underperform dihitung dari KPI bulan ${E(periodLabel(s.period))}. Pilihan ini otomatis mengatur filter Target Peserta.</p>`;
  if(s.mode==="custom"){const rowsC=(calc?calc.rows:[]),inSet=new Set(s.custom.map(normU));
   const byU=new Map(rowsC.map(r=>[normU(r.u),r]));
-  pick+=`<div class="max-h-48 overflow-auto rounded-xl border border-slate-100 divide-y divide-slate-50">${list.filter(e=>!e.tglResign).map(e=>{const r=byU.get(normU(e.username));return`<label class="flex items-center gap-2 px-2.5 py-1.5 text-[11px] cursor-pointer hover:bg-amber-50"><input type="checkbox" class="accent-amber-500" ${inSet.has(normU(e.username))?"checked":""} data-u="${E(e.username)}" onchange="window.tnaKpiTargetPick(this.dataset.u,this.checked)"><span class="flex-1 min-w-0 truncate font-bold text-slate-700">${E(e.nama||e.username)}${isSales(e)?"":' <span class="text-[9px] font-black px-1.5 py-0.5 rounded-full bg-indigo-50 text-indigo-600 align-middle">SPV</span>'}</span><span class="text-slate-400">${r?pct(r.k):"-"}</span>${r?BADGE[stat(r)]:""}</label>`}).join("")}</div>`}
+  pick+=`<div class="max-h-48 overflow-auto rounded-xl border border-slate-100 divide-y divide-slate-50">${list.filter(e=>!e.tglResign).map(e=>{const r=byU.get(normU(e.username));return`<label class="flex items-center gap-2 px-2.5 py-1.5 text-[11px] cursor-pointer hover:bg-amber-50"><input type="checkbox" class="accent-amber-500" ${inSet.has(normU(e.username))?"checked":""} data-u="${E(e.username)}" onchange="window.tnaKpiTargetPick(this.dataset.u,this.checked)"><span class="flex-1 min-w-0 truncate font-bold text-slate-700">${E(e.nama||e.username)}${isSales(e)?"":' <span class="text-[9px] font-black px-1.5 py-0.5 rounded-full bg-indigo-50 text-indigo-600 align-middle">'+(isBM(e)?"BM":"SPV")+'</span>'}</span><span class="text-slate-400">${r?pct(r.k):"-"}</span>${r?BADGE[stat(r)]:""}</label>`}).join("")}</div>`}
  pick+=`</div>`;
  /* 3) lampiran KPI (pelengkap) */
- const note=s.on?`<p class="text-[11px] text-slate-400">KPI ${list.length} anggota tim kamu (Sales &amp; SPV). Datanya diambil dan disimpan sebagai lampiran saat kamu menekan Simpan, jadi Admin/Tim Training melihat angka yang sama seperti ini.</p>`:`<p class="text-[11px] text-slate-400">Lampiran KPI tidak disertakan pada request ini.</p>`;
+ const note=s.on?`<p class="text-[11px] text-slate-400">KPI ${list.length} anggota tim kamu (${isRM(emp)?"Sales, SPV &amp; BM":"Sales &amp; SPV"}). Datanya diambil dan disimpan sebagai lampiran saat kamu menekan Simpan, jadi Admin/Tim Training melihat angka yang sama seperti ini.</p>`:`<p class="text-[11px] text-slate-400">Lampiran KPI tidak disertakan pada request ini.</p>`;
  const att=`<div class="border-t border-slate-100 pt-2 space-y-2"><label class="inline-flex items-center gap-2 text-xs font-bold text-slate-600 cursor-pointer"><input type="checkbox" class="accent-emerald-600" ${s.on?"checked":""} onchange="window.tnaKpiAttachToggle(this.checked)"> <i class="fas fa-paperclip text-emerald-500"></i> Sertakan KPI tim sebagai lampiran request ini</label>${note}${snap?snapHtml(snap):(s.on?`<p class="text-[11px] text-slate-500 bg-slate-50 rounded-lg px-2.5 py-1.5">Belum ada data KPI untuk ${E(periodLabel(s.period))}.</p>`:"")}</div>`;
  return wrap(sum+pick+att,snap?`<span class="text-[10px] font-black px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-600">${E(periodLabel(s.period))}</span>`:"","Tim Kamu: Peserta &amp; Lampiran KPI")
 }catch(e){console.warn("tnaKpiAttachCardHtml",e);return""}};
@@ -6591,14 +6603,14 @@ window.tnaParticipantBodyHtml=function(d){
  try{
   d=d||(typeof tnaResultDraft!=="undefined"?tnaResultDraft:null);
   if(!d||d._backRoute==="#/admin/tna-results")return oldDesc+base;
-  const emp=creatorEmp(d);if(!isBM(emp))return oldDesc+base;
+  const emp=creatorEmp(d);if(!isLead(emp))return oldDesc+base;
   const st=initSt(d,emp),ok=!!(team(emp).length&&st.ps.length);
   /* request baru: default "Underperform saja" (sekali saja, sebelum filter dirender) */
   if(ok&&!d._id&&!st.mode&&!st._defDone){st._defDone=true;st.mode="under";applyTarget(d,emp);base=window.renderTrainingParticipantFiltersBlock()}
   const card=window.tnaKpiAttachCardHtml(d,false);
   if(!ok)return oldDesc+card+base;
   let actual=null;try{actual=window.trainingActiveEmployees().filter(e=>window.trainingParticipantMatch(d,e,null)).length}catch(e){}
-  const desc=`<p class="text-[10px] text-slate-500 -mt-1">Sasaran TNA ini adalah anggota tim sales kamu. Pilih dari daftar tim di bawah, filter Dept/Level/Desig akan menyesuaikan otomatis. Data ini ikut dipakai saat Training dibuat dari Hasil TNA.</p>`;
+  const desc=`<p class="text-[10px] text-slate-500 -mt-1">Sasaran TNA ini adalah anggota tim kamu. Pilih dari daftar tim di bawah, filter Dept/Level/Desig akan menyesuaikan otomatis. Data ini ikut dipakai saat Training dibuat dari Hasil TNA.</p>`;
   const lock=d.kpiTargetMode?`<p class="text-[10px] font-bold text-amber-700 bg-amber-50 rounded-lg px-2.5 py-1.5"><i class="fas fa-lock mr-1"></i>Filter di bawah sedang diatur otomatis dari pilihan tim kamu (${E(MODE_LBL[d.kpiTargetMode])}). Mengubahnya manual akan melepas pilihan tim.</p>`:"";
   return desc+card+`<details class="rounded-xl border border-slate-200 bg-white" ${window.__tnaAdvOpen?"open":""} ontoggle="window.__tnaAdvOpen=this.open"><summary class="cursor-pointer select-none px-3 py-2 text-[11px] font-black text-slate-500"><i class="fas fa-sliders mr-1"></i>Pengaturan lanjutan (filter Dept / Level / Desig / Karyawan)${actual==null?"":' <span class="text-slate-400 font-bold">&middot; '+actual+" karyawan cocok</span>"}</summary><div class="px-3 pb-3 pt-1 space-y-2">${lock}${base}</div></details>`
  }catch(e){console.warn("tnaParticipantBodyHtml",e);return oldDesc+base}};
@@ -6622,7 +6634,7 @@ window.tnaKpiTargetMode=function(m){const d=tnaResultDraft;if(!d||!d._kpiSt)retu
  s.mode=m;applyTarget(d,emp);afterTarget()};
 window.tnaKpiTargetPick=function(un,on){const d=tnaResultDraft;if(!d||!d._kpiSt)return;const emp=creatorEmp(d);if(!emp)return;const s=d._kpiSt,k=normU(un);s.custom=s.custom.filter(x=>normU(x)!==k);if(on)s.custom.push(un);applyTarget(d,emp);afterTarget()};
 /* dipanggil saat Simpan: ambil snapshot terbaru (atau null kalau dicentang off) */
-window.tnaKpiAttachmentForSave=function(d){try{const prev=(d&&d.kpiSalesAttachment)||null;if(!d||d._backRoute==="#/admin/tna-results")return prev;const emp=creatorEmp(d);if(!isBM(emp)||!d._kpiSt)return prev;if(!d._kpiSt.on)return null;return flagTarget(build(emp,d._kpiSt.period),d)||prev}catch(e){console.warn("tnaKpiAttachmentForSave",e);return(d&&d.kpiSalesAttachment)||null}};
+window.tnaKpiAttachmentForSave=function(d){try{const prev=(d&&d.kpiSalesAttachment)||null;if(!d||d._backRoute==="#/admin/tna-results")return prev;const emp=creatorEmp(d);if(!isLead(emp)||!d._kpiSt)return prev;if(!d._kpiSt.on)return null;return flagTarget(build(emp,d._kpiSt.period),d)||prev}catch(e){console.warn("tnaKpiAttachmentForSave",e);return(d&&d.kpiSalesAttachment)||null}};
 window.tnaKpiChipHtml=function(t){const a=t&&t.kpiSalesAttachment;if(!a||!a.rows)return"";return`<button type="button" onclick="window.openTnaKpiAttachment('${E(t.id)}')" class="block mx-auto mt-1 text-[11px] font-bold text-emerald-600 hover:underline whitespace-nowrap"><i class="fas fa-chart-column mr-1"></i>KPI Sales ${E(periodLabel(a.period))}</button>`};
 window.openTnaKpiAttachment=function(id){const t=(window.STATE.tnaResults||[]).find(x=>x.id===id),a=t&&t.kpiSalesAttachment;if(!a)return;const titleEl=document.getElementById("dashboard-detail-title"),bodyEl=document.getElementById("dashboard-detail-body");if(!titleEl||!bodyEl)return;if(window.hideDetailSearch)window.hideDetailSearch();titleEl.innerHTML=`<i class="fas fa-chart-column mr-1"></i> Lampiran KPI Sales \u2022 ${E(periodLabel(a.period))}`;bodyEl.innerHTML=`<p class="text-[11px] text-slate-400 mb-2">Tim <b>${E(a.bmName)}</b>${a.bmDesignation?" ("+E(a.bmDesignation)+")":""}. Snapshot saat request disimpan (${E(fmtAt(a.capturedAt))}).</p>${snapHtml(a)}`;window.openModal("modal-dashboard-detail")};
 })();
