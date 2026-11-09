@@ -6561,7 +6561,17 @@ function applyTarget(d,emp){const s=d._kpiSt;if(!s||!s.mode)return;const list=ta
   p.excludedEmployeeUsernames=emps().filter(e=>{if(!e||!e.username||e.tglResign||U.has(normU(e.username)))return false;const dp=lc(e.dept),ps=lc(e.posisi),dg=lc(e.designation);if(dp&&!iD.has(dp))return false;if(ps&&!iP.has(ps))return false;if(dg&&!iG.has(dg))return false;return true}).map(e=>String(e.username))}
  d.kpiTargetMode=s.mode;d.kpiTargetUsers=list}
 function flagTarget(snap,d){if(!snap)return snap;const set=new Set((Array.isArray(d.kpiTargetUsers)?d.kpiTargetUsers:[]).map(normU));if(set.size)snap.rows.forEach(r=>{if(set.has(normU(r.u)))r.x=1});return snap}
-function afterTarget(){try{if(window.reRenderTrainingParticipantFilters)window.reRenderTrainingParticipantFilters()}catch(e){console.warn(e)}if(!document.getElementById("tna-participant-filters"))refresh()}
+/* render ulang blok peserta menghapus DOM lama; simpan & pulihkan posisi scroll (halaman/modal + daftar custom) supaya klik ceklis tidak melempar ke atas */
+function keepScroll(fn){
+ const host=document.getElementById("tna-participant-filters")||document.getElementById("tna-kpi-att-card");
+ const saved=[];let el=host;
+ while(el&&el!==document.documentElement){if(el.scrollHeight>el.clientHeight+1)saved.push([el,el.scrollTop]);el=el.parentElement}
+ const q=()=>document.querySelector("[data-tna-custom-list]"),l0=q(),ls=l0?l0.scrollTop:null,wx=window.scrollX,wy=window.scrollY;
+ try{fn()}finally{
+  saved.forEach(a=>{try{a[0].scrollTop=a[1]}catch(e){}});
+  const l1=q();if(l1&&ls!=null)l1.scrollTop=ls;
+  try{window.scrollTo(wx,wy)}catch(e){}}}
+function afterTarget(){keepScroll(function(){try{if(window.reRenderTrainingParticipantFilters)window.reRenderTrainingParticipantFilters()}catch(e){console.warn(e)}if(!document.getElementById("tna-participant-filters"))refresh()})}
 const wrap=(inner,badge,title)=>`<div id="tna-kpi-att-card" class="bg-white rounded-2xl border border-slate-100 shadow-sm p-3 space-y-2"><div class="flex items-center justify-between flex-wrap gap-2"><h3 class="font-black text-sm text-slate-700"><i class="fas fa-chart-column text-emerald-500 mr-1"></i> ${title||"Lampiran KPI Sales Tim"}</h3>${badge||""}</div>${inner}</div>`;
 window.tnaKpiAttachCardHtml=function(d,isAdminCtx){try{
  if(!d)return"";
@@ -6589,7 +6599,7 @@ window.tnaKpiAttachCardHtml=function(d,isAdminCtx){try{
  if(!s.mode)pick+=`<p class="text-[11px] text-slate-400">Underperform dihitung dari KPI bulan ${E(periodLabel(s.period))}. Pilihan ini otomatis mengatur filter Target Peserta.</p>`;
  if(s.mode==="custom"){const rowsC=(calc?calc.rows:[]),inSet=new Set(s.custom.map(normU));
   const byU=new Map(rowsC.map(r=>[normU(r.u),r]));
-  pick+=`<div class="max-h-48 overflow-auto rounded-xl border border-slate-100 divide-y divide-slate-50">${list.filter(e=>!e.tglResign).map(e=>{const r=byU.get(normU(e.username));return`<label class="flex items-center gap-2 px-2.5 py-1.5 text-[11px] cursor-pointer hover:bg-amber-50"><input type="checkbox" class="accent-amber-500" ${inSet.has(normU(e.username))?"checked":""} data-u="${E(e.username)}" onchange="window.tnaKpiTargetPick(this.dataset.u,this.checked)"><span class="flex-1 min-w-0 truncate font-bold text-slate-700">${E(e.nama||e.username)}${isSales(e)?"":' <span class="text-[9px] font-black px-1.5 py-0.5 rounded-full bg-indigo-50 text-indigo-600 align-middle">'+(isBM(e)?"BM":"SPV")+'</span>'}</span><span class="text-slate-400">${r?pct(r.k):"-"}</span>${r?BADGE[stat(r)]:""}</label>`}).join("")}</div>`}
+  pick+=`<div data-tna-custom-list="1" class="max-h-48 overflow-auto rounded-xl border border-slate-100 divide-y divide-slate-50">${list.filter(e=>!e.tglResign).map(e=>{const r=byU.get(normU(e.username));return`<label class="flex items-center gap-2 px-2.5 py-1.5 text-[11px] cursor-pointer hover:bg-amber-50"><input type="checkbox" class="accent-amber-500" ${inSet.has(normU(e.username))?"checked":""} data-u="${E(e.username)}" onchange="window.tnaKpiTargetPick(this.dataset.u,this.checked)"><span class="flex-1 min-w-0 truncate font-bold text-slate-700">${E(e.nama||e.username)}${isSales(e)?"":' <span class="text-[9px] font-black px-1.5 py-0.5 rounded-full bg-indigo-50 text-indigo-600 align-middle">'+(isBM(e)?"BM":"SPV")+'</span>'}</span><span class="text-slate-400">${r?pct(r.k):"-"}</span>${r?BADGE[stat(r)]:""}</label>`}).join("")}</div>`}
  pick+=`</div>`;
  /* 3) lampiran KPI (pelengkap) */
  const note=s.on?`<p class="text-[11px] text-slate-400">KPI ${list.length} anggota tim kamu (${isRM(emp)?"Sales, SPV &amp; BM":"Sales &amp; SPV"}). Datanya diambil dan disimpan sebagai lampiran saat kamu menekan Simpan, jadi Admin/Tim Training melihat angka yang sama seperti ini.</p>`:`<p class="text-[11px] text-slate-400">Lampiran KPI tidak disertakan pada request ini.</p>`;
@@ -6624,7 +6634,7 @@ document.addEventListener("click",function(ev){try{
  if(!window.confirm("Mengubah filter secara manual akan melepas pilihan peserta dari tim kamu ("+n+" orang). Isi filter saat ini tetap dipertahankan dan bisa kamu ubah. Lanjutkan?")){ev.stopPropagation();ev.preventDefault();return}
  d.kpiTargetMode=null;d.kpiTargetUsers=[];d._kpiSt.mode=null;d._kpiSt.custom=[];d._kpiManual=true;
 }catch(e){console.warn(e)}},true);
-function refresh(){const el=document.getElementById("tna-kpi-att-card");if(el&&typeof tnaResultDraft!=="undefined"&&tnaResultDraft)el.outerHTML=window.tnaKpiAttachCardHtml(tnaResultDraft,false)}
+function refresh(){keepScroll(function(){const el=document.getElementById("tna-kpi-att-card");if(el&&typeof tnaResultDraft!=="undefined"&&tnaResultDraft)el.outerHTML=window.tnaKpiAttachCardHtml(tnaResultDraft,false)})}
 window.tnaKpiAttachToggle=function(on){const d=tnaResultDraft;if(!d||!d._kpiSt)return;d._kpiSt.on=!!on;refresh()};
 window.tnaKpiAttachPeriod=function(v){const d=tnaResultDraft;if(!d||!d._kpiSt)return;d._kpiSt.period=v;if(d._kpiSt.mode==="under"){const emp=creatorEmp(d);if(emp)applyTarget(d,emp);afterTarget()}else refresh()};
 window.tnaKpiTargetMode=function(m){const d=tnaResultDraft;if(!d||!d._kpiSt)return;const emp=creatorEmp(d);if(!emp)return;const s=d._kpiSt;
