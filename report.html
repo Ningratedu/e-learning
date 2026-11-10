@@ -12693,23 +12693,70 @@ window.dashHeroAdmin=function(){
     var tnaModuleTarget=tnaList.filter(function(t){try{var k=window.tnaComputeProgressKey(t);return k==="modul_disiapkan"||k==="modul_siap"||k==="menunggu_approval"||k==="revisi"}catch(e){return t&&t.requestStatus==="diterima"&&t.moduleApprovalStatus!=="disetujui"}}).length;
     var tnaModuleToPrepare=Math.max(0,tnaModuleTarget-tnaModule);
     var trs=(S.trainings||[]).filter(function(t){return t&&!t.devProgramOnly});
-    var ongoing=trs.filter(function(t){try{return window.trainingSessionStatus(t)==="ongoing"}catch(e){return false}}).length;
+    var OL=onbLateData(),onbLate=OL.late,onbLateBatch=OL.groups.length,onbRun=OL.running;
     var today=dayStart(Date.now());
     var soon=trs.filter(function(t){if(!t.date)return false;var d=dayStart(t.date);return d>=today&&d-today<=7*864e5}).length;
     var dateTxt="";try{dateTxt=new Date().toLocaleDateString("id-ID",{weekday:"long",day:"numeric",month:"long",year:"numeric"})}catch(e){}
-    function tile(href,ico,k,n,sub,warn){return '<a class="dh-tile" href="'+href+'"><span class="dh-ico"><i class="fas '+ico+'"></i></span><span class="dh-body"><span class="dh-k">'+k+'</span><span class="dh-n">'+n+(warn&&n>0?'<i class="dh-dot"></i>':'')+'</span><span class="dh-s">'+sub+'</span></span></a>'}
+    function tile(href,ico,k,n,sub,warn,oc){return '<a class="dh-tile" href="'+href+'"'+(oc?' onclick="'+oc+'"':'')+'><span class="dh-ico"><i class="fas '+ico+'"></i></span><span class="dh-body"><span class="dh-k">'+k+'</span><span class="dh-n">'+n+(warn&&n>0?'<i class="dh-dot"></i>':'')+'</span><span class="dh-s">'+sub+'</span></span></a>'}
     return '<div class="dh-hero"><span class="dh-badge"><i class="fas fa-gauge-high"></i> Dashboard Admin</span>'
       +'<h1>'+greet()+', '+esc(fullName(u))+' 👋</h1>'
       +'<p class="dh-sub">'+esc(dateTxt)+'</p>'
       +'<div class="dh-sec"><i class="fas fa-bell"></i> Perlu perhatian</div><div class="dh-tiles t6">'
+      +tile("#/admin/onboarding-schedule","fa-graduation-cap","Onboarding terlambat",onbLate,onbLate?"karyawan lewat deadline · "+onbLateBatch+" batch · "+onbRun+" masih berjalan":"semua batch tepat waktu ✓ · "+onbRun+" masih berjalan",true,"window.openOnbLateDetail();return false")
+      +tile("#/admin/trainings","fa-calendar-days","Jadwal 7 hari",soon,"training akan datang",false)
+      +tile("#/admin/assignments","fa-file-pen","Report Penugasan",toGrade,toGrade?"menunggu penilaian":"semua sudah dinilai ✓",true)
       +tile("#/admin/tna-results","fa-clipboard-list","Hasil TNA",tnaDecision,tnaDecision?"menunggu keputusan":"tidak ada yang menunggu ✓",true)
       +tile("#/admin/tna-results","fa-file-circle-check","Modul TNA",tnaModuleTarget,tnaModuleTarget?"modul belum ter-approve · "+tnaModuleToPrepare+" harus disiapkan · "+tnaModule+" menunggu approval":"semua modul sudah ter-approve ✓",true)
-      +tile("#/admin/assignments","fa-file-pen","Report Penugasan",toGrade,toGrade?"menunggu penilaian":"semua sudah dinilai ✓",true)
       +tile("#/admin/dev-programs","fa-clipboard-check","Laporan journey",toReview,toReview?"menunggu review HR":"semua sudah direview ✓",true)
-      +tile("#/admin/trainings","fa-person-chalkboard","Training berlangsung",ongoing,"sesi aktif saat ini",false)
-      +tile("#/admin/trainings","fa-calendar-days","Jadwal 7 hari",soon,"training akan datang",false)
       +'</div></div>';
   }catch(e){console.warn("[dashHeroAdmin]",e);return""}
+};
+
+/* ---- Onboarding terlambat: data bersama (card hero + popup) ----
+   Terlambat = batch yang deadline-nya sudah lewat hari ini (hari deadline itu sendiri belum dihitung telat),
+   anggota resign dan yang sudah selesai tidak dihitung. */
+function onbLateData(){
+  var out={groups:[],late:0,running:0},today=dayStart(Date.now());
+  try{(window.buildOnboardingBatches()||[]).forEach(function(b){
+    var p=(b.members||[]).filter(function(m){return !m.isResigned&&!m.isDone});
+    if(!p.length)return;
+    if(b.deadline.getTime()<today){out.late+=p.length;out.groups.push({b:b,members:p})}
+    else out.running+=p.length})}catch(e){console.warn("[onbLateData]",e)}
+  return out}
+
+window.openOnbLateDetail=function(){
+  var titleEl=document.getElementById("dashboard-detail-title"),bodyEl=document.getElementById("dashboard-detail-body");
+  if(!titleEl||!bodyEl)return;
+  if(window.hideDetailSearch)window.hideDetailSearch();
+  var d=onbLateData(),today=dayStart(Date.now());
+  var norm=function(x){return String(x||"").toLowerCase().replace(/\s+/g," ").trim()};
+  var fdate=function(x){try{return new Date(x).toLocaleDateString("id-ID",{day:"numeric",month:"short",year:"numeric"})}catch(e){return""}};
+  var byName=function(a,c){return String((a.employee&&a.employee.nama)||"").localeCompare(String((c.employee&&c.employee.nama)||""),"id",{sensitivity:"base"})};
+  var sec=d.groups.map(function(g){
+    var b=g.b,late=Math.max(1,Math.round((today-dayStart(b.deadline))/864e5));
+    var rows=g.members.slice().sort(byName).map(function(m){
+      var e=m.employee||{},tot=(m.ordered||[]).length,done=m.completedCount||0,nm=e.nama||e.username||"-",go=!!e.id;
+      var badge='<span class="shrink-0 text-[10px] font-black px-2 py-1 rounded-full '+(done>0?'bg-sky-50 text-sky-600':'bg-rose-50 text-rose-500')+'">'+done+'/'+tot+' training</span>';
+      var tag=go?'button':'div';
+      return '<'+tag+(go?' type="button" onclick="window.closeModal(\'modal-dashboard-detail\');window.showEmployeeDetail(\''+esc(e.id)+'\')"':'')+' class="w-full text-left flex items-center justify-between gap-3 p-3 rounded-2xl border border-slate-100 hover:bg-indigo-50/40 transition'+(go?' cursor-pointer':'')+'" data-onbl-s="'+esc(norm(nm+' '+(e.dept||'')+' '+(e.designation||'')))+'">'
+        +'<div class="min-w-0"><p class="text-sm font-bold text-slate-700 truncate">'+esc(nm)+'</p><p class="text-[11px] text-slate-400 truncate">'+esc([e.dept,e.designation].filter(Boolean).join(" · ")||"-")+'</p></div>'+badge+'</'+tag+'>'}).join("");
+    return '<div class="onbl-sec"><p class="text-[11px] font-black uppercase text-rose-600 mt-3 mb-0.5">'+esc(b.typeName||"Batch")+' · '+esc(b.windowLabel||"")+' <span class="text-slate-400">('+g.members.length+')</span></p>'
+      +'<p class="text-[10px] text-slate-400 font-semibold mb-2">Deadline '+esc(fdate(b.deadline))+' · telat '+late+' hari</p><div class="space-y-2">'+rows+'</div></div>'}).join("");
+  titleEl.innerHTML='<i class="fas fa-graduation-cap mr-1"></i> Onboarding Terlambat';
+  bodyEl.innerHTML='<div class="flex items-center justify-around bg-rose-50/60 rounded-2xl p-3">'
+    +'<div class="text-center"><p class="text-[10px] text-slate-400 font-black uppercase">Terlambat</p><p class="text-base font-black text-rose-600">'+d.late+'</p></div>'
+    +'<div class="text-center"><p class="text-[10px] text-slate-400 font-black uppercase">Batch</p><p class="text-base font-black text-slate-700">'+d.groups.length+'</p></div>'
+    +'<div class="text-center"><p class="text-[10px] text-slate-400 font-black uppercase">Masih Berjalan</p><p class="text-base font-black text-sky-600">'+d.running+'</p></div></div>'
+    +'<div id="onbl-body">'+(sec||'<p class="text-xs text-slate-400 text-center py-8"><i class="fas fa-circle-check text-emerald-500 mr-1"></i>Tidak ada karyawan yang terlambat onboarding.</p>')+'</div>'
+    +'<a href="#/admin/onboarding-schedule" onclick="window.closeModal(\'modal-dashboard-detail\')" class="block text-center text-[11px] font-black text-indigo-500 hover:text-indigo-700 pt-3">Buka Jadwal Onboarding <i class="fas fa-arrow-right ml-1"></i></a>';
+  bodyEl.scrollTop=0;
+  if(d.groups.length&&window.showDetailSearch)window.showDetailSearch("Cari nama / departemen...",function(q){
+    var s=norm(q);
+    document.querySelectorAll("#onbl-body .onbl-sec").forEach(function(sc){
+      var any=false;
+      sc.querySelectorAll("[data-onbl-s]").forEach(function(el){var ok=!s||el.getAttribute("data-onbl-s").indexOf(s)>=0;el.style.display=ok?"":"none";if(ok)any=true});
+      sc.style.display=any?"":"none"})});
+  window.openModal&&window.openModal("modal-dashboard-detail")
 };
 })();
 </script>
