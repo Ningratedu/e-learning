@@ -15663,9 +15663,9 @@ syncRoute();
       +tile("fa-user-check",T.attPct+'%',"Kehadiran",T.attended+' / '+T.target,onD)
       +tile("fa-award",T.passPct+'%',"Kelulusan",T.passed+' sertifikat',onD)
       +tile("fa-star",ratingVal,"Rating",ratingSub,onD)
-      +tile("fa-chart-line",T.eff!=null?(T.eff+"%"):"-","Efektivitas (KPI naik)",T.effN?("rata² dari "+T.effN+" training ukuran KPI"):"Belum bisa dihitung",onD)
-      +tile("fa-clipboard-check",T.effNon!=null?(T.effNon+"%"):"-","Efektivitas (non-KPI)",nkSub,onD)
-      +tile("fa-scale-balanced",T.idx!=null?(T.idx+"%"):"-","Indeks Efektivitas",T.idxN?(T.idxN+" training, bobot level 4·3·2·1"):"Belum bisa dihitung",onD)
+      +tile("fa-chart-line",T.eff!=null?(T.eff+"%"):"-","Efektivitas (KPI naik)",T.effN?("rata² dari "+T.effN+" training ukuran KPI"):"Belum bisa dihitung","window.__tnaMonEffDetail('kpi')")
+      +tile("fa-clipboard-check",T.effNon!=null?(T.effNon+"%"):"-","Efektivitas (non-KPI)",nkSub,"window.__tnaMonEffDetail('non')")
+      +tile("fa-scale-balanced",T.idx!=null?(T.idx+"%"):"-","Indeks Efektivitas",T.idxN?(T.idxN+" training, bobot level 4·3·2·1"):"Belum bisa dihitung","window.__tnaMonEffDetail('idx')")
       +'</div>';
     return head+grid+'<p class="text-[9px] text-slate-400" style="margin-top:6px"><i class="fas fa-circle-info mr-1"></i>Minggu dihitung Senin–Minggu. Pilih minggu untuk memfilter tabel. Kartu juga ikut kolom pencarian di tabel. Klik kartu untuk rincian per training (hadir, lulus, rating, efektivitas).</p>';
   }
@@ -15772,6 +15772,73 @@ syncRoute();
       +(T.effNon!=null?'<span>Efektivitas non-KPI <b>'+T.effNon+'%</b></span>':'')
       +(T.idx!=null?'<span title="KPI×4, tugas×3, pre→post×2, post-test×1">Indeks Efektivitas <b>'+T.idx+'%</b></span>':'')
       +'</div>';
+    bodyEl.innerHTML=sum+cards;
+    bodyEl.scrollTop=0;
+    window.openModal&&window.openModal("modal-dashboard-detail");
+  };
+
+  window.__tnaMonEffDetail=function(mode){
+    var titleEl=document.getElementById("dashboard-detail-title");
+    var bodyEl=document.getElementById("dashboard-detail-body");
+    if(!titleEl||!bodyEl)return;
+    if(window.hideDetailSearch)window.hideDetailSearch();
+    var keys=selKeys(),wl=weekList(),wk=selTitle(keys,wl);
+    var all=trainingsInKeys(keys).slice().sort(function(a,b){return String(b.date||"").localeCompare(String(a.date||""))});
+    var M=TNA_EFF_METHODS;
+    var T_={kpi:{ico:"fa-bullseye",name:"Efektivitas (KPI naik)"},non:{ico:"fa-clipboard-check",name:"Efektivitas (non-KPI)"},idx:{ico:"fa-scale-balanced",name:"Indeks Efektivitas"}}[mode]||{ico:"fa-bullseye",name:"Efektivitas"};
+    titleEl.innerHTML='<i class="fas '+T_.ico+' mr-1"></i> '+E(T_.name)+' · '+E(wk.title);
+    var rows=[];
+    all.forEach(function(t){
+      var g=null;try{g=computeTrainingGrowth(t)}catch(e){}
+      var m=(g&&g.method)||(typeof trainingEffMethod==="function"?trainingEffMethod(t):"kpi");
+      if(mode==="kpi"&&m!=="kpi")return;
+      if(mode==="non"&&m==="kpi")return;
+      var ok=!!(g&&g.eligible&&typeof g.effectivenessPct==="number");
+      rows.push({t:t,g:g,m:m,meta:M[m]||M.kpi,ok:ok,pct:ok?g.effectivenessPct:null});
+    });
+    if(!rows.length){
+      bodyEl.innerHTML='<p class="text-sm text-slate-400 text-center py-8">'+(mode==="kpi"?"Tidak ada training dengan ukuran KPI naik pada periode ini.":mode==="non"?"Tidak ada training dengan ukuran non-KPI (post-test, skor naik, atau penugasan) pada periode ini.":"Tidak ada training pada periode ini.")+'</p>';
+      bodyEl.scrollTop=0;window.openModal&&window.openModal("modal-dashboard-detail");return;
+    }
+    var okRows=rows.filter(function(r){return r.ok});
+    function avg(a){return a.length?Math.round(a.reduce(function(s,r){return s+r.pct},0)/a.length):null}
+    function ppl(a){var s=0,d=0;a.forEach(function(r){s+=r.g.successCount||0;d+=r.g.denomCount||0});return{s:s,d:d}}
+    var box='text-[11px] text-slate-600 bg-slate-50 rounded-xl px-3 py-2 mb-3';
+    var sum="";
+    if(mode==="kpi"){
+      var p=ppl(okRows);
+      sum='<div class="'+box+'"><div style="display:flex;flex-wrap:wrap;gap:6px 14px"><span><b>'+rows.length+'</b> training ukuran KPI</span><span><b>'+okRows.length+'</b> bisa dihitung</span>'+(okRows.length?'<span>Rata² <b>'+avg(okRows)+'%</b></span><span><b>'+p.s+'</b> dari <b>'+p.d+'</b> peserta hadir KPI-nya naik</span>':'')+'</div><div class="text-slate-400" style="margin-top:4px">'+E(M.kpi.hint)+'. Ukuran ini yang masuk ke Impact di Nilai Program.</div></div>';
+    }else if(mode==="non"){
+      var parts=Object.keys(M).filter(function(k){return k!=="kpi"}).map(function(k){
+        var rs=rows.filter(function(r){return r.m===k});if(!rs.length)return"";
+        var ok=rs.filter(function(r){return r.ok}),pp=ok.length?ppl(ok):null;
+        return'<span><b>'+E(M[k].short)+'</b> (Lv '+M[k].level+'): '+rs.length+' training'+(ok.length?', rata² <b>'+avg(ok)+'%</b> ('+pp.s+'/'+pp.d+' peserta)':', belum bisa dihitung')+'</span>';
+      }).filter(Boolean).join("");
+      sum='<div class="'+box+'"><div style="display:flex;flex-wrap:wrap;gap:6px 14px"><span><b>'+rows.length+'</b> training non-KPI</span><span><b>'+okRows.length+'</b> bisa dihitung</span>'+(okRows.length?'<span>Rata² <b>'+avg(okRows)+'%</b></span>':'')+'</div><div style="display:flex;flex-wrap:wrap;gap:4px 14px;margin-top:4px">'+parts+'</div><div class="text-slate-400" style="margin-top:4px">Dihitung terpisah dari KPI naik dan tidak masuk Nilai Program. Tiap ukuran punya level dan aturan berhasil yang berbeda.</div></div>';
+    }else{
+      var S=0,W=0;okRows.forEach(function(r){var w=r.meta.level||1;S+=r.pct*w;W+=w});
+      var idx=W?Math.round(S/W):null;
+      sum='<div class="'+box+'"><div style="display:flex;flex-wrap:wrap;gap:6px 14px"><span><b>'+rows.length+'</b> training</span><span><b>'+okRows.length+'</b> ikut dihitung</span>'+(idx!=null?'<span>Indeks <b>'+idx+'%</b></span>':'')+'</div>'+(idx!=null?'<div style="margin-top:4px">Σ(efektivitas × bobot) ÷ Σ bobot = <b>'+Math.round(S*10)/10+'</b> ÷ <b>'+W+'</b> = <b>'+idx+'%</b></div>':'')+'<div class="text-slate-400" style="margin-top:4px">Bobot = level ukuran: KPI naik ×4, nilai tugas ×3, skor naik pre→post ×2, lulus post-test ×1. Training yang belum bisa dihitung tidak ikut.</div></div>';
+    }
+    var cards=rows.map(function(r){
+      var t=r.t,g=r.g,tid=t.id?String(t.id):"",meta=r.meta;
+      var effLine;
+      if(r.ok){
+        var color=r.pct>=60?"#059669":r.pct>0?"#d97706":"#e11d48";
+        effLine='<span>Efektivitas <b style="color:'+color+'">'+r.pct+'%</b></span><span><b>'+(g.successCount||0)+'</b> dari <b>'+(g.denomCount||0)+'</b> '+E(meta.unit)+'</span>';
+        if(mode==="idx"){var w=meta.level||1;effLine+='<span class="text-slate-500">bobot ×'+w+' → <b>'+Math.round(r.pct*w*10)/10+'</b></span>'}
+      }else{
+        effLine='<span class="text-slate-400">'+E(typeof trainingEffNotEligibleText==="function"?trainingEffNotEligibleText(g||{method:r.m}):"Belum bisa dihitung")+'</span>';
+        if(mode==="idx")effLine+='<span class="text-slate-300">tidak ikut indeks</span>';
+      }
+      var rule=r.m==="kpi"?"":'<p class="text-[10px] text-slate-400" style="margin:4px 0 0">'+E(meta.hint)+(g&&g.passMin?' (min. '+g.passMin+')':'')+'</p>';
+      return'<div class="p-3 rounded-2xl border border-slate-100" style="margin-bottom:8px">'
+        +'<div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start">'
+        +'<a href="javascript:void(0)" data-tid="'+E(tid)+'" onclick="window.__tnaMonGo(this.dataset.tid)" class="text-sm font-bold text-slate-700" style="text-decoration:none;min-width:0">'+E(t.title||"Training")+' <i class="fas fa-arrow-up-right-from-square" style="font-size:9px"></i></a>'
+        +'<span class="text-[9px] font-black px-1.5 py-0.5 rounded-full bg-indigo-50 text-indigo-600 shrink-0">Lv '+meta.level+' · '+E(meta.short)+'</span></div>'
+        +'<p class="text-[10px] text-slate-400" style="margin:2px 0 6px">'+E(String(t.date||"").slice(0,10))+(t.trainer?' · '+E(t.trainer):"")+'</p>'
+        +'<div class="text-[11px] text-slate-600" style="display:flex;flex-wrap:wrap;gap:4px 14px">'+effLine+'</div>'+rule+'</div>';
+    }).join("");
     bodyEl.innerHTML=sum+cards;
     bodyEl.scrollTop=0;
     window.openModal&&window.openModal("modal-dashboard-detail");
