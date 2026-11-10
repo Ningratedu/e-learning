@@ -2645,7 +2645,17 @@ window.__collectShareParams=function(){
   return p;
 };
 window.__shareReportPathname=function(){
-  /* Mode lihat di GH Pages = file report.html di folder yang sama, BUKAN folder /report/ */
+  /* MODE LIHAT SAJA: halaman yang lagi dibuka ini SENDIRI sudah halaman report.
+     Jadi link yang disalin = alamat halaman ini apa adanya (tanpa #hash; hash + filter ditambah belakangan
+     oleh __buildShareLink). Alamat ini pasti valid karena memang lagi kebuka, jadi tidak mungkin 404,
+     baik di host yang pakai "/report" (tanpa .html), "/report.html", "/report/", maupun nama file lain. */
+  try{
+    if(window.__VIEW_ONLY){
+      var cur=String(location.href||"").split("#")[0];
+      if(/^https?:/i.test(cur)||/^file:/i.test(cur))return cur;
+    }
+  }catch(e){}
+  /* Fallback (bukan mode lihat saja): file report.html di folder yang sama */
   var origin=location.origin||"";
   var path=location.pathname||"/";
   // sudah di report.html
