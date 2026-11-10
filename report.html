@@ -16238,55 +16238,105 @@ new MutationObserver(schedule).observe(document.body,{childList:true,subtree:tru
 schedule();
 })();
 </script><script id="share-highlight">
-/* ===== HIGHLIGHT 1 CARD DI LINK SALINAN (khusus mode lihat saja) =====
-   Alur: klik "Pilih card" -> klik salah satu card di halaman -> link (lengkap dengan filter) otomatis tersalin.
-   Pas link dibuka: halaman scroll ke card itu + dikasih ring amber.
-   Penanda card di link = posisi DOM (cepat) + label teks card (cadangan kalau urutan elemen geser).
-   Parameter di link: hl=<posisi>~<label>  */
+/* ===== HIGHLIGHT BANYAK ELEMEN DI LINK SALINAN (khusus mode lihat saja) =====
+   Alur: klik "Pilih elemen" -> klik elemen apa saja (card, tombol, filter, tabel, grafik, judul, dll) satu per satu
+   (klik lagi = batal pilih) -> tekan "Salin link". Link berisi filter aktif + semua elemen terpilih.
+   Pas link dibuka: halaman scroll ke elemen pertama + semua elemen dikasih ring amber.
+   Penanda tiap elemen = posisi DOM (cepat) + label teks (cadangan kalau urutan elemen geser).
+   Parameter di link: hl=<posisi>~<label>|<posisi>~<label>|...  (tiap bagian di-encode; format 1 elemen lama tetap terbaca) */
 (function(){
 "use strict";
-var HL=null,cur=null,picking=false,hoverEl=null,lastTry=0;
+var HL=null,items=[],picking=false,fine=false,hoverEl=null,lastTry=0;
+var ROOTS="#page-content,#app-topbar,#div-filter-bar";
+var OWN="#vo-stack,#vo-pickbar,#vo-copy,#vo-badge,#sidebar,#sidebar-nav";
 
 function routeOf(){return String(location.hash||"").split("?")[0]}
 function norm(s){return String(s||"").replace(/\s+/g," ").trim().toLowerCase()}
 function pageEl(){return document.getElementById("page-content")}
 function toast(m,t){try{window.toast&&window.toast(m,t||"info")}catch(e){}}
+function inScope(el){return !!(el&&el.nodeType===1&&el.closest&&el.closest(ROOTS)&&!el.closest(OWN)&&el.id!=="page-content"&&el.id!=="app-topbar")}
+function size(el){var r=el.getBoundingClientRect();return{w:r.width,h:r.height}}
 
-/* ---- deteksi "card": kotak berpinggiran/bayangan membulat, atau tile khusus dashboard; ukuran minimal biar chip/badge kecil tidak ikut ---- */
+/* ---- jenis target ---- */
 function isCard(el){
-  if(!el||el.nodeType!==1)return false;
   var c=el.className;if(typeof c!=="string"||!c)return false;
   var special=/(^|\s)(dpa-stat|dpx-hero)(\s|$)/.test(c);
   var rounded=/(^|\s)rounded-(xl|2xl|3xl)(\s|$)/.test(c);
   var surface=/(^|\s)(border|shadow|shadow-sm|shadow-md|shadow-lg|bg-white)(\s|$)/.test(c);
   if(!special&&!(rounded&&surface))return false;
-  var pc=pageEl();if(!pc||el===pc||!pc.contains(el))return false;
-  var r=el.getBoundingClientRect();
-  return r.width>=110&&r.height>=44;
+  var s=size(el);return s.w>=110&&s.h>=44;
 }
-function cardOf(t){
+function isCtl(el){
+  var tg=el.tagName;
+  if(tg==="BUTTON"||tg==="SELECT"||tg==="TEXTAREA"||tg==="SUMMARY"||tg==="LABEL")return true;
+  if(tg==="INPUT")return el.type!=="hidden";
+  if(tg==="A"&&el.hasAttribute("href"))return true;
+  if(el.hasAttribute("onclick")||el.hasAttribute("data-k"))return true;
+  var r=el.getAttribute("role");
+  return !!r&&/^(button|tab|switch|checkbox|radio|option|menuitem|combobox|listbox)$/.test(r);
+}
+var SEM=/^(H1|H2|H3|H4|H5|H6|TABLE|TR|LI|CANVAS|IMG|P|FORM|SECTION|DETAILS)$/;
+function isSem(el){
+  var tg=el.tagName;
+  if(tg==="svg"||tg==="SVG"){var s=size(el);return s.w>=90&&s.h>=40&&!el.closest("button,a")}
+  return SEM.test(tg);
+}
+function isBlock(el){
+  if(!el.className||typeof el.className!=="string")return false;
+  var cs=getComputedStyle(el);if(cs.display==="inline"||cs.display==="contents")return false;
+  var s=size(el);return s.w>=24&&s.h>=14;
+}
+function visible(el){var s=size(el);return s.w>0&&s.h>0}
+/* elemen terkecil yang masuk akal dari titik klik: kontrol > card > blok semantik > blok apa saja */
+function targetOf(t){
   var n=t&&t.nodeType===1?t:(t&&t.parentElement);
-  while(n&&n.id!=="page-content"&&n!==document.body){
-    if(isCard(n))return n;
-    n=n.parentElement;
+  if(!n||!inScope(n))return null;
+  var path=[];
+  for(var x=n;x&&x.nodeType===1&&x!==document.body&&x.id!=="page-content"&&x.id!=="app-topbar"&&x.id!=="div-filter-bar";x=x.parentElement)path.push(x);
+  var i,el;
+  for(i=0;i<path.length;i++){el=path[i];if(isCtl(el)&&visible(el))return el}
+  if(!fine){
+    for(i=0;i<path.length;i++){el=path[i];if(isCard(el))return el}
+    for(i=0;i<path.length;i++){el=path[i];if(isSem(el)&&visible(el))return el}
+  }else{
+    for(i=0;i<path.length;i++){el=path[i];if((isSem(el)||isBlock(el))&&visible(el))return el}
   }
+  for(i=0;i<path.length;i++){el=path[i];if(isBlock(el))return el}
   return null;
 }
 
-/* ---- label card = teks pertama yang berupa kata (bukan angka/ratio), mis. "Conversion Rate" ---- */
+/* ---- label elemen ---- */
+function isForm(el){return /^(INPUT|SELECT|TEXTAREA)$/.test(el.tagName)}
 function labelOf(el){
   try{
+    var a=el.getAttribute&&(el.getAttribute("aria-label")||el.getAttribute("title")||el.getAttribute("placeholder")||"");
+    if(a&&/[A-Za-zÀ-ɏ]{2}/.test(a))return a.replace(/\s+/g," ").trim().slice(0,80);
+    if(isForm(el)){
+      var lb=(el.id&&document.querySelector('label[for="'+el.id.replace(/"/g,'\\"')+'"]'))||el.closest("label");
+      var ls=lb?lb.textContent.replace(/\s+/g," ").trim():"";
+      return (ls||el.getAttribute("name")||el.id||"Filter").slice(0,80);
+    }
     var w=document.createTreeWalker(el,NodeFilter.SHOW_TEXT,null),n;
     while((n=w.nextNode())){
       var p=n.parentNode&&n.parentNode.nodeName;
       if(p==="STYLE"||p==="SCRIPT")continue;
       var s=String(n.nodeValue||"").replace(/\s+/g," ").trim();
-      if(s.length>=3&&/[A-Za-z\u00C0-\u024F]{3}/.test(s)&&!/^\d/.test(s))return s.slice(0,80);
+      if(s.length>=2&&/[A-Za-zÀ-ɏ]{2}/.test(s)&&!/^\d/.test(s))return s.slice(0,80);
     }
+    var tg=el.tagName.toLowerCase();
+    return tg==="canvas"||tg==="svg"?"grafik":"";
   }catch(e){}
   return "";
 }
-function textHas(el,t){return norm(el.textContent).indexOf(norm(t))>=0}
+function labelMatches(el,t){
+  if(!t)return true;
+  var q=norm(t);
+  if(isForm(el))return true;
+  var a=norm((el.getAttribute&&(el.getAttribute("aria-label")||el.getAttribute("title")))||"");
+  if(a&&a.indexOf(q)>=0)return true;
+  if(q==="grafik")return /^(CANVAS|svg)$/i.test(el.tagName);
+  return norm(el.textContent).indexOf(q)>=0;
+}
 
 /* ---- posisi DOM: dari ancestor ber-id terdekat + urutan anak ---- */
 function pathOf(el){
@@ -16307,79 +16357,99 @@ function resolve(h){
       el=root;
       var ix=(parts[1]||"").split(".").filter(function(x){return x!==""});
       for(var i=0;i<ix.length&&el;i++)el=el.children[+ix[i]]||null;
-      if(el&&(!isCard(el)||(h.t&&!textHas(el,h.t))))el=null;   /* verifikasi: harus masih card & labelnya cocok */
+      if(el&&(!inScope(el)||!labelMatches(el,h.t)))el=null;   /* verifikasi: masih di halaman & labelnya cocok */
     }
   }
   if(!el&&h.t)el=findByText(h.t);
   return el;
 }
 function findByText(t){
-  var pc=pageEl();if(!pc)return null;
-  var q=norm(t),best=null,bestLen=1e9,list=pc.querySelectorAll("[class]");
+  var q=norm(t),best=null,bestLen=1e9;
+  var list=document.querySelectorAll(ROOTS.split(",").map(function(r){return r+" *"}).join(","));
   for(var i=0;i<list.length;i++){
     var el=list[i];
-    if(!isCard(el))continue;
+    if(!inScope(el)||!(isCtl(el)||isCard(el)||isSem(el)))continue;
+    if(isForm(el)){if(norm(labelOf(el))===q&&visible(el))return el;continue}
     var s=norm(el.textContent);
     if(s.indexOf(q)<0)continue;
-    if(s.length<bestLen){best=el;bestLen=s.length}   /* card paling spesifik (teks terpendek) */
+    if(s.length<bestLen){best=el;bestLen=s.length}   /* elemen paling spesifik (teks terpendek) */
   }
   return best;
 }
 
 /* ---- tandai / lepas highlight ---- */
-function clearMark(except){
+function clearMarks(keep){
   var o=document.querySelectorAll(".vo-hl");
-  for(var i=0;i<o.length;i++)if(o[i]!==except)o[i].classList.remove("vo-hl","vo-hl-q");
+  for(var i=0;i<o.length;i++)if(!keep||keep.indexOf(o[i])<0)o[i].classList.remove("vo-hl","vo-hl-q");
 }
+function curEls(){var r=[];items.forEach(function(it){if(it.el&&it.el.isConnected)r.push(it.el)});return r}
 function ensure(force){
-  if(!HL)return false;
-  if(!force&&cur&&cur.isConnected&&cur.classList.contains("vo-hl"))return true;
-  if(!(cur&&cur.isConnected)){
-    var now=Date.now();
-    if(!force&&now-lastTry<500)return false;
-    lastTry=now;
-    var el=resolve(HL);
-    if(!el){
-      if(!HL.found&&!HL.warned&&now-HL.t0>60000){HL.warned=true;toast("Card yang di-highlight di link ini tidak ditemukan di halaman","warn")}
-      return false;
+  if(!HL||!HL.items.length)return false;
+  var now=Date.now(),missing=false;
+  HL.items.forEach(function(it){
+    if(!force&&it.el&&it.el.isConnected)return;
+    if(!(it.el&&it.el.isConnected)){
+      if(!force&&now-lastTry<500){missing=true;return}
+      it.el=resolve(it);
     }
-    cur=el;
-  }
-  clearMark(cur);
-  cur.classList.add("vo-hl");
-  if(HL.shown)cur.classList.add("vo-hl-q");   /* render ulang: ring tetap, tanpa animasi pulse lagi */
-  HL.shown=true;HL.found=true;
-  if(HL.scroll){
+    if(!it.el)missing=true;
+  });
+  lastTry=now;
+  items=HL.items;
+  var els=curEls();
+  clearMarks(els);
+  els.forEach(function(el){
+    if(!el.classList.contains("vo-hl")){el.classList.add("vo-hl");if(HL.shown)el.classList.add("vo-hl-q")}
+  });
+  if(els.length)HL.shown=true;
+  if(!HL.warned&&missing&&now-HL.t0>60000){HL.warned=true;toast("Sebagian elemen yang di-highlight di link ini tidak ditemukan di halaman","warn")}
+  if(HL.scroll&&els.length){
     HL.scroll=false;
-    try{cur.scrollIntoView({behavior:"smooth",block:"center"})}catch(e){cur.scrollIntoView()}
+    try{els[0].scrollIntoView({behavior:"smooth",block:"center"})}catch(e){els[0].scrollIntoView()}
   }
-  return true;
+  return els.length>0;
 }
-function setHl(h,el){
-  clearMark();
-  HL=h;cur=el||null;lastTry=0;
-  renderChip();
-  ensure(true);
+function setHl(list,scroll){
+  clearMarks();
+  if(!list.length){HL=null;items=[];renderUI();return}
+  HL={items:list,route:routeOf(),scroll:!!scroll,t0:Date.now(),shown:false,warned:false};
+  items=list;lastTry=0;
+  renderUI();ensure(true);
 }
-function clearHl(){clearMark();HL=null;cur=null;renderChip()}
+function clearHl(){clearMarks();HL=null;items=[];renderUI()}
 
 /* ---- sisipkan hl ke link salinan & baca hl dari link yang dibuka ---- */
+function enc(s){return encodeURIComponent(String(s||"")).replace(/~/g,"%7E")}
+function dec(s){try{return decodeURIComponent(s)}catch(e){return s}}
 var _collect=window.__collectShareParams;
 window.__collectShareParams=function(){
   var p=_collect?_collect.apply(this,arguments):{};
-  if(HL&&(HL.p||HL.t))p.hl=(HL.p||"")+"~"+(HL.t||"");
+  if(HL&&HL.items.length)p.hl=HL.items.map(function(it){return enc(it.p)+"~"+enc(it.t)}).join("|");
   return p;
 };
+function parseHl(v){
+  var out=[];
+  String(v||"").split("|").forEach(function(part){
+    if(!part)return;
+    var i=part.indexOf("~"),p=i<0?part:part.slice(0,i),t=i<0?"":part.slice(i+1);
+    p=dec(p);t=dec(t);
+    if(p||t)out.push({p:p,t:t,el:null});
+  });
+  return out;
+}
+function sameList(a,b){
+  if(!a||a.length!==b.length)return false;
+  for(var i=0;i<a.length;i++)if(a[i].p!==b[i].p||a[i].t!==b[i].t)return false;
+  return true;
+}
 var _apply=window.__applyShareParams;
 window.__applyShareParams=function(qs){
   var r=_apply?_apply.apply(this,arguments):undefined;
   try{
     var m=/(?:^|&)hl=([^&]*)/.exec(String(qs||""));
     if(m){
-      var v=decodeURIComponent(m[1].replace(/\+/g," ")),i=v.indexOf("~");
-      var p=i<0?v:v.slice(0,i),t=i<0?"":v.slice(i+1);
-      if(!HL||HL.p!==p||HL.t!==t||HL.route!==routeOf())
-        setHl({p:p,t:t,route:routeOf(),scroll:true,t0:Date.now(),found:false});
+      var list=parseHl(decodeURIComponent(m[1].replace(/\+/g," ")));
+      if(!HL||HL.route!==routeOf()||!sameList(HL.items,list))setHl(list,true);
     }
   }catch(e){console.warn("hl",e)}
   return r;
@@ -16396,38 +16466,49 @@ st.textContent=
 ".vo-hl.vo-hl-q{animation:none}"+
 "@keyframes vo-hl-pulse{0%,100%{box-shadow:0 0 0 0 rgba(245,158,11,.6)}50%{box-shadow:0 0 0 14px rgba(245,158,11,0)}}"+
 ".vo-pick-hover{outline:2px dashed #6366f1!important;outline-offset:2px!important}"+
-"body.vo-picking #page-content,body.vo-picking #page-content *{cursor:crosshair!important}"+
+"body.vo-picking #page-content,body.vo-picking #page-content *,body.vo-picking #app-topbar,body.vo-picking #app-topbar *,body.vo-picking #div-filter-bar,body.vo-picking #div-filter-bar *{cursor:crosshair!important}"+
 "#vo-stack{position:fixed;right:8px;bottom:calc(70px + env(safe-area-inset-bottom,0px));z-index:55;display:flex;flex-direction:column;align-items:flex-end;gap:6px}"+
 "#vo-copy.vo-off + #vo-stack{bottom:calc(34px + env(safe-area-inset-bottom,0px))}"+
-"#vo-pick,#vo-hlchip{display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 12px;border-radius:999px;border:1px solid #e2e8f0;background:#fff;color:#475569;font:800 11px/1 'Plus Jakarta Sans',system-ui,sans-serif;box-shadow:0 4px 14px rgba(0,0,0,.18)}"+
+"#vo-pick,#vo-hlchip{display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 12px;border-radius:999px;border:1px solid #e2e8f0;background:#fff;color:#475569;font:800 11px/1 'Plus Jakarta Sans',system-ui,sans-serif;box-shadow:0 2px 8px rgba(15,23,42,.12)}"+
 "#vo-pick{cursor:pointer}#vo-pick:hover,#vo-pick.on{background:#eef2ff;color:#4338ca;border-color:#c7d2fe}"+
 "#vo-hlchip{background:#fffbeb;color:#b45309;border-color:#fcd34d;max-width:min(260px,70vw)}"+
 "#vo-hlchip span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}"+
 "#vo-hlchip button{border:0;background:transparent;color:inherit;font:900 15px/1 system-ui,sans-serif;cursor:pointer;padding:0 0 0 2px}"+
 "#vo-hlchip.vo-off,#vo-pickbar.vo-off{display:none}"+
-"#vo-pickbar{position:fixed;left:50%;transform:translateX(-50%);top:calc(10px + env(safe-area-inset-top,0px));z-index:60;display:inline-flex;align-items:center;gap:10px;padding:8px 8px 8px 14px;border-radius:999px;background:#4338ca;color:#fff;font:800 11px/1.2 'Plus Jakarta Sans',system-ui,sans-serif;box-shadow:0 8px 24px rgba(0,0,0,.35);max-width:94vw}"+
+"#vo-pickbar{position:fixed;left:50%;transform:translateX(-50%);top:calc(10px + env(safe-area-inset-top,0px));z-index:60;display:inline-flex;align-items:center;gap:8px;padding:8px 8px 8px 14px;border-radius:999px;background:#4338ca;color:#fff;font:800 11px/1 'Plus Jakarta Sans',system-ui,sans-serif;box-shadow:0 6px 20px rgba(67,56,202,.4);max-width:calc(100vw - 16px);flex-wrap:wrap;justify-content:center}"+
 "#vo-pickbar button{border:0;border-radius:999px;background:rgba(255,255,255,.2);color:#fff;font:800 11px/1 'Plus Jakarta Sans',system-ui,sans-serif;padding:6px 12px;cursor:pointer}"+
+"#vo-pickbar button.on{background:#fff;color:#4338ca}#vo-pickbar #vo-pickgo{background:#fbbf24;color:#451a03}"+
 "@media print{#vo-stack,#vo-pickbar{display:none!important}.vo-hl{outline:none!important}}";
 document.head.appendChild(st);
 
 var stack=document.createElement("div");stack.id="vo-stack";
 stack.innerHTML=
-'<div id="vo-hlchip" class="vo-off"><i class="fas fa-bullseye"></i><span></span><button type="button" id="vo-hlx" title="Lepas highlight" aria-label="Lepas highlight">&times;</button></div>'+
-'<button type="button" id="vo-pick" title="Pilih satu card, lalu link yang disalin akan menyorot card itu" aria-label="Pilih card untuk disorot di link"><i class="fas fa-bullseye"></i><span>Pilih card</span></button>';
+'<div id="vo-hlchip" class="vo-off"><i class="fas fa-bullseye"></i><span></span><button type="button" id="vo-hlx" title="Lepas semua highlight" aria-label="Lepas semua highlight">&times;</button></div>'+
+'<button type="button" id="vo-pick" title="Pilih beberapa elemen (card, filter, tombol, tabel, dll), lalu link yang disalin akan menyorot semuanya" aria-label="Pilih elemen untuk disorot di link"><i class="fas fa-bullseye"></i><span>Pilih elemen</span></button>';
 var cp=document.getElementById("vo-copy");
 if(cp&&cp.insertAdjacentElement)cp.insertAdjacentElement("afterend",stack);else document.body.appendChild(stack);
 
 var bar=document.createElement("div");bar.id="vo-pickbar";bar.className="vo-off";
-bar.innerHTML='<i class="fas fa-bullseye"></i><span>Klik card yang mau disorot di link</span><button type="button" id="vo-pickx">Batal</button>';
+bar.innerHTML='<i class="fas fa-bullseye"></i><span id="vo-pickmsg">Klik elemen yang mau disorot</span>'+
+  '<button type="button" id="vo-pickfine" title="Aktifkan untuk memilih elemen yang lebih kecil di dalam card">Elemen kecil</button>'+
+  '<button type="button" id="vo-pickgo">Salin link</button><button type="button" id="vo-pickx">Selesai</button>';
 document.body.appendChild(bar);
 
-var chip=document.getElementById("vo-hlchip"),pickBtn=document.getElementById("vo-pick");
-function renderChip(){
-  if(!HL){chip.classList.add("vo-off");return}
-  chip.classList.remove("vo-off");
-  chip.querySelector("span").textContent="Highlight: "+(HL.t||"card terpilih");
+var chip=document.getElementById("vo-hlchip"),pickBtn=document.getElementById("vo-pick"),pickMsg=document.getElementById("vo-pickmsg");
+function summary(){
+  var n=items.length;
+  if(!n)return "";
+  var first=items[0].t||"elemen";
+  return n===1?first:first+" +"+(n-1);
 }
-document.getElementById("vo-hlx").onclick=function(ev){ev.stopPropagation();clearHl();toast("Highlight dilepas dari link","info")};
+function renderUI(){
+  var n=items.length;
+  if(!n)chip.classList.add("vo-off");
+  else{chip.classList.remove("vo-off");chip.querySelector("span").textContent="Highlight ("+n+"): "+summary()}
+  pickMsg.textContent=n?n+" elemen dipilih — klik lagi untuk batal":"Klik elemen yang mau disorot";
+  var go=document.getElementById("vo-pickgo");if(go)go.style.display=n?"":"none";
+}
+document.getElementById("vo-hlx").onclick=function(ev){ev.stopPropagation();clearHl();toast("Semua highlight dilepas dari link","info")};
 
 function setHover(el){
   if(hoverEl===el)return;
@@ -16437,7 +16518,7 @@ function setHover(el){
 }
 function startPick(){
   picking=true;document.body.classList.add("vo-picking");
-  bar.classList.remove("vo-off");pickBtn.classList.add("on");
+  bar.classList.remove("vo-off");pickBtn.classList.add("on");renderUI();
 }
 function stopPick(){
   picking=false;document.body.classList.remove("vo-picking");
@@ -16445,25 +16526,35 @@ function stopPick(){
 }
 pickBtn.onclick=function(ev){ev.stopPropagation();picking?stopPick():startPick()};
 document.getElementById("vo-pickx").onclick=function(ev){ev.stopPropagation();stopPick()};
+document.getElementById("vo-pickfine").onclick=function(ev){
+  ev.stopPropagation();fine=!fine;this.classList.toggle("on",fine);
+};
+document.getElementById("vo-pickgo").onclick=function(ev){ev.stopPropagation();copyNow()};
 
 document.addEventListener("mouseover",function(e){
   if(!picking)return;
-  setHover(cardOf(e.target));
+  setHover(targetOf(e.target));
 },true);
 document.addEventListener("keydown",function(e){
   if(picking&&e.key==="Escape")stopPick();
 },true);
-/* capture: klik di dalam halaman TIDAK menjalankan aksi card (mis. popup detail), cuma memilih card */
+/* blok semua event interaksi di area halaman saat memilih, supaya klik cuma memilih (tidak membuka popup / mengubah filter) */
+function inPickArea(t){return !!(t&&t.closest&&t.closest(ROOTS)&&!t.closest(OWN))}
+["mousedown","mouseup","pointerdown","pointerup","touchstart","touchend","change","input","submit"].forEach(function(ev){
+  document.addEventListener(ev,function(e){
+    if(!picking||!inPickArea(e.target))return;
+    e.preventDefault();e.stopPropagation();e.stopImmediatePropagation();
+  },true);
+});
 document.addEventListener("click",function(e){
   if(!picking)return;
   var t=e.target;
   if(t.closest&&t.closest("#vo-stack,#vo-pickbar,#vo-copy"))return;
-  var pc=pageEl();
-  if(!pc||!pc.contains(t))return;   /* di luar halaman (sidebar, popup) -> biarkan normal */
+  if(!inPickArea(t))return;   /* di luar area halaman (sidebar, popup) -> biarkan normal */
   e.preventDefault();e.stopPropagation();e.stopImmediatePropagation();
-  var c=cardOf(t);
-  if(!c){toast("Klik tepat di dalam salah satu card ya","warn");return}
-  pickCard(c);
+  var c=targetOf(t);
+  if(!c){toast("Klik tepat di salah satu elemen ya","warn");return}
+  toggleEl(c);
 },true);
 
 function copyText(s){
@@ -16479,13 +16570,22 @@ function copyText(s){
     if(navigator.clipboard&&navigator.clipboard.writeText)navigator.clipboard.writeText(s).then(res,fb);else fb();
   }).catch(function(){window.prompt("Salin link ini:",s)});
 }
-function pickCard(c){
-  var t=labelOf(c);
-  stopPick();
-  setHl({p:pathOf(c),t:t,route:routeOf(),scroll:false,t0:Date.now(),found:true},c);
+function toggleEl(c){
+  var list=items.slice(),i=-1;
+  for(var k=0;k<list.length;k++)if(list[k].el===c){i=k;break}
+  if(i>=0){list.splice(i,1);c.classList.remove("vo-hl","vo-hl-q")}
+  else if(list.length>=30){toast("Maksimal 30 elemen per link","warn");return}
+  else list.push({p:pathOf(c),t:labelOf(c),el:c});
+  setHover(null);
+  var keepShown=HL&&HL.shown;
+  setHl(list,false);
+  if(HL)HL.shown=!!keepShown||true;
+}
+function copyNow(){
+  if(!items.length){toast("Pilih minimal satu elemen dulu","warn");return}
   var url=window.__buildShareLink();
   copyText(url).then(function(){
-    toast("Link + highlight \u201C"+(t||"card terpilih")+"\u201D tersalin","success");
+    toast("Link + "+items.length+" highlight tersalin","success");
   });
 }
 
@@ -16493,7 +16593,11 @@ function pickCard(c){
 setInterval(function(){try{if(HL)ensure(false)}catch(e){}},700);
 var raf=0;
 function kick(){if(raf||!HL)return;raf=requestAnimationFrame(function(){raf=0;try{ensure(false)}catch(e){}})}
-try{new MutationObserver(kick).observe(pageEl()||document.body,{childList:true,subtree:true})}catch(e){}
+try{
+  var mo=new MutationObserver(kick);
+  [pageEl(),document.getElementById("app-topbar"),document.getElementById("div-filter-bar")].forEach(function(r){if(r)mo.observe(r,{childList:true,subtree:true})});
+}catch(e){}
+renderUI();
 })();
 </script><script id="modal-top-reset">
 /* Popup (pre-test, post-test, materi, form builder, edit, dll): setiap kali DIBUKA selalu mulai dari paling atas.
