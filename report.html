@@ -381,7 +381,7 @@ button:disabled, input[type="submit"]:disabled {
    that stays pinned to the left edge; clicking that rail re-opens the full menu. */
 @media (min-width: 1024px) {
     #sidebar { width: var(--sidebar-w, 260px); transform: translateX(0); }
-    #sidebar.sidebar-mini { width: var(--sidebar-mini-w, 64px); }
+    #sidebar.sidebar-mini { width: var(--sidebar-mini-w,80px); }
     #sidebar.sidebar-mini .brand-label, #sidebar.sidebar-mini .nav-label { display: none; }
     #sidebar.sidebar-mini #sidebar-brand { justify-content: center; padding-left: 0; padding-right: 0; }
     #sidebar.sidebar-mini .nav-item { justify-content: center; padding-left: 0; padding-right: 0; position: relative; }
@@ -397,7 +397,7 @@ button:disabled, input[type="submit"]:disabled {
        dan diposisikan lewat JS (lihat bagian "TOOLTIP NAMA MENU SIDEBAR MINI"),
        supaya gak ikut ke-clip oleh overflow container manapun. */
     #main-wrapper { margin-left: var(--sidebar-w, 260px); transition: margin-left .2s ease; }
-    #sidebar.sidebar-mini ~ #main-wrapper { margin-left: var(--sidebar-mini-w, 64px); }
+    #sidebar.sidebar-mini ~ #main-wrapper { margin-left: var(--sidebar-mini-w,80px); }
     /* Panah kecil di tombol toggle sidebar (topbar) — cuma kelihatan di layar desktop
        (lg+), nunjukin arah buka/tutup: nunjuk kiri = sidebar lagi kebuka (klik buat
        melipat), nunjuk kanan = sidebar lagi terlipat/mini (klik buat membuka lagi). */
@@ -1862,7 +1862,7 @@ html.dark .hover\:border-dpv-200:hover,html.dark .hover\:border-dpv-400:hover{bo
 
     
     <aside id="sidebar" class="bg-slate-900 flex flex-col">
-        <button id="sidebar-brand" onclick="window.toggleSidebar()" class="flex items-center py-3 pr-4 text-left" title="Buka/tutup menu">
+        <button id="sidebar-brand" onclick="window.__logoHome()" class="flex items-center py-3 pr-4 text-left" title="Ke Dashboard (muat ulang)">
             <span class="sidebar-brand-icon shrink-0"><img id="brand-logo-sidebar" alt="NingratEdu" class="block"><script>document.getElementById("brand-logo-sidebar").src=window.__BRAND_LOGO_B64;</script></span>
             <span class="brand-label flex flex-col justify-center h-7 leading-none">
                 <span id="brand-title" class="font-black text-lg tracking-tight leading-none inline-block whitespace-nowrap"><span class="text-blue-400">Ningrat</span><span class="text-white">Edu</span></span>
@@ -16229,6 +16229,74 @@ setInterval(function(){try{syncPop()}catch(e){}},400);
 document.title=document.title+" (Lihat Saja)";
 new MutationObserver(schedule).observe(document.body,{childList:true,subtree:true});
 schedule();
+})();
+</script><script id="sidebar-hover">
+/* Laptop: sidebar yang sedang dilipat otomatis terbuka saat kursor menyentuhnya, menutup lagi saat kursor keluar.
+   Isi halaman TIDAK bergeser (sidebar menimpa), dan sidebar yang dibuka manual lewat tombol menu tidak ikut menutup otomatis.
+   Klik logo = muat ulang halaman ke Dashboard. */
+(function(){
+"use strict";
+window.__logoHome=function(){
+  try{
+    var base=location.pathname+location.search;
+    history.replaceState(null,"",base+"#/admin/reports");
+  }catch(e){location.hash="#/admin/reports"}
+  location.reload();
+};
+var mq=window.matchMedia("(min-width: 1024px) and (hover: hover)");
+var sb=document.getElementById("sidebar"),btn=document.getElementById("profile-menu-refresh-btn"),timer=0,timer2=0,peek=false;
+if(!sb)return;
+var st=document.createElement("style");
+st.textContent="@media (min-width:1024px){"+
+"#sidebar.sidebar-peek:not(.sidebar-mini) ~ #main-wrapper{margin-left:var(--sidebar-mini-w,80px)!important;transition:none!important}"+
+"#sidebar.sidebar-mini .nav-item{gap:0}"+
+"#sidebar.sidebar-mini .nav-label{display:block;flex:none!important;width:0!important;min-width:0;overflow:hidden;white-space:nowrap;opacity:0;pointer-events:none}"+
+"#sidebar.sidebar-peek,#sidebar.sidebar-closing{overflow:hidden;transition:width .38s cubic-bezier(.32,.72,0,1),box-shadow .38s ease!important;will-change:width}"+
+"#sidebar.sidebar-closing{width:var(--sidebar-mini-w,80px)!important}"+
+"#sidebar.sidebar-peek .nav-label,#sidebar.sidebar-peek .brand-label,#sidebar.sidebar-closing .nav-label,#sidebar.sidebar-closing .brand-label,#sidebar.sidebar-peek .nav-item,#sidebar.sidebar-closing .nav-item{white-space:nowrap}"+
+"#sidebar.sidebar-peek:not(.sidebar-closing) .nav-label,#sidebar.sidebar-peek:not(.sidebar-closing) .brand-label{animation:sb-peek-in .34s cubic-bezier(.32,.72,0,1) .08s both}"+
+"#sidebar.sidebar-peek:not(.sidebar-closing) .nav-item:nth-child(2) .nav-label{animation-delay:.11s}#sidebar.sidebar-peek:not(.sidebar-closing) .nav-item:nth-child(3) .nav-label{animation-delay:.14s}#sidebar.sidebar-peek:not(.sidebar-closing) .nav-item:nth-child(n+4) .nav-label{animation-delay:.17s}"+
+"#sidebar.sidebar-closing .nav-label,#sidebar.sidebar-closing .brand-label{opacity:0;transition:opacity .16s ease}"+
+"@keyframes sb-peek-in{from{opacity:0;transform:translateX(-14px)}to{opacity:1;transform:none}}}";
+document.head.appendChild(st);
+function arrow(){try{window.syncSidebarToggleArrow&&window.syncSidebarToggleArrow()}catch(e){}}
+function openPeek(){
+  clearTimeout(timer);clearTimeout(timer2);
+  if(!mq.matches)return;
+  if(peek){sb.classList.remove("sidebar-closing");return}   /* masuk lagi saat animasi tutup: balik terbuka */
+  if(!sb.classList.contains("sidebar-mini"))return;
+  sb.classList.remove("sidebar-mini");sb.classList.add("sidebar-peek");peek=true;
+  try{window.hideSidebarTooltip&&window.hideSidebarTooltip()}catch(e){}
+  arrow();
+}
+function closePeek(){
+  clearTimeout(timer);
+  timer=setTimeout(function(){
+    if(!peek)return;
+    sb.classList.add("sidebar-closing");           /* geser menyempit dulu, label memudar */
+    timer2=setTimeout(function(){
+      if(!peek)return;
+      peek=false;sb.classList.remove("sidebar-peek","sidebar-closing");
+      if(mq.matches&&!sb.classList.contains("sidebar-mini")){sb.classList.add("sidebar-mini");arrow()}
+    },380);
+  },180);
+}
+function manual(){peek=false;clearTimeout(timer);clearTimeout(timer2);sb.classList.remove("sidebar-peek","sidebar-closing")}
+sb.addEventListener("mouseenter",openPeek);
+sb.addEventListener("mouseleave",function(e){
+  if(btn&&e.relatedTarget&&btn.contains(e.relatedTarget))return;   /* tombol "Perbarui data" menumpuk di atas sidebar */
+  closePeek();
+});
+if(btn){
+  btn.addEventListener("mouseenter",openPeek);
+  btn.addEventListener("mouseleave",function(e){if(!(e.relatedTarget&&sb.contains(e.relatedTarget)))closePeek()});
+}
+/* tombol menu (hamburger) di topbar = kendali manual: hasilnya menetap, tidak ikut auto-tutup */
+document.addEventListener("click",function(e){if(e.target.closest&&e.target.closest("#sidebar-toggle-btn"))manual()},true);
+/* kalau ada kode lain yang melipat sidebar (mis. setelah pindah menu), buang status peek */
+new MutationObserver(function(){
+  if(sb.classList.contains("sidebar-mini")&&sb.classList.contains("sidebar-peek")){sb.classList.remove("sidebar-peek","sidebar-closing");peek=false}
+}).observe(sb,{attributes:true,attributeFilter:["class"]});
 })();
 </script><script id="share-highlight">
 /* ===== HIGHLIGHT BANYAK ELEMEN DI LINK SALINAN (khusus mode lihat saja) =====
