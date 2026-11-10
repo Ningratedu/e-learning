@@ -16204,16 +16204,9 @@ function schedule(){if(raf)return;raf=requestAnimationFrame(function(){raf=0;try
 var st=document.createElement("style");
 st.textContent=".vo-hide{display:none!important}#vo-badge{position:fixed;right:8px;bottom:calc(8px + env(safe-area-inset-bottom,0px));z-index:55;pointer-events:none;display:inline-flex;align-items:center;justify-content:center;height:20px;padding:0 8px;background:rgb(var(--th-500-rgb) / .28);-webkit-backdrop-filter:blur(10px) saturate(1.4);backdrop-filter:blur(10px) saturate(1.4);color:#fff;border:1px solid rgb(var(--th-300-rgb) / .38);text-shadow:0 1px 2px rgba(0,0,0,.35);font:800 8px/1 'Plus Jakarta Sans',system-ui,sans-serif;letter-spacing:.05em;white-space:nowrap;border-radius:999px;box-shadow:0 4px 14px rgba(0,0,0,.28),inset 0 1px 0 rgba(255,255,255,.22)}@media print{#vo-badge{display:none!important}}";
 document.head.appendChild(st);
-var badge=document.createElement("div");badge.id="vo-badge";badge.textContent="MODE LIHAT SAJA";
-document.body.appendChild(badge);
 st.textContent+="#vo-copy{position:fixed;right:8px;bottom:calc(34px + env(safe-area-inset-bottom,0px));z-index:55;display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 12px;border-radius:999px;border:1px solid #e2e8f0;background:#fff;color:#475569;font:800 11px/1 'Plus Jakarta Sans',system-ui,sans-serif;cursor:pointer;box-shadow:0 4px 14px rgba(0,0,0,.18)}#vo-copy:hover{background:#eef2ff;color:#4338ca}#vo-copy.vo-off{display:none}@media print{#vo-copy{display:none!important}}";
-var cp=document.createElement("button");cp.type="button";cp.id="vo-copy";
-cp.title="Salin link halaman ini beserta filter aktif";cp.setAttribute("aria-label",cp.title);
-cp.innerHTML='<i class="fas fa-link"></i><span>Salin link</span>';
-cp.onclick=function(){window.copyFilterShareLink()};
-seen.add(cp);document.body.appendChild(cp);
 /* sembunyikan kalau halaman sudah punya tombol salin link sendiri */
-function syncCopy(){var inl=document.querySelector('#page-content [onclick*="copyFilterShareLink"]');cp.classList.toggle("vo-off",!!(inl&&!inl.classList.contains("vo-hide")))}
+function syncCopy(){}
 /* tombol salin link di header popup detail (modal z-10000 menutupi tombol melayang) */
 st.textContent+=".vo-popcopy{display:inline-flex;align-items:center;gap:5px;height:26px;padding:0 10px;border-radius:999px;border:1px solid #c7d2fe;background:#fff;color:#4338ca;font:800 10px/1 'Plus Jakarta Sans',system-ui,sans-serif;cursor:pointer;white-space:nowrap}.vo-popcopy:hover{background:#e0e7ff}";
 function syncPop(){
@@ -16467,8 +16460,7 @@ st.textContent=
 "@keyframes vo-hl-pulse{0%,100%{box-shadow:0 0 0 0 rgba(245,158,11,.6)}50%{box-shadow:0 0 0 14px rgba(245,158,11,0)}}"+
 ".vo-pick-hover{outline:2px dashed #6366f1!important;outline-offset:2px!important}"+
 "body.vo-picking #page-content,body.vo-picking #page-content *,body.vo-picking #app-topbar,body.vo-picking #app-topbar *,body.vo-picking #div-filter-bar,body.vo-picking #div-filter-bar *{cursor:crosshair!important}"+
-"#vo-stack{position:fixed;right:8px;bottom:calc(70px + env(safe-area-inset-bottom,0px));z-index:55;display:flex;flex-direction:column;align-items:flex-end;gap:6px}"+
-"#vo-copy.vo-off + #vo-stack{bottom:calc(34px + env(safe-area-inset-bottom,0px))}"+
+"#vo-stack{position:fixed;right:8px;bottom:calc(8px + env(safe-area-inset-bottom,0px));z-index:55;display:flex;flex-direction:column;align-items:flex-end;gap:6px}"+
 "#vo-pick,#vo-hlchip{display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 12px;border-radius:999px;border:1px solid #e2e8f0;background:#fff;color:#475569;font:800 11px/1 'Plus Jakarta Sans',system-ui,sans-serif;box-shadow:0 2px 8px rgba(15,23,42,.12)}"+
 "#vo-pick{cursor:pointer}#vo-pick:hover,#vo-pick.on{background:#eef2ff;color:#4338ca;border-color:#c7d2fe}"+
 "#vo-hlchip{background:#fffbeb;color:#b45309;border-color:#fcd34d;max-width:min(260px,70vw)}"+
@@ -16484,7 +16476,7 @@ document.head.appendChild(st);
 var stack=document.createElement("div");stack.id="vo-stack";
 stack.innerHTML=
 '<div id="vo-hlchip" class="vo-off"><i class="fas fa-bullseye"></i><span></span><button type="button" id="vo-hlx" title="Lepas semua highlight" aria-label="Lepas semua highlight">&times;</button></div>'+
-'<button type="button" id="vo-pick" title="Pilih beberapa elemen (card, filter, tombol, tabel, dll), lalu link yang disalin akan menyorot semuanya" aria-label="Pilih elemen untuk disorot di link"><i class="fas fa-bullseye"></i><span>Pilih elemen</span></button>';
+'<button type="button" id="vo-pick" title="Pilih beberapa elemen (card, filter, tombol, tabel, dll), lalu link yang disalin akan menyorot semuanya" aria-label="Pilih Highlight Report"><i class="fas fa-bullseye"></i><span>Pilih Highlight Report</span></button>';
 var cp=document.getElementById("vo-copy");
 if(cp&&cp.insertAdjacentElement)cp.insertAdjacentElement("afterend",stack);else document.body.appendChild(stack);
 
