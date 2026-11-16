@@ -8346,7 +8346,7 @@ function pfBuildParts(e,u,o){
       const card=x=>{const me=x.id===e.id,nm=x.nama||x.username||"-",ds=dsName(x);
         return `<div class="og-wrap"><div class="og-node${me?" og-me":""}${x.id===ctx.hl?" og-hl":""}" data-ogid="${E_(x.id)}"${clickOf(x,me)}><span class="og-av">${avOf(x)}</span><b class="og-nm">${E_(nm)}</b>${ds?`<small class="og-sb">${E_(ds)}</small>`:""}${me?'<em class="og-you">Anda</em>':""}</div></div>`};
       const pill=x=>{const me=x.id===e.id,nm=x.nama||x.username||"-",ds=dsName(x);
-        return `<div class="og-p${me?" og-me":""}${x.id===ctx.hl?" og-hl":""}" data-ogid="${E_(x.id)}"${clickOf(x,me)}><span class="og-pav">${avOf(x)}</span><span class="og-pnm">${E_(nm)}${me?' <em class="og-you">Anda</em>':""}${ds?`<small class="og-psb">${E_(ds)}</small>`:""}</span></div>`};
+        return `<div class="og-p${me?" og-me":""}${x.id===ctx.hl?" og-hl":""}" title="${E_(nm+(ds?" · "+ds:""))}" data-ogid="${E_(x.id)}"${clickOf(x,me)}><span class="og-pav">${avOf(x)}</span><span class="og-pnm">${E_(nm)}${me?' <em class="og-you">Anda</em>':""}${ds?`<small class="og-psb">${E_(ds)}</small>`:""}</span></div>`};
       const CAP_CARD=30,CAP_PILL=24;
       const sortMe=(arr)=>arr.slice().sort((a,b)=>(b.id===e.id)-(a.id===e.id));
       /* ===== Hirarki RM > BM > Supervisor > anggota (khusus dept yang pakai kolom RM/BM/Mentor-SPV) ===== */
@@ -8395,7 +8395,7 @@ function pfBuildParts(e,u,o){
           const gm=new Map();H.orphans.forEach(x=>{const k=low(lvName(x));if(!gm.has(k))gm.set(k,{name:lvName(x),emps:[]});gm.get(k).emps.push(x)});
           const gs=[...gm.values()].sort((a,b)=>lvRank(a.name)-lvRank(b.name)||a.name.localeCompare(b.name,"id"));
           h+=`<i class="og-ln og-ln-s"></i><div class="og-grow">`+gs.map((g,gi)=>{const k=ctx.di+":o:"+gi,all=ctx.more.has(k);const list=all?g.emps:sortMe(g.emps).slice(0,CAP_PILL);
-            return `<div class="og-grp"><span class="og-lvpill">${E_(g.name)} (belum terhubung) <em>${g.emps.length}</em></span><div class="og-pl">${list.map(pill).join("")}</div>`
+            return `<div class="og-grp"><span class="og-lvpill">${E_(g.name)} (belum terhubung) <em>${g.emps.length}</em></span><div class="og-pl" style="--c:${g.emps.length>24?4:Math.min(g.emps.length,3)}">${list.map(pill).join("")}</div>`
               +(g.emps.length>CAP_PILL?`<button type="button" class="og-more" onclick="window.__ogAct('${uid}','m','${k}')">${all?"Ringkas":"Tampilkan "+(g.emps.length-CAP_PILL)+" lainnya"}</button>`:"")+`</div>`}).join("")+`</div>`;
         }
         return h};
@@ -8415,7 +8415,7 @@ function pfBuildParts(e,u,o){
             h+=`<div class="og-grow">`+tier.groups.map((g,gi)=>{
               const k=ctx.di+":"+ti+":"+gi,all=ctx.more.has(k);
               const list=all?g.emps:sortMe(g.emps).slice(0,CAP_PILL);
-              return `<div class="og-grp"><span class="og-lvpill">${E_(g.name)} <em>${g.emps.length}</em></span><div class="og-pl">${list.map(pill).join("")}</div>`
+              return `<div class="og-grp"><span class="og-lvpill">${E_(g.name)} <em>${g.emps.length}</em></span><div class="og-pl" style="--c:${g.emps.length>24?4:Math.min(g.emps.length,3)}">${list.map(pill).join("")}</div>`
                 +(g.emps.length>CAP_PILL?`<button type="button" class="og-more" onclick="window.__ogAct('${uid}','m','${k}')">${all?"Ringkas":"Tampilkan "+(g.emps.length-CAP_PILL)+" lainnya"}</button>`:"")+`</div>`}).join("")+`</div>`;
           }
         });
@@ -8669,6 +8669,12 @@ html.dark .og-av{border-color:#1b2440}html.dark .og-ln,html.dark .og-kid::before
 .og-pm{font-style:normal;font-weight:900;width:16px;height:16px;line-height:15px;text-align:center;border-radius:999px;background:#fff;color:var(--th-500);font-size:12px}
 .og-dept.og-act{opacity:1;outline:2px solid var(--th-300,#93c5fd);outline-offset:2px}
 .og-dept.og-mydept{box-shadow:0 0 0 2px #fbbf24,0 2px 5px rgba(15,23,42,.2)}
+.og-card .og-grp .og-pl{display:grid;grid-template-columns:repeat(var(--c,3),minmax(200px,1fr));gap:6px 8px;justify-items:stretch;justify-content:stretch;width:100%}
+.og-card .og-grp .og-p{min-width:0;border-radius:12px}
+.og-card .og-grp .og-pnm{min-width:0;flex:1;overflow:hidden}
+.og-card .og-grp .og-pnm,.og-card .og-grp .og-psb{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.og-card .og-grp{max-width:none}
+@media(max-width:700px){.og-card .og-grp .og-pl{grid-template-columns:repeat(auto-fill,minmax(170px,1fr))}}
 .og-dpanel{display:flex;flex-direction:column;align-items:center;width:100%;max-width:760px}
 .og-dtitle{font-size:11px;font-weight:800;color:#1e293b;margin-bottom:10px}
 .og-dtitle em{font-style:normal;font-weight:600;color:#64748b;margin-left:6px}
@@ -8852,12 +8858,12 @@ html.dark .og-grp{border-color:#334166}
 .og-gl{display:flex;flex-wrap:wrap;justify-content:center;gap:8px;max-width:980px}
 .og-dept.og-oth{background:transparent;color:var(--th-500);border:1.5px dashed var(--th-500);box-shadow:none;opacity:1;justify-content:center;font-weight:800}
 .og-dept.og-oth:hover{background:rgb(var(--th-500-rgb) / .1)}
-.og-grp .og-pl{display:grid;grid-template-columns:repeat(var(--c,3),minmax(200px,1fr));gap:6px 8px;justify-content:stretch;justify-items:stretch;width:100%}
-.og-grp .og-p{min-width:0;border-radius:12px}
-.og-grp .og-pnm{min-width:0;flex:1;overflow:hidden}
-.og-grp .og-pnm,.og-grp .og-psb{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.og-grp{max-width:none}
-@media(max-width:700px){.og-grp .og-pl{grid-template-columns:repeat(auto-fill,minmax(180px,1fr))}}
+#org-adm-body .og-grp .og-pl{display:grid;grid-template-columns:repeat(var(--c,3),minmax(200px,1fr));gap:6px 8px;justify-content:stretch;justify-items:stretch;width:100%}
+#org-adm-body .og-grp .og-p{min-width:0;border-radius:12px}
+#org-adm-body .og-grp .og-pnm{min-width:0;flex:1;overflow:hidden}
+#org-adm-body .og-grp .og-pnm,#org-adm-body .og-grp .og-psb{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#org-adm-body .og-grp{max-width:none}
+@media(max-width:700px){#org-adm-body .og-grp .og-pl{grid-template-columns:repeat(auto-fill,minmax(180px,1fr))}}
 .og-gpanel{display:flex;flex-direction:column;align-items:center;width:100%}
 .og-adm-empty{text-align:center;color:#94a3b8;font-size:12px;padding:36px 12px}
 html.dark .og-adm-b{background:#1b2440;border-color:#26304a;color:#cbd5e1}
