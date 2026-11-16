@@ -8850,6 +8850,14 @@ html.dark .og-grp{border-color:#334166}
 .og-adm-sel{font-family:inherit;font-size:11px;font-weight:700;border:1px solid #e2e8f0;border-radius:12px;padding:7px 10px;min-width:220px;max-width:100%;background:#fff;color:#334155;outline:none}
 .og-adm-sel:focus{border-color:var(--th-500)}
 .og-gl{display:flex;flex-wrap:wrap;justify-content:center;gap:8px;max-width:980px}
+.og-dept.og-oth{background:transparent;color:var(--th-500);border:1.5px dashed var(--th-500);box-shadow:none;opacity:1;justify-content:center;font-weight:800}
+.og-dept.og-oth:hover{background:rgb(var(--th-500-rgb) / .1)}
+.og-grp .og-pl{display:grid;grid-template-columns:repeat(var(--c,3),minmax(200px,1fr));gap:6px 8px;justify-content:stretch;justify-items:stretch;width:100%}
+.og-grp .og-p{min-width:0;border-radius:12px}
+.og-grp .og-pnm{min-width:0;flex:1;overflow:hidden}
+.og-grp .og-pnm,.og-grp .og-psb{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.og-grp{max-width:none}
+@media(max-width:700px){.og-grp .og-pl{grid-template-columns:repeat(auto-fill,minmax(180px,1fr))}}
 .og-gpanel{display:flex;flex-direction:column;align-items:center;width:100%}
 .og-adm-empty{text-align:center;color:#94a3b8;font-size:12px;padding:36px 12px}
 html.dark .og-adm-b{background:#1b2440;border-color:#26304a;color:#cbd5e1}
@@ -8897,10 +8905,11 @@ html.dark .og-adm-sel{background:#1b2440;border-color:#26304a;color:#e2e8f0}
   const ROOT_ICON={all:"fa-globe",co:"fa-building",dept:"fa-sitemap",div:"fa-diagram-project"};
   const LV_ICON={co:"fa-building",dept:"fa-sitemap"};
   const LV_FN={co:function(r){return r.co},dept:function(r){return r.dept}};
+  const LV_OTH={co:"perusahaan lain",dept:"departemen lain"};
   const ST=window.__ogAdm=window.__ogAdm||{};
   if(!ST.mode)ST.mode="all";
   if(ST.val==null)ST.val="";
-  ST.open=ST.open||{};ST.more=ST.more||{};ST.res={};ST.where={};if(ST.q==null)ST.q="";ST.hl=ST.hl||null;ST.sres=[];
+  ST.open=ST.open||{};ST.expand=ST.expand||{};ST.more=ST.more||{};ST.res={};ST.where={};if(ST.q==null)ST.q="";ST.hl=ST.hl||null;ST.sres=[];
   let lastSig="",umap=null;
 
   function divLabel(k){
@@ -8949,7 +8958,7 @@ html.dark .og-adm-sel{background:#1b2440;border-color:#26304a;color:#e2e8f0}
   }
   function pill(x){
     const nm=x.nama||x.username||"-",ds=String(x.designation||"").trim();
-    return '<div class="og-p'+(x.id===ST.hl?' og-hl':'')+'" data-ogid="'+E(x.id)+'"'+clickOf(x)+'><span class="og-pav">'+avOf(x)+'</span><span class="og-pnm">'+E(nm)+(ds?'<small class="og-psb">'+E(ds)+'</small>':"")+'</span></div>';
+    return '<div class="og-p'+(x.id===ST.hl?' og-hl':'')+'" title="'+E(nm+(ds?' · '+ds:''))+'" data-ogid="'+E(x.id)+'"'+clickOf(x)+'><span class="og-pav">'+avOf(x)+'</span><span class="og-pnm">'+E(nm)+(ds?'<small class="og-psb">'+E(ds)+'</small>':"")+'</span></div>';
   }
   function moreBtn(k,all,n){return '<button type="button" class="og-more" data-m="'+E(k)+'" onclick="window.__ogAdmMore(this)">'+(all?"Ringkas":"Tampilkan "+n+" lainnya")+'</button>'}
 
@@ -8969,12 +8978,26 @@ html.dark .og-adm-sel{background:#1b2440;border-color:#26304a;color:#e2e8f0}
     const set=function(a){return new Set(a.map(function(x){return x.id}))},hs=set(heads),ms=set(mgrs),ss=set(spvs);
     const pick=function(raw,s){const r=resolve(raw);return r&&s.has(r.id)?r:null};
     const add=function(m,k,v){if(!m.has(k))m.set(k,[]);m.get(k).push(v)};
-    const headKids=new Map(),mgrKids=new Map(),staffOfSpv=new Map(),staffOfBm=new Map();
+    const headKids=new Map(),mgrKids=new Map(),staffOfSpv=new Map(),staffOfBm=new Map(),headSpv=new Map(),staffOfHead=new Map();
     const unMgr=[],unSpv=[],orphans=[];
-    mgrs.forEach(function(m){const h=pick(m.rm,hs);if(h)add(headKids,h.id,m);else unMgr.push(m)});
-    spvs.forEach(function(s){const m=pick(s.bm,ms);if(m)add(mgrKids,m.id,s);else unSpv.push(s)});
-    rest.forEach(function(x){const sp=pick(x.mentor,ss);if(sp){add(staffOfSpv,sp.id,x);return}
-      const m=pick(x.bm,ms)||pick(x.mentor,ms);if(m){add(staffOfBm,m.id,x);return}orphans.push(x)});
+    /* Atasan dicari dari salah satu kolom Mentor/SPV, BM, RM (yang bisa dikenali sebagai karyawan), diambil yang levelnya paling dekat di atas orang itu. Kolom kosong / "non BM" otomatis dilewati. */
+    const rk=function(p){return tierOf(String(p.posisi||"").trim()||"Tanpa Level")};
+    const parentOf=function(x){
+      const t=rk(x);let best=null,bt=-1;
+      [x.mentor,x.bm,x.rm].forEach(function(raw){
+        const r=resolve(raw);if(!r||r.id===x.id)return;
+        const rt=rk(r)<=1?1:rk(r);
+        if(rt>=t)return;
+        if(rt>bt){best=r;bt=rt}});
+      return best};
+    emps.forEach(function(x){
+      const t=rk(x);if(t<=1)return;
+      const p=parentOf(x);
+      if(!p){if(t===2)unMgr.push(x);else if(t===3)unSpv.push(x);else orphans.push(x);return}
+      const pt=rk(p)<=1?1:rk(p);
+      if(pt===1){if(t===2)add(headKids,p.id,x);else if(t===3)add(headSpv,p.id,x);else add(staffOfHead,p.id,x)}
+      else if(pt===2){if(t===3)add(mgrKids,p.id,x);else add(staffOfBm,p.id,x)}
+      else add(staffOfSpv,p.id,x)});
     heads.sort(byName);unMgr.sort(byName);unSpv.sort(byName);
     const toggle=function(id,list,label){
       if(!list||!list.length)return "";
@@ -8987,10 +9010,16 @@ html.dark .og-adm-sel{background:#1b2440;border-color:#26304a;color:#e2e8f0}
       let s=card(m);
       if(sp.length||st.length)s+='<i class="og-ln og-ln-s"></i>'+(sp.length?'<span class="og-lvpill">Supervisor <em>'+sp.length+'</em></span>':"")+'<div class="og-sl">'+sp.map(spvItem).join("")+'</div>'+toggle(m.id,st,"Langsung di bawah BM");
       return s};
-    const kidsRow=function(list){return '<div class="og-hk">'+list.map(function(m){return '<div class="og-hc">'+mgrCol(m)+'</div>'}).join("")+'</div>'};
+    const headCol=function(x){return rk(x)===2?mgrCol(x):card(x)+toggle(x.id,staffOfSpv.get(x.id),"Anggota")};
+    const kidsRow=function(list,extra){return '<div class="og-hk">'+list.map(function(m){return '<div class="og-hc">'+headCol(m)+'</div>'}).join("")+(extra?'<div class="og-hc">'+extra+'</div>':"")+'</div>'};
+    /* Kolom "Non BM": Supervisor/Staff yang BM-nya kosong atau bukan BM, tapi RM-nya ada -> langsung di bawah RM */
+    const nonBmCol=function(hid){
+      const sp=(headSpv.get(hid)||[]).slice().sort(byName),st=staffOfHead.get(hid)||[];
+      if(!sp.length&&!st.length)return "";
+      return '<span class="og-lvpill">Non BM <em>'+(sp.length+st.length)+'</em></span>'+(sp.length?'<div class="og-hk">'+sp.map(function(x){return '<div class="og-hc">'+card(x)+toggle(x.id,staffOfSpv.get(x.id),"Anggota")+'</div>'}).join("")+'</div>':"")+toggle(hid,st,"Staff langsung di bawah RM")};
     let roots="";
     if(heads.length){
-      roots+=heads.map(function(hd){const k=(headKids.get(hd.id)||[]).slice().sort(byName);return '<div class="og-hb">'+card(hd)+(k.length?kidsRow(k):"")+'</div>'}).join("");
+      roots+=heads.map(function(hd){const k=(headKids.get(hd.id)||[]).slice().sort(byName),nb=nonBmCol(hd.id);return '<div class="og-hb">'+card(hd)+((k.length||nb)?kidsRow(k,nb):"")+'</div>'}).join("");
       if(unMgr.length)roots+='<div class="og-hb"><span class="og-lvpill">Belum terhubung ke RM <em>'+unMgr.length+'</em></span>'+kidsRow(unMgr)+'</div>';
     }else if(unMgr.length){roots+='<div class="og-hb">'+kidsRow(unMgr)+'</div>'}
     let h='<div class="og-hroot">'+roots+'</div>';
@@ -9001,7 +9030,7 @@ html.dark .og-adm-sel{background:#1b2440;border-color:#26304a;color:#e2e8f0}
       h+='<i class="og-ln og-ln-s"></i><div class="og-grow">'+gs.map(function(g,gi){
         g.emps.sort(byName);
         const k=path+"|o:"+gi,all=!!ST.more[k],list=all?g.emps:g.emps.slice(0,CAP_PILL);g.emps.forEach(function(x){ST.where[x.id]=k});
-        return '<div class="og-grp"><span class="og-lvpill">'+E(g.name)+' (belum terhubung) <em>'+g.emps.length+'</em></span><div class="og-pl">'+list.map(pill).join("")+'</div>'
+        return '<div class="og-grp"><span class="og-lvpill">'+E(g.name)+' (belum terhubung) <em>'+g.emps.length+'</em></span><div class="og-pl" style="--c:'+(g.emps.length>24?4:Math.min(g.emps.length,3))+'">'+list.map(pill).join("")+'</div>'
           +(g.emps.length>CAP_PILL?moreBtn(k,all,g.emps.length-CAP_PILL):"")+'</div>'}).join("")+'</div>';
     }
     return h;
@@ -9029,7 +9058,7 @@ html.dark .og-adm-sel{background:#1b2440;border-color:#26304a;color:#e2e8f0}
         h+='<div class="og-grow">'+tier.groups.map(function(g,gi){
           const k=path+"|"+ti+":"+gi,all=!!ST.more[k];g.emps.forEach(function(x){ST.where[x.id]=k});
           const list=all?g.emps:g.emps.slice(0,CAP_PILL);
-          return '<div class="og-grp"><span class="og-lvpill">'+E(g.name)+' <em>'+g.emps.length+'</em></span><div class="og-pl">'+list.map(pill).join("")+'</div>'
+          return '<div class="og-grp"><span class="og-lvpill">'+E(g.name)+' <em>'+g.emps.length+'</em></span><div class="og-pl" style="--c:'+(g.emps.length>24?4:Math.min(g.emps.length,3))+'">'+list.map(pill).join("")+'</div>'
             +(g.emps.length>CAP_PILL?moreBtn(k,all,g.emps.length-CAP_PILL):"")+'</div>'}).join("")+'</div>';
       }
     });
@@ -9040,15 +9069,20 @@ html.dark .og-adm-sel{background:#1b2440;border-color:#26304a;color:#e2e8f0}
     const lv=chain[0],gs=group(rows,LV_FN[lv]);
     if(!gs.length)return "";
     let ok=ST.open[path];
-    if(ok===undefined){let big=gs[0];gs.forEach(function(g){if(g.rows.length>big.rows.length)big=g});ok=big.key}
+    if(ok===undefined)ok="";/* default: semua tertutup, user yang buka sendiri */
     const cur=gs.find(function(g){return g.key===ok});
     ST.res[path]=cur?cur.key:"";
-    let h='<i class="og-ln og-ln-s"></i><div class="og-gl">'+gs.map(function(g){
+    const fold=!!cur&&!ST.expand[path];/* ada yang terpilih -> yang lain dilipat, supaya panel di bawah jelas anak dari yang terpilih */
+    const chip=function(g){
       const on=!!cur&&cur.key===g.key;
-      return '<button type="button" class="og-dept'+(on?" og-act":"")+'" title="'+E(g.name)+'" data-p="'+E(path)+'" data-k="'+E(g.key)+'" onclick="window.__ogAdmPick(this)"><span class="og-dn">'+E(g.name)+'</span><em>'+g.rows.length+'</em><i class="og-pm">'+(on?"&minus;":"+")+'</i></button>'}).join("")+'</div>';
+      return '<button type="button" class="og-dept'+(on?" og-act":"")+'" title="'+E(g.name)+'" data-p="'+E(path)+'" data-k="'+E(g.key)+'" onclick="window.__ogAdmPick(this)"><span class="og-dn">'+E(g.name)+'</span><em>'+g.rows.length+'</em><i class="og-pm">'+(on?"&minus;":"+")+'</i></button>'};
+    const oth=function(txt){return '<button type="button" class="og-dept og-oth" data-p="'+E(path)+'" onclick="window.__ogAdmFold(this)"><span class="og-dn">'+txt+'</span></button>'};
+    let h='<i class="og-ln og-ln-s"></i><div class="og-gl">'+(fold?chip(cur):gs.map(chip).join(""))
+      +(fold&&gs.length>1?oth("+ "+(gs.length-1)+" "+LV_OTH[lv]):"")
+      +(!fold&&cur&&gs.length>1?oth("&minus; Ciutkan"):"")+'</div>';
     if(cur){
       crumb.push({t:cur.name,i:LV_ICON[lv]});
-      h+='<i class="og-ln og-ln-s"></i><div class="og-gpanel">'+level(cur.rows,chain.slice(1),path+"/"+cur.key,crumb)+'</div>';
+      if(fold)h+='<i class="og-ln og-ln-s"></i><div class="og-gpanel">'+level(cur.rows,chain.slice(1),path+"/"+cur.key,crumb)+'</div>';
     }
     return h;
   }
@@ -9097,7 +9131,7 @@ html.dark .og-adm-sel{background:#1b2440;border-color:#26304a;color:#e2e8f0}
     if(!id){const f=(ST.sres||[])[0];if(!f)return;id=f.e.id}
     const r=rowsAll().find(function(z){return z.e.id===id});if(!r)return;
     const co=low(r.co),dp=low(r.dept);
-    ST.open={};ST.more={};
+    ST.open={};ST.more={};ST.expand={};
     if(ST.mode==="all"){ST.open[""]=co;ST.open["/"+co]=dp}
     else if(ST.mode==="co"){ST.val=co;ST.open[""]=dp}
     else if(ST.mode==="dept"){ST.val=dp;ST.open[""]=co}
@@ -9109,14 +9143,16 @@ html.dark .og-adm-sel{background:#1b2440;border-color:#26304a;color:#e2e8f0}
     const tg=body&&body.querySelector('[data-ogid="'+String(id).replace(/"/g,"")+'"]');
     if(tg&&tg.scrollIntoView)tg.scrollIntoView({behavior:"smooth",block:"center",inline:"center"});
   };
-  window.__ogAdmMode=function(m){if(ST.mode===m)return;ST.mode=m;ST.val="";ST.open={};ST.more={};render();window.__ogCenter()};
-  window.__ogAdmVal=function(v){ST.val=v;ST.open={};ST.more={};render();window.__ogCenter()};
+  window.__ogAdmMode=function(m){if(ST.mode===m)return;ST.mode=m;ST.val="";ST.open={};ST.more={};ST.expand={};render();window.__ogCenter()};
+  window.__ogAdmVal=function(v){ST.val=v;ST.open={};ST.more={};ST.expand={};render();window.__ogCenter()};
   window.__ogAdmPick=function(el){
     const p=el.getAttribute("data-p")||"",k=el.getAttribute("data-k")||"";
-    ST.open[p]=(ST.res[p]===k)?"":k;render();window.__ogCenter()};
+    ST.open[p]=(ST.res[p]===k)?"":k;ST.expand[p]=false;render();window.__ogCenter()};
+  window.__ogAdmFold=function(el){const p=el.getAttribute("data-p")||"";ST.expand[p]=!ST.expand[p];render();window.__ogCenter()};
   window.__ogAdmMore=function(el){const k=el.getAttribute("data-m")||"";ST.more[k]=!ST.more[k];render()};
   window.__ogCenter=function(){const go=function(){const sc=document.querySelector("#org-adm-body .og-scroll");if(sc&&sc.scrollWidth>sc.clientWidth)sc.scrollLeft=Math.round((sc.scrollWidth-sc.clientWidth)/2)};go();requestAnimationFrame(go);setTimeout(go,150)};
   window.openOrgStructure=function(){
+    ST.open={};ST.more={};ST.expand={};ST.hl=null;ST.q="";
     render();window.openModal("modal-org-structure");
     const b=document.getElementById("org-adm-body");if(b)b.scrollTop=0;
     window.__ogCenter();
