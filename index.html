@@ -17583,12 +17583,15 @@ function rangeLabel(g){var s=pYmd(g.date),e=pYmd(g.endDate);if(!s)return"-";if(!
 
 /* ---------- template checklist: poin checklist (judul) + sub poin ---------- */
 var DEF_TPL=[
-["Area & Kebersihan (5S)","Area kerja rapi, bersih, dan tertata","Barang / alat berlabel dan diletakkan di tempatnya","Tidak ada barang tak terpakai yang menumpuk"],
-["Proses & SOP","SOP tersedia dan mudah diakses di lokasi kerja","Tim menjalankan proses sesuai SOP","Alur kerja berjalan lancar tanpa hambatan berulang"],
-["Keselamatan & Kenyamanan Kerja","APAR / P3K tersedia dan layak pakai","Jalur keluar bebas hambatan","APD / seragam dipakai sesuai aturan"],
-["Tim & Kompetensi","Karyawan memahami tugas, target, dan standar kerjanya","Briefing / pembelajaran rutin berjalan","Kebutuhan training baru teridentifikasi dan dicatat"],
-["Target & Tindak Lanjut","Target harian / mingguan terpantau dan terlihat tim","Papan informasi / visual kinerja ter-update","Temuan Genba sebelumnya sudah ditindaklanjuti"]];
-function defTpl(){return DEF_TPL.map(function(c,i){return{id:"t"+i,title:c[0],subs:c.slice(1).map(function(t,j){return{id:"t"+i+"_"+j,text:t}})}})}
+["Paham Tugas & Tanggung Jawab Sales","Sales dapat menyebutkan tugas utamanya (prospecting, follow up, presentasi, closing, after sales)","Sales memahami target hariannya (Database, follow up, visit)","Sales tahu SOP follow up (berapa kali follow up, teknik, dan intervalnya)","Sales mengetahui indikator kinerja yang dinilai (KPI)","Sales memahami standar pelayanan terhadap konsumen","Sales memahami aturan administrasi (UTJ, Booking, BIC, Pemberkasan KPR, Akad, dll)"],
+["Aktivitas Harian Sales (Process Discipline)","Sales memahami jadwal tugas kerja hari ini (canvas, open booth, online, followup dll)","Sales melakukan aktivitas prospecting (online & Offline) dan follow up sesuai standar dan jadwalnya","Sales mendapatkan 3 database aktif WA per hari","Sales mencatat (input system) semua hasil aktivitas hariannya","Sales meng-update status prospek (hot, warm, cold) sesuai jadwal","Sales menyelesaikan target aktivitas hariannya"],
+["Penguasaan Produk & Kemampuan Presentasi","Sales memahami detail produk (Harga, spesifikasi, luasan, tipe unit, Stok unit, promo)","Sales menguasai skema pembayaran (Cash, Cash Tahap, KPR, bunga, dan simulasi cicilan)","Sales mampu menjelaskan keunggulan proyek dengan jelas","Sales menggunakan teknik penjelasan yang meyakinkan"],
+["Kualitas Follow Up & Komunikasi","Respons WA < 30 menit","Follow up sesuai script / teknik standar","Komunikasi sopan, ramah, profesional","Sales mampu menangani keberatan (handling objection)"],
+["Alat Kerja & Kesiapan Marketing Tools","Sales berpenampilan sesuai standar Sales (Rapi, bersih, tidak beraroma mengganggu, memakai ID Card dan pakaian Layak)","Brosur lengkap & update","Price list terbaru tersedia","Site plan dengan tanda sold/reserved (scarcity)","Handphone memadai untuk proses input data konsumen"],
+["Area Kerja & Marketing Gallery","Meja kerja rapi & bersih","Display brosur, price list, dan media promosi tertata rapi","Ruang tunggu konsumen bersih dan nyaman","Snack & minuman tersedia untuk konsumen"],
+["Kesiapan Lokasi / Unit Contoh","Jalur menuju unit rapi dan aman","Unit contoh rapi dan siap kunjungan","Material promosi sudah dipasang di unit contoh","Unit diberi penjelasan fitur secara lengkap"],
+["Identifikasi Kelalaian & Waste","Brosur dicetak tapi tidak digunakan","Banner promosi tidak terpasang dengan baik","Follow up terlewat (tidak dilakukan)","Ada data prospek yang tidak ter-update","Penjelasan sales tidak akurat","Konsumen menunggu terlalu lama"]];
+function defTpl(){return DEF_TPL.map(function(c,i){return{id:"gs"+i,title:c[0],subs:c.slice(1).map(function(t,j){return{id:"gs"+i+"_"+j,text:t}})}})}
 /* mendukung template format lama (datar: {cat,text}) */
 function normTpl(raw){
   var out=[],map={};
@@ -17597,11 +17600,16 @@ function normTpl(raw){
     if(!x.text)return;var k=x.cat||"Umum";if(!map[k]){map[k]={id:uid("t"),title:k,subs:[]};out.push(map[k])}map[k].subs.push({id:x.id||uid("s"),text:x.text})});
   return out}
 /* banyak template: [{id,name,sections:[{id,title,subs:[{id,text}]}]}]. Data lama (tanpa nama) -> "Template Umum" */
+/* "Genba Sales" = template bawaan (poin dari Form Genba HR Support Sales & Project). Selalu tersedia di urutan pertama
+   (jadi default saat membuat jadwal) kecuali sudah ada template bernama sama yang tersimpan. */
+var GS_NAME="Genba Sales";
+function gsTpl(){return{id:"tpl_genba_sales",name:GS_NAME,sections:defTpl()}}
 function getTemplates(){
-  var raw=items(TPL),tp=raw.filter(function(t){return t&&Array.isArray(t.sections)});
-  if(tp.length)return tp.map(function(t){return{id:t.id||uid("tp"),name:String(t.name||"").trim()||"Template",sections:normTpl(t.sections)}});
-  var legacy=normTpl(raw);
-  return[{id:"tpl_default",name:"Template Umum",sections:legacy.length?legacy:defTpl()}]}
+  var raw=items(TPL),tp=raw.filter(function(t){return t&&Array.isArray(t.sections)}),list;
+  if(tp.length)list=tp.map(function(t){return{id:t.id||uid("tp"),name:String(t.name||"").trim()||"Template",sections:normTpl(t.sections)}});
+  else{var legacy=normTpl(raw);list=legacy.length?[{id:"tpl_default",name:"Template Umum",sections:legacy}]:[]}
+  if(!list.some(function(t){return String(t.name||"").trim().toLowerCase()===GS_NAME.toLowerCase()}))list.unshift(gsTpl());
+  return list}
 function findTpl(id){var a=getTemplates();return a.find(function(t){return t.id===id})||a[0]}
 function cloneTpl(id){return findTpl(id).sections.map(function(c){return{id:uid("ck"),title:c.title,note:"",subs:c.subs.map(function(q){return{id:uid("sb"),text:q.text,res:"",evidence:""}})}})}
 /* checklist Genba format lama (datar) -> bertingkat. Aman dipanggil berulang. */
