@@ -18146,7 +18146,7 @@ var DEF_TPL=[
 ["Alat Kerja & Kesiapan Marketing Tools","Sales berpenampilan sesuai standar Sales (Rapi, bersih, tidak beraroma mengganggu, memakai ID Card dan pakaian Layak)","Brosur lengkap & update","Price list terbaru tersedia","Site plan dengan tanda sold/reserved (scarcity)","Handphone memadai untuk proses input data konsumen"],
 ["Area Kerja & Marketing Gallery","Meja kerja rapi & bersih","Display brosur, price list, dan media promosi tertata rapi","Ruang tunggu konsumen bersih dan nyaman","Snack & minuman tersedia untuk konsumen"],
 ["Kesiapan Lokasi / Unit Contoh","Jalur menuju unit rapi dan aman","Unit contoh rapi dan siap kunjungan","Material promosi sudah dipasang di unit contoh","Unit diberi penjelasan fitur secara lengkap"],
-["Identifikasi Kelalaian & Waste","Brosur dicetak tapi tidak digunakan","Banner promosi tidak terpasang dengan baik","Follow up terlewat (tidak dilakukan)","Ada data prospek yang tidak ter-update","Penjelasan sales tidak akurat","Konsumen menunggu terlalu lama"]];
+["Kelalaian, Waste & Potensi Fraud","Tidak ada pungutan di luar ketentuan resmi (UTJ/booking fee hanya lewat kanal dan kuitansi resmi)","Diskon, promo, dan janji ke konsumen sesuai program resmi perusahaan","Follow up dilakukan tepat waktu (tidak ada yang terlewat)","Data prospek ter-update (tidak ada yang tertinggal)","Penjelasan sales akurat","Konsumen dilayani tanpa menunggu terlalu lama"]];
 function defTpl(){return DEF_TPL.map(function(c,i){return{id:"gs"+i,title:c[0],subs:c.slice(1).map(function(t,j){return{id:"gs"+i+"_"+j,text:t}})}})}
 /* mendukung template format lama (datar: {cat,text}) */
 function normTpl(raw){
@@ -18358,9 +18358,11 @@ function listHtml(){
   all.forEach(function(g){var s=stats(g);ok+=s.ok;ng+=s.ng;openF+=s.open;lateF+=s.late});
   var comp=(ok+ng)?Math.round(ok/(ok+ng)*100)+"%":"-";
   var up=all.filter(function(g){return statusOf(g)==="planned"}).length;
+  var dn=all.filter(function(g){return statusOf(g)==="done"}).length;
   return'<div class="gb-hero gb-hero-k"><div><h1><i class="fas fa-magnifying-glass-location"></i> Kelola Genba</h1><p>Jadwalkan Genba, isi checklist di lapangan, catat hasil dan temuan, lalu pantau tindak lanjutnya sampai tuntas. Jadwal otomatis tampil di Kalender Training.</p></div>'
    +'<div class="gb-kpis">'
    +'<div class="gb-kpi gb-kc'+kon("all")+'" role="button" tabindex="0" data-gb="kpi:all" title="Tampilkan semua jadwal Genba"><span>Total Genba</span><b>'+all.length+'</b><small>'+E(periodLabel())+'</small></div>'
+   +'<div class="gb-kpi gb-kc'+kon("done")+'" role="button" tabindex="0" data-gb="kpi:done" title="Lihat Genba yang sudah terlaksana"><span>Terlaksana</span><b>'+dn+'</b><small>'+(all.length?Math.round(dn/all.length*100)+"% dari total":"belum ada jadwal")+'</small></div>'
    +'<div class="gb-kpi gb-kc'+kon("planned")+'" role="button" tabindex="0" data-gb="kpi:planned" title="Lihat Genba yang akan datang"><span>Akan Datang</span><b>'+up+'</b><small>belum dimulai</small></div>'
    +'<div class="gb-kpi gb-kc'+kon("overdue")+'" role="button" tabindex="0" data-gb="kpi:overdue" title="Lihat Genba yang perlu laporan"><span>Perlu Laporan</span><b class="'+(late?"gb-kw":"")+'">'+late+'</b><small>lewat tanggal, belum ditandai selesai</small></div>'
    +'<div class="gb-kpi gb-kc'+kon("open")+'" role="button" tabindex="0" data-gb="kpi:open" title="Lihat temuan yang belum selesai"><span>Temuan Terbuka</span><b class="'+(openF?"gb-kd":"")+'">'+openF+'</b><small>'+(lateF?lateF+" lewat target":"tidak ada yang telat")+'</small></div>'
