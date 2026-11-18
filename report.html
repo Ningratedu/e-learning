@@ -18253,7 +18253,7 @@ function css(){
 +".gb-ct{font-size:12.5px;font-weight:600;line-height:1.4;margin-bottom:7px}.gb-cc{display:flex;gap:6px;flex-wrap:wrap;align-items:center}"
 +".gb-seg{display:inline-flex;border:1px solid var(--ln);border-radius:10px;overflow:hidden}.gb-seg button{font:inherit;font-size:11px;font-weight:700;padding:5px 10px;border:0;border-right:1px solid var(--ln);background:var(--b);color:var(--mu);cursor:pointer}.gb-seg button:last-child{border-right:0}"
 +".gb-seg button.on.ok{background:#10b981;color:#fff}.gb-seg button.on.ng{background:#e11d48;color:#fff}.gb-seg button.on.na{background:#64748b;color:#fff}"
-+".gb-cn{flex:1;min-width:140px;padding:5px 9px;font-size:12px}.gb-tf{display:none}.gb-ck.ng .gb-tf{display:inline-flex}"
++".gb-cn{flex:1;min-width:140px;padding:5px 9px;font-size:12px}.gb-tf{display:none}.gb-pl{cursor:pointer;white-space:nowrap}.gb-pl input{display:none}.gb-phs{display:flex;flex-wrap:wrap;gap:6px;margin-top:7px}.gb-phs:empty{display:none}.gb-ph{position:relative;width:64px;height:64px;border-radius:10px;overflow:hidden;border:1px solid var(--ln);background:var(--b2)}.gb-ph img{width:100%;height:100%;object-fit:cover;display:block}.gb-phx{position:absolute;top:2px;right:2px;width:18px;height:18px;border-radius:999px;border:0;background:rgba(15,23,42,.72);color:#fff;font-size:13px;line-height:18px;padding:0;cursor:pointer}.gb-ck.ng .gb-tf{display:inline-flex}"
 +".gb-ico{font:inherit;width:28px;height:28px;border-radius:9px;border:1px solid var(--ln);background:var(--b);color:var(--mu);cursor:pointer;display:inline-flex;align-items:center;justify-content:center;font-size:11px}.gb-ico:hover{color:#e11d48;border-color:#e11d48}"
 +".gb-fi{border:1px solid var(--ln);border-radius:14px;padding:10px 12px;margin-bottom:8px;background:var(--b)}.gb-fi p{margin:0}.gb-fi .tx{font-size:12.5px;font-weight:700;line-height:1.4;word-break:break-word}.gb-fi .mt{display:flex;gap:6px 10px;flex-wrap:wrap;align-items:center;margin-top:6px;font-size:11px;color:var(--mu);font-weight:600}"
 +".gb-fi select{font:inherit;font-size:11px;font-weight:700;border:1px solid var(--ln);border-radius:9px;padding:4px 6px;background:var(--b);color:var(--tx)}.gb-late{color:#e11d48!important;font-weight:800!important}"
@@ -18411,13 +18411,52 @@ function findingHtml(f,g,withLink){
    +'<button type="button" class="gb-ico" title="Hapus temuan" data-gb="delfind:'+E(g.id)+':'+E(f.id)+'"><i class="fas fa-trash"></i></button></div></div>'}
 
 function scoreChip(l){var q=cnt(l),g=grade(q.comp);return q.comp==null?'<span class="gb-b gb-b-mu">Belum dinilai</span>':'<span class="gb-b '+g[1]+'">'+q.comp+'% · '+q.ok+'/'+(q.ok+q.ng)+' sesuai</span>'}
+/* ---------- foto evidence per sub poin: upload langsung (Cloudinary lewat LMS_DB.uploadFile) ----------
+   Disimpan ringkas di q.ph = [path Cloudinary]. SEMUA Genba ada di satu dokumen Firestore (batas 1 MB), jadi path dipadatkan
+   dan ada pengaman ukuran. Hapus foto = lepas tautan saja (file di Cloudinary tidak ikut terhapus). */
+var PH_BASE="https://res.cloudinary.com/tmxumxfb/image/upload/",PH_MAX=6,PH_DOC_LIMIT=880000;
+function phUrl(x){return/^https?:/i.test(x)?x:PH_BASE+x}
+function phPack(u){return u.indexOf(PH_BASE)===0?u.slice(PH_BASE.length):u}
+function phThumb(x){var u=phUrl(x);return u.indexOf("/image/upload/")>0?u.replace("/image/upload/","/image/upload/w_200,h_200,c_fill,q_auto,f_auto/"):u}
+function phCount(q){var n=(q.ph||[]).length;return n?"("+n+")":""}
+function photoStrip(q){return(q.ph||[]).map(function(x,i){return'<span class="gb-ph"><a href="'+E(phUrl(x))+'" target="_blank" rel="noopener" title="Buka foto"><img src="'+E(phThumb(x))+'" data-o="'+E(phUrl(x))+'" alt="Foto evidence" loading="lazy" onerror="this.onerror=null;this.src=this.getAttribute(\'data-o\')"></a><button type="button" class="gb-phx" title="Hapus foto" aria-label="Hapus foto" data-gb="delph:'+E(q.id)+':'+i+'">×</button></span>'}).join("")}
+function docBytes(){try{return new Blob([JSON.stringify(items(GID))]).size}catch(e){return 0}}
+/* kecilkan foto HP (±5 MB) jadi ±300 KB sebelum upload; kalau gagal dikecilkan, pakai file asli */
+function shrink(file,name){return new Promise(function(res){
+  var url;try{url=URL.createObjectURL(file)}catch(e){return res(file)}
+  var im=new Image();
+  im.onload=function(){try{var w=im.naturalWidth,h=im.naturalHeight,r=Math.min(1,1600/Math.max(w,h)),c=document.createElement("canvas");
+      c.width=Math.max(1,Math.round(w*r));c.height=Math.max(1,Math.round(h*r));var x=c.getContext("2d");x.fillStyle="#fff";x.fillRect(0,0,c.width,c.height);x.drawImage(im,0,0,c.width,c.height);
+      c.toBlob(function(b){URL.revokeObjectURL(url);if(!b||(r===1&&b.size>=file.size))return res(file);res(new File([b],name,{type:"image/jpeg"}))},"image/jpeg",.8)}
+    catch(e){URL.revokeObjectURL(url);res(file)}};
+  im.onerror=function(){try{URL.revokeObjectURL(url)}catch(e){}res(file)};im.src=url})}
+function repaintPhotos(sid){try{var g=getG(ST.id),q=g&&findSub(g,sid);if(!q)return;var el=document.querySelector('[data-phs="'+sid+'"]'),n=document.querySelector('[data-phn="'+sid+'"]');if(el)el.innerHTML=photoStrip(q);if(n)n.textContent=phCount(q)}catch(e){}}
+async function addPhotos(sid,files){
+  var gid=ST.id,g=gid&&getG(gid),q=g&&findSub(g,sid);files=[].slice.call(files||[]);if(!q||!files.length)return;
+  var room=PH_MAX-(q.ph||[]).length;
+  if(room<=0){window.toast("Maksimal "+PH_MAX+" foto per sub poin. Hapus salah satu dulu kalau mau mengganti.","warn");return}
+  if(files.length>room){window.toast("Hanya "+room+" foto lagi yang bisa ditambahkan ke sub poin ini (maks "+PH_MAX+").","warn");files=files.slice(0,room)}
+  if(docBytes()>PH_DOC_LIMIT){window.toast("Data Genba sudah mendekati batas penyimpanan (1 MB). Hapus Genba lama yang tidak dipakai dulu, lalu coba lagi.","warn");return}
+  var added=[],bad=0,n=files.length;
+  for(var i=0;i<n;i++){var f=files[i];
+    if(!/^image\/(jpeg|png|webp)$/i.test(f.type||"")){bad++;continue}
+    window.toast("Mengupload foto "+(i+1)+"/"+n+"...","info");
+    try{var s=await shrink(f,Math.random().toString(36).slice(2,8)+".jpg");
+      if(s.size>10*1024*1024){bad++;continue}
+      added.push(phPack(await window.LMS_DB.uploadFile(s,"genba/"+gid)))}
+    catch(e){console.error(e);window.toast("Gagal upload foto: "+(e&&e.message||e),"error")}}
+  if(bad)window.toast(bad+" file dilewati: pakai foto JPG/PNG/WebP, maksimal 10 MB.","warn");
+  if(!added.length)return;
+  await upd(gid,function(x){var k=findSub(x,sid);if(k)k.ph=(k.ph||[]).concat(added).slice(0,PH_MAX)});
+  repaintPhotos(sid);window.toast(added.length+" foto tersimpan","success")}
 function subHtml(q){
   var r=q.res||"";
   return'<div class="gb-ck '+r+'" data-ck="'+E(q.id)+'"><div class="gb-ct">'+E(q.text)+'</div><div class="gb-cc">'
    +'<div class="gb-seg"><button type="button" class="ok'+(r==="ok"?" on":"")+'" data-gb="res:'+E(q.id)+':ok">Sesuai</button><button type="button" class="ng'+(r==="ng"?" on":"")+'" data-gb="res:'+E(q.id)+':ng">Tidak Sesuai</button><button type="button" class="na'+(r==="na"?" on":"")+'" data-gb="res:'+E(q.id)+':na">N/A</button></div>'
-   +'<input type="text" class="gb-in gb-cn" data-gb-change="evid:'+E(q.id)+'" placeholder="Evidence: link foto/dokumen atau keterangan (opsional)" value="'+E(q.evidence)+'">'
+   +'<input type="text" class="gb-in gb-cn" data-gb-change="evid:'+E(q.id)+'" placeholder="Keterangan evidence (opsional)" value="'+E(q.evidence)+'">'
+   +'<label class="gb-btn s gb-pl" title="Upload foto evidence (bisa langsung dari kamera)"><i class="fas fa-camera"></i> Foto <span data-phn="'+E(q.id)+'">'+phCount(q)+'</span><input type="file" accept="image/*" multiple data-gb-change="photo:'+E(q.id)+'"></label>'
    +'<button type="button" class="gb-btn s gb-tf" data-gb="tofind:'+E(q.id)+'"><i class="fas fa-flag"></i> Jadikan temuan</button>'
-   +'<button type="button" class="gb-ico" title="Hapus sub poin" data-gb="delsub:'+E(q.id)+'"><i class="fas fa-xmark"></i></button></div></div>'}
+   +'<button type="button" class="gb-ico" title="Hapus sub poin" data-gb="delsub:'+E(q.id)+'"><i class="fas fa-xmark"></i></button></div><div class="gb-phs" data-phs="'+E(q.id)+'">'+photoStrip(q)+'</div></div>'}
 function secHtml(c,i){
   return'<div class="gb-sec" data-sec="'+E(c.id)+'"><div class="gb-sh"><b>'+(i+1)+'. '+E(c.title)+'</b><span data-sc="'+E(c.id)+'">'+scoreChip(c.subs||[])+'</span>'
    +'<span class="gb-hb" style="margin-left:auto"><button type="button" class="gb-btn s" data-gb="addsub:'+E(c.id)+'"><i class="fas fa-plus"></i> Sub poin</button><button type="button" class="gb-ico" title="Hapus poin checklist" data-gb="delsec:'+E(c.id)+'"><i class="fas fa-trash"></i></button></span></div>'
@@ -18444,7 +18483,7 @@ function detailHtml(g){
    +'<div class="gb-card"><h3><i class="fas fa-circle-info" style="color:var(--ac)"></i> Informasi Genba</h3><div class="gb-sub"></div><div class="gb-info">'
    +infoItem("Tanggal",rangeLabel(g))+infoItem("Jam",timeLabel(g))+infoItem("Lokasi / cabang",g.location)+infoItem("PIC",g.pic)+infoItem("Tim / peserta",g.team)+infoItem("Template",g.templateName)+infoItem("Tujuan",g.objective)+infoItem("Catatan",g.note)
    +'</div><p class="gb-hint" style="margin:10px 0 0"><i class="fas fa-calendar"></i> Jadwal ini otomatis tampil di <a href="#/training-calendar/'+E(String(g.date||"").slice(0,10))+'" style="color:var(--ac)">Kalender Training</a>.</p></div>'
-   +'<div class="gb-card"><h3><i class="fas fa-list-check" style="color:var(--ac)"></i> Checklist Genba</h3><div class="gb-sub">Tiap poin checklist punya sub poin yang dinilai di lapangan, evidence (opsional), dan catatan tambahan (opsional). Sub poin “Tidak Sesuai” bisa langsung dijadikan temuan.</div><div id="gb-cklist">'+ck+'</div><div class="gb-bar" style="margin:10px 0 0">'+ckBtns+'</div></div>'
+   +'<div class="gb-card"><h3><i class="fas fa-list-check" style="color:var(--ac)"></i> Checklist Genba</h3><div class="gb-sub">Tiap poin checklist punya sub poin yang dinilai di lapangan, foto evidence (upload langsung dari kamera/galeri) atau keterangan (opsional), dan catatan tambahan (opsional). Sub poin “Tidak Sesuai” bisa langsung dijadikan temuan.</div><div id="gb-cklist">'+ck+'</div><div class="gb-bar" style="margin:10px 0 0">'+ckBtns+'</div></div>'
    +'<div class="gb-card"><h3><i class="fas fa-flag" style="color:#e11d48"></i> Temuan & Tindak Lanjut <span class="gb-b '+(s.open?"gb-b-am":"gb-b-mu")+'" id="gb-fcnt">'+s.open+' terbuka / '+fl.length+'</span></h3><div class="gb-sub">Catat apa yang ditemukan, siapa yang menindaklanjuti, dan target selesainya.</div><div id="gb-flist">'
    +(fl.map(function(f){return findingHtml(f,g,false)}).join("")||empty("fa-clipboard-check","Belum ada temuan."))+'</div><div class="gb-bar" style="margin:10px 0 0"><button type="button" class="gb-btn" data-gb="addfind"><i class="fas fa-plus"></i> Tambah Temuan</button></div></div>'
    +'<div class="gb-card"><h3><i class="fas fa-file-lines" style="color:var(--ac)"></i> Hasil & Kesimpulan Genba</h3><div class="gb-sub">Ringkas hasil kunjungan, kondisi umum, dan rekomendasi (tersimpan otomatis saat selesai mengetik).</div>'
@@ -18467,10 +18506,31 @@ function setRes(id,val){
 /* ---------- modal ---------- */
 function overlay(html){
   css();var o=document.createElement("div");o.className="gb-ov";o.innerHTML='<div class="gb-md" onclick="event.stopPropagation()">'+html+'</div>';
-  o.addEventListener("click",function(){o.remove()});document.body.appendChild(o);return o}
+  o.addEventListener("click",function(){o.remove()});/* tombol X di pojok kanan atas judul, berlaku untuk semua popup Genba */var hx=o.querySelector(".gb-md h3");if(hx){var xb=document.createElement("button");xb.type="button";xb.className="gb-ico gb-x";xb.title="Tutup";xb.setAttribute("aria-label","Tutup");xb.style.marginLeft="auto";xb.innerHTML='<i class="fas fa-xmark"></i>';xb.onclick=function(ev){ev.stopPropagation();o.remove()};hx.appendChild(xb)}document.body.appendChild(o);return o}
 function fld(i,label,type,val,ph,list){return'<div><label class="gb-lb" for="'+i+'">'+label+'</label><input id="'+i+'" type="'+type+'" class="gb-in" value="'+E(val||"")+'" placeholder="'+E(ph||"")+'"'+(list?' list="'+list+'"':"")+'></div>'}
-function empList(){var s={},o=[];((window.STATE&&window.STATE.employees)||[]).forEach(function(e){var n=String(e&&(e.nama||e.name)||"").trim();if(n&&!s[n]&&o.length<1500){s[n]=1;o.push(n)}});
-  return'<datalist id="gb-dl-emp">'+o.map(function(n){return'<option value="'+E(n)+'">'}).join("")+'</datalist>'}
+/* Daftar karyawan untuk PIC & peserta Genba = SEMUA karyawan aktif (lintas divisi/perusahaan), tidak ikut filter divisi,
+   karena Genba boleh melibatkan siapa saja walau templatenya "Genba Sales". Pakai data mentah (__rawState). */
+function empAll(){var S=window.__rawState||window.STATE;return(S&&S.employees)||[]}
+function empList(){var s={},o=[];empAll().forEach(function(e){if(!e||e.tglResign)return;var n=String(e.nama||e.name||"").trim();if(!n)return;var k=n.toLowerCase();if(s[k])return;s[k]=1;o.push([n,[e.dept,e.posisi].filter(Boolean).join(" · ")])});
+  return'<datalist id="gb-dl-emp">'+o.map(function(p){return'<option value="'+E(p[0])+'"'+(p[1]?' label="'+E(p[1])+'"':"")+'>'}).join("")+'</datalist>'}
+/* peserta Genba: banyak nama (chip). Disimpan tetap sebagai teks "A, B, C" supaya data lama & tampilan lain tidak berubah. */
+function teamNames(str){return String(str||"").split(/\s*,(?![^()]*\))\s*/).map(function(x){return x.trim()}).filter(Boolean)}
+function teamChip(n){return'<span class="gb-tm" data-n="'+E(n)+'" style="display:inline-flex;align-items:center;gap:4px;background:var(--b2);border:1px solid var(--ln);border-radius:999px;padding:2px 4px 2px 9px;font-size:11px;font-weight:700">'+E(n)+'<button type="button" class="gb-tmx" title="Hapus" aria-label="Hapus '+E(n)+'" style="border:0;background:transparent;color:var(--mu);cursor:pointer;font-size:11px;padding:2px 4px"><i class="fas fa-xmark"></i></button></span>'}
+function teamField(val){return'<div><label class="gb-lb" for="gbf-team-in">Tim / peserta Genba <span style="font-weight:500;color:var(--mu)">(semua karyawan, boleh lebih dari satu)</span></label>'
+  +'<div id="gbf-team-box" class="gb-in" style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;height:auto;min-height:38px;padding:6px 8px;cursor:text">'+teamNames(val).map(teamChip).join("")
+  +'<input id="gbf-team-in" type="text" list="gb-dl-emp" autocomplete="off" placeholder="Ketik nama karyawan lalu Enter" style="flex:1;min-width:150px;border:0;outline:0;background:transparent;font:inherit;color:inherit;padding:2px"></div>'
+  +'<input type="hidden" id="gbf-team" value="'+E(val||"")+'"></div>'}
+function wireTeam(o){var box=o.querySelector("#gbf-team-box"),inp=o.querySelector("#gbf-team-in"),hid=o.querySelector("#gbf-team");if(!box||!inp||!hid)return;
+  function cur(){return[].map.call(box.querySelectorAll(".gb-tm"),function(c){return c.getAttribute("data-n")})}
+  function sync(){hid.value=cur().join(", ")}
+  function add(raw){teamNames(raw).forEach(function(n){if(cur().some(function(x){return x.toLowerCase()===n.toLowerCase()}))return;inp.insertAdjacentHTML("beforebegin",teamChip(n))});inp.value="";sync()}
+  hid.__flush=function(){if(inp.value.trim())add(inp.value)};
+  box.addEventListener("click",function(e){var x=e.target.closest&&e.target.closest(".gb-tmx");if(x){x.closest(".gb-tm").remove();sync();inp.focus();return}if(e.target===box)inp.focus()});
+  inp.addEventListener("keydown",function(e){if(e.key==="Enter"||e.key===","){e.preventDefault();add(inp.value)}else if(e.key==="Backspace"&&!inp.value){var l=box.querySelectorAll(".gb-tm");if(l.length){l[l.length-1].remove();sync()}}});
+  inp.addEventListener("input",function(e){if(e.inputType==="insertReplacementText")add(inp.value)});
+  inp.addEventListener("change",function(){if(inp.value.trim())add(inp.value)});
+  inp.addEventListener("paste",function(e){var t=(e.clipboardData||window.clipboardData).getData("text");if(t&&t.indexOf(",")>=0){e.preventDefault();add(t)}})}
+
 function locList(){var s={},o=[];items(GID).forEach(function(g){var n=String(g.location||"").trim();if(n&&!s[n]){s[n]=1;o.push(n)}});
   return'<datalist id="gb-dl-loc">'+o.map(function(n){return'<option value="'+E(n)+'">'}).join("")+'</datalist>'}
 
@@ -18482,14 +18542,14 @@ function openForm(id,opt){
    +fld("gbf-title","Judul Genba *","text",g?g.title:(tplDef?tplDef.name:""),"mis. Genba Sales Staff")
    +'<div class="gb-g2">'+fld("gbf-date","Tanggal *","date",g?g.date:def)+fld("gbf-end","Sampai tanggal (opsional)","date",g&&g.endDate)+fld("gbf-st","Jam mulai","time",g&&g.startTime)+fld("gbf-en","Jam selesai","time",g&&g.endTime)+'</div>'
    +fld("gbf-loc","Lokasi / cabang","text",g&&g.location,"","gb-dl-loc")+fld("gbf-pic","PIC / penanggung jawab","text",g&&g.pic,"","gb-dl-emp")
-   +fld("gbf-team","Tim / peserta Genba","text",g&&g.team,"mis. Budi (HR), Sari (Produksi)")
+   +teamField(g&&g.team)
    +'<div><label class="gb-lb" for="gbf-obj">Tujuan Genba</label><textarea id="gbf-obj" class="gb-in" rows="2" placeholder="Apa yang ingin dilihat / dipastikan?">'+E(g&&g.objective)+'</textarea></div>'
    +'<div><label class="gb-lb" for="gbf-note">Catatan</label><textarea id="gbf-note" class="gb-in" rows="2">'+E(g&&g.note)+'</textarea></div>'
    
    +'</div>'+empList()+locList()
    +'<div class="gb-ft">'+(g?'<button type="button" class="gb-btn d" id="gbf-del"><i class="fas fa-trash"></i> Hapus</button>':'<span></span>')+'<div class="gb-hb"><button type="button" class="gb-btn" id="gbf-cancel">Batal</button><button type="button" class="gb-btn p" id="gbf-save">Simpan</button></div></div>');
   var $=function(s){return o.querySelector(s)},v=function(s){return $(s).value.trim()},close=function(){o.remove()};
-  $("#gbf-cancel").onclick=close;
+  $("#gbf-cancel").onclick=close;wireTeam(o);
   var tsel=$("#gbf-tpl");
   if(tsel){var auto=tplDef?tplDef.name:"";
     /* judul ikut nama template, kecuali judulnya sudah diubah manual */
@@ -18500,7 +18560,7 @@ function openForm(id,opt){
     if(!title||!date){window.toast("Judul dan tanggal wajib diisi","warn");return}
     if(end&&end<date){window.toast("Tanggal selesai tidak boleh sebelum tanggal mulai","warn");return}
     var nid=g?g.id:uid("gb_"),tid=!g&&$("#gbf-tpl")?$("#gbf-tpl").value:"",tp=tid?TS.find(function(x){return x.id===tid}):null;
-    var f={title:title,date:date,endDate:end,startTime:v("#gbf-st"),endTime:v("#gbf-en"),location:v("#gbf-loc"),pic:v("#gbf-pic"),team:v("#gbf-team"),objective:v("#gbf-obj"),note:v("#gbf-note")};
+    var th=$("#gbf-team");if(th&&th.__flush)th.__flush();var f={title:title,date:date,endDate:end,startTime:v("#gbf-st"),endTime:v("#gbf-en"),location:v("#gbf-loc"),pic:v("#gbf-pic"),team:v("#gbf-team"),objective:v("#gbf-obj"),note:v("#gbf-note")};
     var b=$("#gbf-save");b.disabled=true;
     save(GID,function(a){var i=a.findIndex(function(x){return x.id===nid});
       if(i>=0)a[i]=Object.assign({},a[i],f);else a.push(Object.assign({id:nid},f,{status:"",templateId:tp?tp.id:"",templateName:tp?tp.name:"",checklist:tp?cloneTpl(tp.id):[],findings:[],summary:""}));return a})
@@ -18632,6 +18692,7 @@ function act(a){
   if(k==="wkreset"){ST.wk=null;ST.wkOpen=false;render();return}
   if(k==="fst"){ST.fst=p[1];paintList();return}
   if(k==="edit"){openForm(ST.id,{});return}
+  if(k==="delph"){window.confirmDelete("Hapus foto ini dari evidence?",async function(){try{await upd(ST.id,function(x){var q=findSub(x,p[1]);if(q&&q.ph)q.ph.splice(+p[2],1)});repaintPhotos(p[1])}catch(e){fail(e)}});return}
   if(k==="res"){setRes(p[1],p[2]);return}
   if(k==="addfind"){openFinding(ST.id,null,{});return}
   if(k==="addck"){openCk(ST.id);return}
@@ -18672,6 +18733,7 @@ document.addEventListener("change",function(e){
   else if(p[0]==="secnote"){var g1=getG(ST.id),c1=g1&&(g1.checklist||[]).find(function(x){return x.id===p[1]}),v1=t.value.trim();if(c1)c1.note=v1;
     upd(ST.id,function(x){var k=(x.checklist||[]).find(function(y){return y.id===p[1]});if(k)k.note=v1}).catch(fail)}
   else if(p[0]==="summary"){var g2=getG(ST.id);if(g2)g2.summary=t.value;upd(ST.id,function(x){x.summary=t.value}).then(function(){window.toast("Hasil Genba tersimpan","success")}).catch(fail)}
+  else if(p[0]==="photo"){var fl=[].slice.call(t.files||[]);t.value="";addPhotos(p[1],fl).catch(fail)}
   else if(p[0]==="fst"){var v=t.value;upd(p[1],function(x){var f=(x.findings||[]).find(function(y){return y.id===p[2]});if(f)f.status=v}).then(render).catch(fail)}});
 
 window.ROUTES=window.ROUTES||{};
