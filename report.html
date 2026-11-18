@@ -17908,7 +17908,7 @@ var CATS=[
 {k:"onb",label:"Onboarding Training",icon:"fa-layer-group",bar:"bg-violet-500",badge:"bg-violet-50 text-violet-600"},
 {k:"tna",label:"Training By TNA",icon:"fa-chalkboard-user",bar:"bg-amber-500",badge:"bg-amber-50 text-amber-600"},
 {k:"dev",label:"Training Development",icon:"fa-arrow-trend-up",bar:"bg-emerald-500",badge:"bg-emerald-50 text-emerald-600"},
-{k:"genba",label:"Genba",icon:"fa-magnifying-glass-location",bar:"bg-rose-500",badge:"bg-rose-50 text-rose-600",admin:true}];
+{k:"genba",label:"Genba",icon:"fa-magnifying-glass-location",bar:"tcg-gb-bar",badge:"tcg-gb-badge",admin:true}];
 var CM={};CATS.forEach(function(c,i){c.i=i;CM[c.k]=c});
 var ST=window.__tcState=window.__tcState||{y:null,m:null,sel:null,off:{}};
 function pad(n){return n<10?"0"+n:""+n}
@@ -17987,7 +17987,7 @@ function card(e,admin){
     rows=row("fa-clock",time)+row("fa-location-dot",E(r.location))+row("fa-user-tie",E(r.trainer))+row("fa-people-group",E(r.facilitator))+row("fa-users",E(inv));
     act='<a href="'+(admin?"#/admin/trainings/":"#/trainings/")+E(r.id)+'" class="text-[11px] font-bold text-indigo-600 hover:underline">'+(admin?"Edit Jadwal":"Buka Training")+' <i class="fas fa-arrow-right text-[9px]"></i></a>'+(admin?'<a href="#/admin/training-report/'+E(r.id)+'" class="text-[11px] font-bold text-slate-500 hover:underline ml-3">Laporan</a>':"");
   }
-  return '<div class="flex gap-2.5 rounded-2xl border border-slate-100 p-3"><span class="w-1 rounded-full shrink-0 '+c.bar+'"></span><div class="min-w-0 flex-1 space-y-1"><div class="flex items-start justify-between gap-2"><div class="min-w-0"><p class="text-[9px] font-black uppercase '+(e.cat==="onb"?"text-violet-500":e.cat==="tna"?"text-amber-500":e.cat==="dev"?"text-emerald-500":"text-rose-500")+'"><i class="fas '+c.icon+' mr-1"></i>'+c.label+'</p><p class="text-xs font-black text-slate-700 leading-snug">'+E(e.title)+'</p></div><span class="shrink-0 text-[9px] font-black px-2 py-0.5 rounded-full '+st[1]+'">'+st[0]+'</span></div>'+rows+'<div class="pt-1">'+act+'</div></div></div>'}
+  return '<div class="flex gap-2.5 rounded-2xl border border-slate-100 p-3"><span class="w-1 rounded-full shrink-0 '+c.bar+'"></span><div class="min-w-0 flex-1 space-y-1"><div class="flex items-start justify-between gap-2"><div class="min-w-0"><p class="text-[9px] font-black uppercase '+(e.cat==="onb"?"text-violet-500":e.cat==="tna"?"text-amber-500":e.cat==="dev"?"text-emerald-500":"tcg-gb-txt")+'"><i class="fas '+c.icon+' mr-1"></i>'+c.label+'</p><p class="text-xs font-black text-slate-700 leading-snug">'+E(e.title)+'</p></div><span class="shrink-0 text-[9px] font-black px-2 py-0.5 rounded-full '+st[1]+'">'+st[0]+'</span></div>'+rows+'<div class="pt-1">'+act+'</div></div></div>'}
 
 function render(){
   var admin=isAdmin(),t0=todayD();
@@ -18012,7 +18012,7 @@ function render(){
   var genbaBtn="";
   var dailyBtn="";
   var btn="w-8 h-8 rounded-xl border border-slate-200 text-slate-500 hover:border-indigo-300 hover:text-indigo-600 flex items-center justify-center";
-  window.setPage('<style>.tcg-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:3px}.tcg-dow{text-align:center;font-size:11px;font-weight:700;padding:4px 0}.tcg-cell{min-width:0;overflow:hidden;border-radius:12px;padding:3px;height:104px;cursor:pointer;border:1px solid #f1f5f9}.tcg-cell:focus-visible{outline:2px solid #818cf8}.tcg-d{text-align:center;margin-bottom:2px}.tcg-dn{display:inline-flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;min-width:20px;height:20px}.tcg-today{background:#4f46e5;color:#fff!important;border-radius:999px;font-weight:800}.tcg-sel{box-shadow:inset 0 0 0 2px #818cf8}.tcg-ev{display:flex;flex-direction:column;gap:2px}.tcg-chip{border-radius:6px;padding:1px 4px;font-size:8.5px;line-height:1.35;font-weight:600;white-space:nowrap;overflow:hidden;color:#fff}.tcg-c-onb{background:#8b5cf6}.tcg-c-tna{background:#f59e0b;color:#451a03}.tcg-c-dev{background:#10b981}.tcg-c-genba{background:#f43f5e}.tcg-time{display:none}html.dark .tcg-cell{border-color:#26304a}@media(min-width:640px){.tcg-cell{height:128px;padding:6px}.tcg-dn{font-size:12px;min-width:24px;height:24px}.tcg-chip{font-size:10px;padding:1px 5px}.tcg-time{display:inline}}</style>'+banner+'<div class="mb-3"><h1 class="text-base font-black text-slate-800">Kalender Training</h1><p class="text-[10px] text-slate-500">Klik tanggal untuk lihat detail jadwal. '+(admin?(window.__VIEW_ONLY?"Semua jadwal Onboarding, Training By TNA, dan Training Development.":"Semua jadwal Onboarding, Training By TNA, Training Development, dan Genba."):"Jadwal Onboarding, Training By TNA, dan Training Development yang berlaku untuk kamu.")+'</p></div>'
+  window.setPage('<style>.tcg-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:3px}.tcg-dow{text-align:center;font-size:11px;font-weight:700;padding:4px 0}.tcg-cell{min-width:0;overflow:hidden;border-radius:12px;padding:3px;height:104px;cursor:pointer;border:1px solid #f1f5f9}.tcg-cell:focus-visible{outline:2px solid #818cf8}.tcg-d{text-align:center;margin-bottom:2px}.tcg-dn{display:inline-flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;min-width:20px;height:20px}.tcg-today{background:#4f46e5;color:#fff!important;border-radius:999px;font-weight:800}.tcg-sel{box-shadow:inset 0 0 0 2px #818cf8}.tcg-ev{display:flex;flex-direction:column;gap:2px}.tcg-chip{border-radius:6px;padding:1px 4px;font-size:8.5px;line-height:1.35;font-weight:600;white-space:nowrap;overflow:hidden;color:#fff}.tcg-c-onb{background:#8b5cf6}.tcg-c-tna{background:#f59e0b;color:#451a03}.tcg-c-dev{background:#10b981}.tcg-c-genba{background:#0284c7}.tcg-gb-bar{background:#0284c7}.tcg-gb-badge{background:#e0f2fe;color:#0369a1}.tcg-gb-txt{color:#0284c7}html.dark .tcg-gb-badge{background:#0c4a6e66;color:#7dd3fc}html.dark .tcg-gb-txt{color:#38bdf8}.tcg-time{display:none}html.dark .tcg-cell{border-color:#26304a}@media(min-width:640px){.tcg-cell{height:128px;padding:6px}.tcg-dn{font-size:12px;min-width:24px;height:24px}.tcg-chip{font-size:10px;padding:1px 5px}.tcg-time{display:inline}}</style>'+banner+'<div class="mb-3"><h1 class="text-base font-black text-slate-800">Kalender Training</h1><p class="text-[10px] text-slate-500">Klik tanggal untuk lihat detail jadwal. '+(admin?(window.__VIEW_ONLY?"Semua jadwal Onboarding, Training By TNA, dan Training Development.":"Semua jadwal Onboarding, Training By TNA, Training Development, dan Genba."):"Jadwal Onboarding, Training By TNA, dan Training Development yang berlaku untuk kamu.")+'</p></div>'
    +'<div class="flex items-center gap-2 flex-wrap mb-3"><button type="button" onclick="window.__tc.nav(-1)" class="'+btn+'"><i class="fas fa-chevron-left text-xs"></i></button><button type="button" onclick="window.__tc.nav(1)" class="'+btn+'"><i class="fas fa-chevron-right text-xs"></i></button><span class="text-sm font-black text-slate-800 min-w-[130px]">'+MON[m]+' '+y+'</span><button type="button" onclick="window.__tc.today()" class="text-[11px] font-bold px-3 py-2 rounded-xl border border-slate-200 text-slate-600 hover:border-indigo-300">Hari ini</button>'+dailyBtn+genbaBtn+'</div>'
    +'<div class="flex items-center gap-1.5 flex-wrap mb-3">'+pills+'</div>'
    +'<div class="tcg-grid">'+head+cells+'</div>'+modal)}
@@ -18052,7 +18052,7 @@ function openGenba(id){
   var o=document.createElement("div");o.style.cssText="position:fixed;inset:0;z-index:9999;background:rgba(15,23,42,.6);display:flex;align-items:center;justify-content:center;padding:16px";
   var inp='class="w-full text-sm border border-slate-200 rounded-xl px-3 py-2 outline-none focus:ring-2 focus:ring-indigo-200"',lb='class="block text-[11px] font-bold text-slate-500 mb-1"';
   var f=function(i,label,type,val,ph){return '<div><label '+lb+'>'+label+'</label><input id="'+i+'" type="'+type+'" '+inp+' value="'+E(val||"")+'" placeholder="'+E(ph||"")+'"></div>'};
-  o.innerHTML='<div style="max-height:92vh;overflow:auto" class="bg-white rounded-3xl shadow-xl w-full max-w-lg p-5" onclick="event.stopPropagation()"><div class="flex items-center justify-between mb-3"><h3 class="font-black text-slate-800 text-sm"><i class="fas fa-magnifying-glass-location text-rose-500 mr-1"></i> '+(g?"Ubah":"Tambah")+' Jadwal Genba</h3><button type="button" id="tcg-x" class="text-slate-400 hover:text-slate-600"><i class="fas fa-xmark"></i></button></div><div class="space-y-3">'
+  o.innerHTML='<div style="max-height:92vh;overflow:auto" class="bg-white rounded-3xl shadow-xl w-full max-w-lg p-5" onclick="event.stopPropagation()"><div class="flex items-center justify-between mb-3"><h3 class="font-black text-slate-800 text-sm"><i class="fas fa-magnifying-glass-location tcg-gb-txt mr-1"></i> '+(g?"Ubah":"Tambah")+' Jadwal Genba</h3><button type="button" id="tcg-x" class="text-slate-400 hover:text-slate-600"><i class="fas fa-xmark"></i></button></div><div class="space-y-3">'
    +f("tcg-title","Judul / tujuan Genba *","text",g&&g.title,"mis. Genba Cabang Cikampek")
    +'<div class="grid grid-cols-2 gap-3">'+f("tcg-date","Tanggal *","date",g?g.date:ST.sel)+f("tcg-end","Sampai tanggal (opsional)","date",g&&g.endDate)+f("tcg-st","Jam mulai","time",g&&g.startTime)+f("tcg-en","Jam selesai","time",g&&g.endTime)+'</div>'
    +f("tcg-loc","Lokasi / cabang","text",g&&g.location)+f("tcg-pic","PIC / tim pelaksana","text",g&&g.pic)
@@ -18219,7 +18219,7 @@ function css(){
 +".gb-btn:hover{border-color:var(--ac);color:var(--ac)}.gb-btn:disabled{opacity:.55;cursor:default}"
 +".gb-btn.p{background:var(--ac);border-color:var(--ac);color:#fff}.gb-btn.p:hover{filter:brightness(1.08);color:#fff}"
 +".gb-btn.d{color:#e11d48}.gb-btn.d:hover{border-color:#e11d48;color:#e11d48}.gb-btn.s{padding:5px 9px;font-size:11px;border-radius:9px}"
-+".gb-hero .gb-btn{background:#ffffff26;border-color:#ffffff40;color:#fff}.gb-hero .gb-btn:hover{background:#ffffff40;color:#fff}.gb-hero .gb-btn.p{background:#fff;color:var(--th-700,#1d4ed8);border-color:#fff}"
++".gb-hero .gb-btn{background:#ffffff26;border-color:#ffffff40;color:#fff}.gb-hero .gb-btn:hover{background:#ffffff40;color:#fff}.gb-hero .gb-btn.p{background:#fff;color:var(--th-700,#1d4ed8);border-color:#fff}.gb-hero.gb-hero-k{flex-direction:column;align-items:stretch;flex-wrap:nowrap;gap:14px}.gb-hero .gb-kpis{margin-bottom:0}.gb-hero .gb-kpi{background:#ffffff1f;border-color:#ffffff38;color:#fff}.gb-hero .gb-kpi span,.gb-hero .gb-kpi small{color:#fff;opacity:.88}.gb-hero .gb-kpi b{color:#fff}.gb-hero .gb-kpi b.gb-kw{color:#fde68a}.gb-hero .gb-kpi b.gb-kd{color:#fecdd3}.gb-hero .gb-kc:hover,.gb-hero .gb-kc:focus-visible{background:#ffffff33;border-color:#fff}.gb-hero .gb-kc.on{background:#ffffff38;border-color:#fff;box-shadow:0 0 0 1px #fff}.gb-tb{margin:0 0 12px}"
 +".gb-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:12px}"
 +".gb-kpi{background:var(--b);border:1px solid var(--ln);border-radius:16px;padding:12px 14px}.gb-kpi b{display:block;font-size:22px;font-weight:800;line-height:1.15}.gb-kpi span{font-size:11px;color:var(--mu);font-weight:600}.gb-kpi small{display:block;font-size:10px;color:var(--mu);margin-top:2px}"
 +".gb-tabs{display:flex;gap:4px;flex-wrap:wrap;background:var(--b2);border:1px solid var(--ln);padding:4px;border-radius:14px;width:fit-content;max-width:100%;margin-bottom:10px}"
@@ -18232,7 +18232,7 @@ function css(){
 +".gb-g2{display:grid;grid-template-columns:1fr 1fr;gap:10px}.gb-fs{display:flex;flex-direction:column;gap:10px}"
 +".gb-card{background:var(--b);border:1px solid var(--ln);border-radius:18px;padding:14px 16px;margin-bottom:12px}"
 +".gb-card h3{font-size:13px;font-weight:800;display:flex;align-items:center;gap:6px;margin:0;flex-wrap:wrap}.gb-sub{font-size:11px;color:var(--mu);margin:3px 0 10px;line-height:1.5}"
-+".gb-row{display:flex;gap:12px;align-items:stretch;cursor:pointer;padding:12px 14px;margin-bottom:8px;transition:border-color .15s}.gb-row:hover,.gb-row:focus-visible{border-color:var(--ac);outline:none}"
++".gb-row{display:flex;gap:12px;align-items:stretch;cursor:pointer;padding:12px 14px;margin-bottom:8px;transition:border-color .15s}.gb-row:hover,.gb-row:focus-visible{border-color:var(--ac);outline:none}.gb-kc{cursor:pointer;transition:border-color .15s,box-shadow .15s}.gb-kc:hover,.gb-kc:focus-visible{border-color:var(--ac);outline:none}.gb-kc.on{border-color:var(--ac);box-shadow:0 0 0 1px var(--ac)}.gb-fc{cursor:pointer;transition:border-color .15s}.gb-fc:hover,.gb-fc:focus-visible{border-color:var(--ac);outline:none}"
 +".gb-date{flex:0 0 52px;border-radius:14px;background:var(--b2);border:1px solid var(--ln);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:6px 0}.gb-date b{font-size:18px;line-height:1}.gb-date span{font-size:10px;font-weight:700;color:var(--mu);text-transform:uppercase}"
 +".gb-main{min-width:0;flex:1}.gb-top{display:flex;justify-content:space-between;gap:8px;align-items:flex-start}.gb-t{font-size:13px;font-weight:800;margin:0;line-height:1.35;word-break:break-word}"
 +".gb-m{font-size:11px;color:var(--mu);margin:3px 0 0;display:flex;gap:4px 12px;flex-wrap:wrap}.gb-m i{width:12px;text-align:center;opacity:.7;margin-right:3px}"
@@ -18245,7 +18245,7 @@ function css(){
 +".gb-empty{text-align:center;color:var(--mu);padding:34px 10px;font-size:12px;font-weight:700}.gb-empty i{display:block;font-size:26px;margin-bottom:8px;opacity:.5}"
 +".gb-back{font-size:12px;font-weight:700;color:var(--ac);text-decoration:none;display:inline-flex;gap:6px;align-items:center;margin-bottom:8px;cursor:pointer;background:none;border:0;padding:0;font-family:inherit}"
 +".gb-dh{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:flex-start;margin-bottom:12px}.gb-dh h1{font-size:17px;font-weight:800;margin:0 0 4px;line-height:1.3}"
-+".gb-info{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px}.gb-info div{min-width:0}.gb-info small{display:block;font-size:10px;font-weight:700;color:var(--mu);text-transform:uppercase;letter-spacing:.03em}.gb-info p{margin:2px 0 0;font-size:12.5px;font-weight:600;word-break:break-word;white-space:pre-line}"
++".gb-info{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px}.gb-arg{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:10px}.gb-in.gb-arbox{display:flex;flex-wrap:wrap;gap:6px;align-items:center;min-height:38px;padding:6px 8px;cursor:text}.gb-in.gb-arbox:focus-within{border-color:var(--ac)}.gb-arbox input{flex:1;min-width:130px;border:0;outline:0;background:transparent;font:inherit;font-size:12.5px;color:inherit;padding:2px}.gb-info div{min-width:0}.gb-info small{display:block;font-size:10px;font-weight:700;color:var(--mu);text-transform:uppercase;letter-spacing:.03em}.gb-info p{margin:2px 0 0;font-size:12.5px;font-weight:600;word-break:break-word;white-space:pre-line}"
 +".gb-sec{border:1px solid var(--ln);border-radius:16px;padding:10px 12px;margin-bottom:10px;background:var(--b2)}.gb-sh{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px}.gb-sh>b{font-size:13px;font-weight:800}.gb-sn{margin-top:6px;font-size:12px}.gb-tsub{display:flex;gap:6px;margin-bottom:6px}.gb-ico:disabled{opacity:.35;cursor:default}"
 +".gb-score{display:flex;gap:22px;align-items:center;flex-wrap:wrap;background:var(--b2);border:1px solid var(--ln);border-radius:16px;padding:12px 16px;margin-bottom:12px}"
 +".gb-cat{font-size:10.5px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;color:var(--mu);margin:14px 0 6px;display:flex;align-items:center;gap:6px}.gb-cat:first-child{margin-top:0}"
@@ -18344,6 +18344,7 @@ function periodBarHtml(){
      +'</div></div>'}
   return'<div class="gb-per"><span class="gb-pl"><i class="fas fa-calendar-days"></i> Periode</span>'+sel+'<div class="gb-pk">'+btn+pop+'</div></div>'}
 
+function kon(k){return(k==="open"?ST.view==="tindak":(ST.view!=="tindak"&&ST.tab===k))?" on":""}
 function listHtml(){
   var all=items(GID).filter(inPeriod),t0=todayD();
   var late=all.filter(function(g){return statusOf(g)==="overdue"}).length;
@@ -18351,15 +18352,15 @@ function listHtml(){
   all.forEach(function(g){var s=stats(g);ok+=s.ok;ng+=s.ng;openF+=s.open;lateF+=s.late});
   var comp=(ok+ng)?Math.round(ok/(ok+ng)*100)+"%":"-";
   var up=all.filter(function(g){return statusOf(g)==="planned"}).length;
-  return'<div class="gb-hero"><div><h1><i class="fas fa-magnifying-glass-location"></i> Kelola Genba</h1><p>Jadwalkan Genba, isi checklist di lapangan, catat hasil dan temuan, lalu pantau tindak lanjutnya sampai tuntas. Jadwal otomatis tampil di Kalender Training.</p></div>'
-   +'<div class="gb-hb"><button type="button" class="gb-btn p" data-gb="new"><i class="fas fa-plus"></i> Jadwal Genba</button><button type="button" class="gb-btn" data-gb="tpl"><i class="fas fa-list-check"></i> Template Genba</button><a class="gb-btn" href="#/training-calendar"><i class="fas fa-calendar"></i> Kalender</a></div></div>'
-   +periodBarHtml()
+  return'<div class="gb-hero gb-hero-k"><div><h1><i class="fas fa-magnifying-glass-location"></i> Kelola Genba</h1><p>Jadwalkan Genba, isi checklist di lapangan, catat hasil dan temuan, lalu pantau tindak lanjutnya sampai tuntas. Jadwal otomatis tampil di Kalender Training.</p></div>'
    +'<div class="gb-kpis">'
-   +'<div class="gb-kpi"><span>Total Genba</span><b>'+all.length+'</b><small>'+E(periodLabel())+'</small></div>'
-   +'<div class="gb-kpi"><span>Akan Datang</span><b>'+up+'</b><small>belum dimulai</small></div>'
-   +'<div class="gb-kpi"><span>Perlu Laporan</span><b style="color:'+(late?"#d97706":"inherit")+'">'+late+'</b><small>lewat tanggal, belum ditandai selesai</small></div>'
-   +'<div class="gb-kpi"><span>Temuan Terbuka</span><b style="color:'+(openF?"#e11d48":"inherit")+'">'+openF+'</b><small>'+(lateF?lateF+" lewat target":"tidak ada yang telat")+'</small></div>'
-   +'<div class="gb-kpi"><span>Kepatuhan Checklist</span><b>'+comp+'</b><small>item "Sesuai" dari yang dinilai</small></div></div>'
+   +'<div class="gb-kpi gb-kc'+kon("all")+'" role="button" tabindex="0" data-gb="kpi:all" title="Tampilkan semua jadwal Genba"><span>Total Genba</span><b>'+all.length+'</b><small>'+E(periodLabel())+'</small></div>'
+   +'<div class="gb-kpi gb-kc'+kon("planned")+'" role="button" tabindex="0" data-gb="kpi:planned" title="Lihat Genba yang akan datang"><span>Akan Datang</span><b>'+up+'</b><small>belum dimulai</small></div>'
+   +'<div class="gb-kpi gb-kc'+kon("overdue")+'" role="button" tabindex="0" data-gb="kpi:overdue" title="Lihat Genba yang perlu laporan"><span>Perlu Laporan</span><b class="'+(late?"gb-kw":"")+'">'+late+'</b><small>lewat tanggal, belum ditandai selesai</small></div>'
+   +'<div class="gb-kpi gb-kc'+kon("open")+'" role="button" tabindex="0" data-gb="kpi:open" title="Lihat temuan yang belum selesai"><span>Temuan Terbuka</span><b class="'+(openF?"gb-kd":"")+'">'+openF+'</b><small>'+(lateF?lateF+" lewat target":"tidak ada yang telat")+'</small></div>'
+   +'<div class="gb-kpi"><span>Kepatuhan Checklist</span><b>'+comp+'</b><small>item "Sesuai" dari yang dinilai</small></div></div></div>'
+   +'<div class="gb-hb gb-tb"><button type="button" class="gb-btn p" data-gb="new"><i class="fas fa-plus"></i> Jadwal Genba</button><button type="button" class="gb-btn" data-gb="tpl"><i class="fas fa-list-check"></i> Template Genba</button><a class="gb-btn" href="#/training-calendar"><i class="fas fa-calendar"></i> Kalender</a></div>'
+   +periodBarHtml()
    +'<div class="gb-tabs"><button type="button" class="gb-tab'+(ST.view==="jadwal"?" on":"")+'" data-gb="view:jadwal"><i class="fas fa-list mr-1"></i> Jadwal & Hasil</button><button type="button" class="gb-tab'+(ST.view==="tindak"?" on":"")+'" data-gb="view:tindak"><i class="fas fa-clipboard-check mr-1"></i> Tindak Lanjut'+(openF?" ("+openF+")":"")+'</button></div>'
    +'<div id="gb-results"></div>'}
 
@@ -18372,10 +18373,10 @@ function scheduleHtml(){
   var cnt={all:all.length,planned:0,ongoing:0,overdue:0,done:0,cancelled:0};all.forEach(function(g){cnt[statusOf(g)]++});
   var tabs=[["all","Semua"],["planned","Akan Datang"],["ongoing","Berlangsung"],["overdue","Perlu Laporan"],["done","Selesai"],["cancelled","Dibatalkan"]];
   var bar='<div class="gb-bar">'+tabs.map(function(t){return'<button type="button" class="gb-pill'+(ST.tab===t[0]?" on":"")+'" data-gb="tab:'+t[0]+'">'+t[1]+' '+cnt[t[0]]+'</button>'}).join("")
-    +'<input type="search" class="gb-in gb-q" data-gb-input="q" placeholder="Cari judul, lokasi, PIC..." value="'+E(ST.q)+'"></div>';
+    +'<input type="search" class="gb-in gb-q" data-gb-input="q" placeholder="Cari judul, lokasi, PIC, RM, BM, SPV, Sales..." value="'+E(ST.q)+'"></div>';
   var rows=all.filter(function(g){
     if(ST.tab!=="all"&&statusOf(g)!==ST.tab)return false;
-    if(!q)return true;return[g.title,g.templateName,g.location,g.pic,g.team,g.objective].join(" ").toLowerCase().indexOf(q)>=0});
+    if(!q)return true;return[g.title,g.templateName,g.location,g.pic,g.team,g.objective,arAll(g)].join(" ").toLowerCase().indexOf(q)>=0});
   /* yang akan datang paling dekat di atas, sisanya terbaru di atas */
   rows.sort(function(a,b){return String(b.date).localeCompare(String(a.date))});
   var body=rows.map(function(g){
@@ -18388,10 +18389,10 @@ function scheduleHtml(){
   return bar+(body||empty("fa-magnifying-glass-location",all.length?"Tidak ada Genba yang cocok dengan filter.":total?("Tidak ada Genba pada periode <b>"+E(periodLabel())+'</b>. <button type="button" class="gb-lnk" style="font-size:12px" data-gb="setper:all">Tampilkan semua periode</button>'):"Belum ada jadwal Genba. Klik <b>Jadwal Genba</b> untuk menambah."))}
 
 function followHtml(){
-  var fl=allFindings().filter(function(x){return inPeriod(x.g)}),out=allFindings().filter(function(x){return !inPeriod(x.g)&&x.f.status!=="closed"}).length,t0=todayD(),cnt={open:0,progress:0,closed:0,all:fl.length};fl.forEach(function(x){cnt[x.f.status||"open"]++});
-  var tabs=[["open","Terbuka"],["progress","Dikerjakan"],["closed","Selesai"],["all","Semua"]];
+  var fl=allFindings().filter(function(x){return inPeriod(x.g)}),out=allFindings().filter(function(x){return !inPeriod(x.g)&&x.f.status!=="closed"}).length,t0=todayD(),cnt={open:0,progress:0,closed:0,all:fl.length,notclosed:0};fl.forEach(function(x){var sx=x.f.status||"open";cnt[sx]++;if(sx!=="closed")cnt.notclosed++});
+  var tabs=[["notclosed","Belum Selesai"],["open","Terbuka"],["progress","Dikerjakan"],["closed","Selesai"],["all","Semua"]];
   var bar='<div class="gb-bar">'+tabs.map(function(t){return'<button type="button" class="gb-pill'+(ST.fst===t[0]?" on":"")+'" data-gb="fst:'+t[0]+'">'+t[1]+' '+cnt[t[0]]+'</button>'}).join("")+'</div>';
-  var rows=fl.filter(function(x){return ST.fst==="all"||(x.f.status||"open")===ST.fst});
+  var rows=fl.filter(function(x){return ST.fst==="all"||(ST.fst==="notclosed"?(x.f.status||"open")!=="closed":(x.f.status||"open")===ST.fst)});
   var rank={high:0,mid:1,low:2};
   rows.sort(function(a,b){var la=a.f.status!=="closed"&&a.f.due&&pYmd(a.f.due)<t0?0:1,lb=b.f.status!=="closed"&&b.f.due&&pYmd(b.f.due)<t0?0:1;
     return la-lb||(rank[a.f.sev||"mid"]-rank[b.f.sev||"mid"])||String(a.f.due||"9").localeCompare(String(b.f.due||"9"))});
@@ -18401,7 +18402,7 @@ function followHtml(){
 function infoItem(l,v){return v?'<div><small>'+l+'</small><p>'+E(v)+'</p></div>':""}
 function findingHtml(f,g,withLink){
   var late=f.status!=="closed"&&f.due&&pYmd(f.due)<todayD();
-  return'<div class="gb-fi" data-fi="'+E(f.id)+'"><p class="tx">'+E(f.text)+'</p>'
+  return'<div class="gb-fi gb-fc" role="button" tabindex="0" data-gb="fcard:'+E(g.id)+':'+E(f.id)+':'+(withLink?"1":"0")+'" data-fi="'+E(f.id)+'"><p class="tx">'+E(f.text)+'</p>'
    +'<div class="mt">'+sevB(f.sev)+(f.pic?'<span><i class="fas fa-user-check"></i> '+E(f.pic)+'</span>':"")
    +(f.due?'<span class="'+(late?"gb-late":"")+'"><i class="fas fa-calendar-check"></i> Target '+fd(pYmd(f.due))+(late?" · telat":"")+'</span>':"")
    +(withLink?'<a href="'+HASH+'/'+E(g.id)+'" style="color:var(--ac);text-decoration:none"><i class="fas fa-magnifying-glass-location"></i> '+E(g.title||"Genba")+' · '+fd(pYmd(g.date))+'</a>':"")+'</div>'
@@ -18468,6 +18469,41 @@ function ckStatsHtml(g){
    +'<div><span class="gb-b '+gr[1]+'" style="font-size:11px">'+gr[0]+'</span><div class="gb-hint" style="margin-top:6px"><b style="color:#059669">'+s.ok+'</b> sesuai · <b style="color:#e11d48">'+s.ng+'</b> tidak sesuai · '+s.na+' N/A</div>'
    +'<div class="gb-hint">Terisi '+s.ans+' dari '+s.tot+' sub poin ('+s.pct+'%). Skor = sesuai ÷ (sesuai + tidak sesuai), N/A tidak dihitung.</div></div></div>'}
 
+/* ---------- PIC Area yang di-Genba: nama RM, BM, SPV & Sales di lokasi. Diisi saat Genba berlangsung, tersimpan otomatis ke g.area ----------
+   Urutan saran nama mengikuti aturan peran yang sama dengan modul KPI Sales (designation/posisi), tapi SEMUA karyawan aktif tetap bisa dipilih. */
+var AR=[["rm","RM","Regional Manager"],["bm","BM","Branch Manager"],["spv","SPV","Supervisor"],["sales","Sales","Sales di lokasi"]];
+var AR_SALES=["sales","sales counter","sales counter strategic","commercial marketing"],AR_SPV=/supervisor|\bspv\b|asst?n?\.? ?bm|assten|asisten|assistant/;
+function arNorm(s){return String(s||"").toLowerCase().replace(/[^a-z0-9]+/g," ").trim()}
+function arIsRole(e,r){var d=arNorm(e.designation);if(r==="rm")return/^(pjs )?(regional manager|rm)$/.test(d);if(r==="bm")return/^(pjs )?(branch manager|bm)$/.test(d);if(r==="sales")return AR_SALES.indexOf(d)>=0;return AR_SPV.test(d+" "+arNorm(e.posisi))}
+function arOptions(r){var seen={},a=[],b=[];empAll().forEach(function(e){if(!e||e.tglResign)return;var n=String(e.nama||e.name||"").trim();if(!n)return;var k=n.toLowerCase();if(seen[k])return;seen[k]=1;(arIsRole(e,r)?a:b).push([n,[e.designation||e.posisi,e.dept].filter(Boolean).join(" · ")])});
+  return a.concat(b).map(function(p){return'<option value="'+E(p[0])+'"'+(p[1]?' label="'+E(p[1])+'"':"")+'>'}).join("")}
+function arAll(g){var o=[],a=(g&&g.area)||{};AR.forEach(function(r){(a[r[0]]||[]).forEach(function(n){o.push(n)})});return o.join(" ")}
+function areaCard(g){var a=g.area||{};
+  return'<div class="gb-card" id="gb-area"><h3><i class="fas fa-users" style="color:var(--ac)"></i> PIC Area yang di-Genba <span class="gb-hint" id="gb-arst" style="font-weight:600;margin:0"></span></h3>'
+   +'<div class="gb-sub">Catat nama RM, BM, SPV, dan Sales di lokasi saat Genba berlangsung. Ketik nama lalu Enter (boleh lebih dari satu), tersimpan otomatis. Saran nama diurutkan sesuai jabatan, tapi semua karyawan tetap bisa dipilih.</div>'
+   +'<div class="gb-arg">'+AR.map(function(r){return'<div><label class="gb-lb" for="gb-ar-'+r[0]+'">'+r[1]+' <span style="font-weight:500">· '+r[2]+'</span></label>'
+     +'<div class="gb-in gb-arbox" data-arbox="'+r[0]+'">'+(a[r[0]]||[]).map(teamChip).join("")
+     +'<input id="gb-ar-'+r[0]+'" type="text" list="gb-dl-ar-'+r[0]+'" data-ar-in="'+r[0]+'" autocomplete="off" placeholder="Ketik nama '+r[1]+' lalu Enter"></div>'
+     +'<datalist id="gb-dl-ar-'+r[0]+'"></datalist></div>'}).join("")+'</div></div>'}
+function arBox(r){return document.querySelector('[data-arbox="'+r+'"]')}
+function arNames(r){var b=arBox(r);return b?[].map.call(b.querySelectorAll(".gb-tm"),function(c){return c.getAttribute("data-n")}):[]}
+function arStatus(t){var el=document.getElementById("gb-arst");if(el)el.textContent=t}
+function arSave(r){var gid=ST.id,names=arNames(r);if(!gid)return;arStatus("Menyimpan...");
+  upd(gid,function(x){x.area=x.area||{};x.area[r]=names}).then(function(){arStatus("Tersimpan")}).catch(function(e){arStatus("");fail(e)})}
+function arAdd(r,raw){var b=arBox(r),inp=b&&b.querySelector("[data-ar-in]");if(!inp)return;var cur=arNames(r),ch=false;
+  teamNames(raw).forEach(function(n){if(cur.some(function(x){return x.toLowerCase()===n.toLowerCase()}))return;cur.push(n);inp.insertAdjacentHTML("beforebegin",teamChip(n));ch=true});
+  inp.value="";if(ch)arSave(r)}
+function arRole(e){var t=e.target;return t&&t.getAttribute&&t.getAttribute("data-ar-in")}
+document.addEventListener("keydown",function(e){var r=arRole(e);if(!r||location.hash.indexOf(HASH)!==0)return;
+  if(e.key==="Enter"||e.key===","){e.preventDefault();arAdd(r,e.target.value)}
+  else if(e.key==="Backspace"&&!e.target.value){var cs=arBox(r).querySelectorAll(".gb-tm");if(cs.length){cs[cs.length-1].remove();arSave(r)}}});
+document.addEventListener("input",function(e){var r=arRole(e);if(r&&e.inputType==="insertReplacementText")arAdd(r,e.target.value)});
+document.addEventListener("change",function(e){var r=arRole(e);if(r&&e.target.value.trim())arAdd(r,e.target.value)});
+document.addEventListener("paste",function(e){var r=arRole(e);if(!r)return;var x=(e.clipboardData||window.clipboardData).getData("text");if(x&&x.indexOf(",")>=0){e.preventDefault();arAdd(r,x)}});
+document.addEventListener("focusin",function(e){var r=arRole(e);if(!r)return;var dl=document.getElementById("gb-dl-ar-"+r);if(dl&&!dl.firstChild)dl.innerHTML=arOptions(r)});
+document.addEventListener("click",function(e){if(location.hash.indexOf(HASH)!==0||!e.target.closest)return;var x=e.target.closest("[data-arbox] .gb-tmx");
+  if(x){var b=x.closest("[data-arbox]");x.closest(".gb-tm").remove();arSave(b.getAttribute("data-arbox"));return}
+  var bx=e.target.closest("[data-arbox]");if(bx&&e.target===bx)bx.querySelector("[data-ar-in]").focus()});
 function detailHtml(g){
   var st=statusOf(g),s=stats(g),c=g.checklist||[];
   var acts='<button type="button" class="gb-btn" data-gb="edit"><i class="fas fa-pen"></i> Ubah Jadwal</button>'
@@ -18483,6 +18519,7 @@ function detailHtml(g){
    +'<div class="gb-card"><h3><i class="fas fa-circle-info" style="color:var(--ac)"></i> Informasi Genba</h3><div class="gb-sub"></div><div class="gb-info">'
    +infoItem("Tanggal",rangeLabel(g))+infoItem("Jam",timeLabel(g))+infoItem("Lokasi / cabang",g.location)+infoItem("PIC",g.pic)+infoItem("Tim / peserta",g.team)+infoItem("Template",g.templateName)+infoItem("Tujuan",g.objective)+infoItem("Catatan",g.note)
    +'</div><p class="gb-hint" style="margin:10px 0 0"><i class="fas fa-calendar"></i> Jadwal ini otomatis tampil di <a href="#/training-calendar/'+E(String(g.date||"").slice(0,10))+'" style="color:var(--ac)">Kalender Training</a>.</p></div>'
+   +areaCard(g)
    +'<div class="gb-card"><h3><i class="fas fa-list-check" style="color:var(--ac)"></i> Checklist Genba</h3><div class="gb-sub">Tiap poin checklist punya sub poin yang dinilai di lapangan, foto evidence (upload langsung dari kamera/galeri) atau keterangan (opsional), dan catatan tambahan (opsional). Sub poin “Tidak Sesuai” bisa langsung dijadikan temuan.</div><div id="gb-cklist">'+ck+'</div><div class="gb-bar" style="margin:10px 0 0">'+ckBtns+'</div></div>'
    +'<div class="gb-card"><h3><i class="fas fa-flag" style="color:#e11d48"></i> Temuan & Tindak Lanjut <span class="gb-b '+(s.open?"gb-b-am":"gb-b-mu")+'" id="gb-fcnt">'+s.open+' terbuka / '+fl.length+'</span></h3><div class="gb-sub">Catat apa yang ditemukan, siapa yang menindaklanjuti, dan target selesainya.</div><div id="gb-flist">'
    +(fl.map(function(f){return findingHtml(f,g,false)}).join("")||empty("fa-clipboard-check","Belum ada temuan."))+'</div><div class="gb-bar" style="margin:10px 0 0"><button type="button" class="gb-btn" data-gb="addfind"><i class="fas fa-plus"></i> Tambah Temuan</button></div></div>'
@@ -18684,6 +18721,8 @@ function act(a){
   if(k==="open"){location.hash=HASH+"/"+p[1];return}
   if(k==="new"){openForm(null,{});return}
   if(k==="tpl"){openTpl();return}
+  if(k==="kpi"){ST.id=null;ST.q="";if(p[1]==="open"){ST.view="tindak";ST.fst="notclosed"}else{ST.view="jadwal";ST.tab=p[1]}render();var rs=document.getElementById("gb-results");if(rs&&rs.scrollIntoView)try{rs.scrollIntoView({behavior:"smooth",block:"start"})}catch(x){}return}
+  if(k==="fcard"){if(p[3]==="1")location.hash=HASH+"/"+p[1];else openFinding(p[1],p[2]);return}
   if(k==="view"){ST.view=p[1];ST.id=null;render();return}
   if(k==="tab"){ST.tab=p[1];paintList();return}
   if(k==="setper"){ST.mon=p[1];ST.wk=null;ST.wkOpen=false;render();return}
@@ -18713,6 +18752,7 @@ function act(a){
 document.addEventListener("click",function(e){
   var el=e.target.closest&&e.target.closest("[data-gb]");if(!el||location.hash.indexOf(HASH)!==0)return;
   if(el.closest(".gb-ov")&&!el.closest("#gb-root"))return;
+  if(el.classList.contains("gb-fc")&&e.target.closest("select,input,textarea,a,button,label"))return;
   e.preventDefault();act(el.getAttribute("data-gb"))});
 document.addEventListener("click",function(e){
   if(!ST.wkOpen||location.hash.indexOf(HASH)!==0)return;
@@ -18720,7 +18760,7 @@ document.addEventListener("click",function(e){
   ST.wkOpen=false;if(!ST.id)render()});
 document.addEventListener("keydown",function(e){
   if(e.key!=="Enter"&&e.key!==" ")return;var el=e.target;
-  if(el&&el.classList&&el.classList.contains("gb-row")&&location.hash.indexOf(HASH)===0){e.preventDefault();act(el.getAttribute("data-gb"))}});
+  if(el&&el.classList&&(el.classList.contains("gb-row")||el.classList.contains("gb-kc")||el.classList.contains("gb-fc"))&&location.hash.indexOf(HASH)===0){e.preventDefault();act(el.getAttribute("data-gb"))}});
 document.addEventListener("input",function(e){var t=e.target;if(t&&t.getAttribute&&t.getAttribute("data-gb-input")==="q"){ST.q=t.value;paintList();var n=document.querySelector('[data-gb-input="q"]');if(n){n.focus();try{n.setSelectionRange(n.value.length,n.value.length)}catch(x){}}}});
 document.addEventListener("change",function(e){
   var t=e.target,a=t&&t.getAttribute&&t.getAttribute("data-gb-change");if(!a||location.hash.indexOf(HASH)!==0)return;
