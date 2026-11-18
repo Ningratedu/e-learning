@@ -17416,6 +17416,12 @@ function collect(rs,re,admin){
   return out}
 
 function row(i,t){return t?'<div class="flex items-start gap-2 text-[11px] text-slate-500"><i class="fas '+i+' w-3.5 text-center text-slate-300 mt-0.5"></i><span class="min-w-0 break-words">'+t+'</span></div>':""}
+function isDone(e){var t0=todayD();try{
+  if(e.cat==="onb"){if(e.kind==="session"||e.kind==="day")return ymd(pYmd(e.date))<ymd(t0);return !!e.dl&&t0>e.dl}
+  if(e.cat==="genba"){var r=e.ref,gs=null;try{if(window.__gb)gs=window.__gb.statusOf(r)}catch(x){}
+    if(gs==="done")return true;if(gs==="cancelled"||gs==="overdue")return false;
+    var gd=pYmd(r.endDate)||pYmd(r.date);return ymd(t0)!==e.date&&!!gd&&gd<t0}
+  return window.trainingSessionStatus(e.ref)==="finished"}catch(x){}return false}
 function card(e,admin){
   var c=CM[e.cat],r=e.ref,t0=todayD(),st,rows="",act="";
   var time=e.start?E(e.start)+(e.end?" – "+E(e.end):""):"";
@@ -17445,10 +17451,10 @@ function render(){
   if(ST.y==null){ST.y=t0.getFullYear();ST.m=t0.getMonth();ST.sel=ymd(t0)}
   if(admin&&!ST.heavy&&window.ensureAdminReportsData){ST.heavy=1;try{window.ensureAdminReportsData()}catch(e){}}
   var y=ST.y,m=ST.m,off=new Date(y,m,1).getDay(),rows=Math.ceil((off+new Date(y,m+1,0).getDate())/7),gs=new Date(y,m,1-off),ge=new Date(y,m,1-off+rows*7-1);
-  var all=collect(gs,ge,admin),pre=y+"-"+pad(m+1),cnt={onb:0,tna:0,dev:0,genba:0},by={};
-  all.forEach(function(e){if(e.date.indexOf(pre)===0)cnt[e.cat]++;if(!ST.off[e.cat])(by[e.date]=by[e.date]||[]).push(e)});
+  var all=collect(gs,ge,admin),pre=y+"-"+pad(m+1),cnt={onb:0,tna:0,dev:0,genba:0},dn={onb:0,tna:0,dev:0,genba:0},by={};
+  all.forEach(function(e){if(e.date.indexOf(pre)===0){cnt[e.cat]++;if(isDone(e))dn[e.cat]++}if(!ST.off[e.cat])(by[e.date]=by[e.date]||[]).push(e)});
   Object.keys(by).forEach(function(k){by[k].sort(function(a,b){var x=a.start||"99:99",z=b.start||"99:99";return x!==z?(x<z?-1:1):CM[a.cat].i-CM[b.cat].i})});
-  var pills=CATS.filter(function(c){return !c.admin||admin}).map(function(c){var on=!ST.off[c.k];return '<button type="button" onclick="window.__tc.tog(\''+c.k+'\')" class="inline-flex items-center gap-1.5 text-[11px] font-bold px-3 py-1.5 rounded-full border transition '+(on?"bg-white border-slate-200 text-slate-700":"bg-slate-100 border-transparent text-slate-400")+'"><span class="w-2 h-2 rounded-full '+(on?c.bar:"bg-slate-300")+'"></span>'+c.label+'<span class="text-slate-400 font-semibold">'+cnt[c.k]+'</span></button>'}).join("");
+  var pills=CATS.filter(function(c){return !c.admin||admin}).map(function(c){var on=!ST.off[c.k];return '<button type="button" onclick="window.__tc.tog(\''+c.k+'\')" class="inline-flex items-center gap-1.5 text-[11px] font-bold px-3 py-1.5 rounded-full border transition '+(on?"bg-white border-slate-200 text-slate-700":"bg-slate-100 border-transparent text-slate-400")+'"><span class="w-2 h-2 rounded-full '+(on?c.bar:"bg-slate-300")+'"></span>'+c.label+'<span class="'+(on?"text-emerald-600":"text-slate-400")+' font-bold" title="'+dn[c.k]+' dari '+cnt[c.k]+' jadwal terlaksana">'+(cnt[c.k]?dn[c.k]+"/"+cnt[c.k]+" terlaksana":"0")+'</span></button>'}).join("");
   var head=DOW.map(function(d,i){return '<div class="tcg-dow '+(i===0?"text-rose-400":"text-slate-500")+'">'+d+'</div>'}).join("");
   var cells="";
   for(var i=0;i<rows*7;i++){
@@ -17600,9 +17606,9 @@ function normTpl(raw){
     if(!x.text)return;var k=x.cat||"Umum";if(!map[k]){map[k]={id:uid("t"),title:k,subs:[]};out.push(map[k])}map[k].subs.push({id:x.id||uid("s"),text:x.text})});
   return out}
 /* banyak template: [{id,name,sections:[{id,title,subs:[{id,text}]}]}]. Data lama (tanpa nama) -> "Template Umum" */
-/* "Genba Sales" = template bawaan (poin dari Form Genba HR Support Sales & Project). Selalu tersedia di urutan pertama
+/* "Genba Sales by HR" = template bawaan (poin dari Form Genba HR Support Sales & Project). Selalu tersedia di urutan pertama
    (jadi default saat membuat jadwal) kecuali sudah ada template bernama sama yang tersimpan. */
-var GS_NAME="Genba Sales";
+var GS_NAME="Genba Sales by HR";
 function gsTpl(){return{id:"tpl_genba_sales",name:GS_NAME,sections:defTpl()}}
 function getTemplates(){
   var raw=items(TPL),tp=raw.filter(function(t){return t&&Array.isArray(t.sections)}),list;
