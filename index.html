@@ -8380,59 +8380,85 @@ function pfBuildParts(e,u,o){
         const set=a=>new Set(a.map(x=>x.id)),hs=set(heads),ms=set(mgrs),ss=set(spvs);
         const pick=(raw,s)=>{const r=resolveEmp(raw);return r&&s.has(r.id)?r:null};
         const add=(m,k,v)=>{if(!m.has(k))m.set(k,[]);m.get(k).push(v)};
-        const headKids=new Map(),mgrKids=new Map(),staffOfSpv=new Map(),staffOfBm=new Map();
+        const headKids=new Map(),mgrKids=new Map(),staffOfSpv=new Map(),staffOfBm=new Map(),headSpv=new Map(),staffOfHead=new Map();
         const unMgr=[],unSpv=[],orphans=[];
         mgrs.forEach(m=>{const h=pick(m.rm,hs);if(h)add(headKids,h.id,m);else unMgr.push(m)});
-        spvs.forEach(s=>{const m=pick(s.bm,ms);if(m)add(mgrKids,m.id,s);else unSpv.push(s)});
+        spvs.forEach(s=>{const m=pick(s.bm,ms);if(m){add(mgrKids,m.id,s);return}const h=pick(s.rm,hs)||pick(s.bm,hs)||pick(s.mentor,hs);if(h)add(headSpv,h.id,s);else unSpv.push(s)});
         rest.forEach(x=>{const sp=pick(x.mentor,ss);if(sp){add(staffOfSpv,sp.id,x);return}
-          const m=pick(x.bm,ms)||pick(x.mentor,ms);if(m){add(staffOfBm,m.id,x);return}orphans.push(x)});
-        [staffOfSpv,staffOfBm].forEach(mp=>mp.forEach((list,id)=>{if(list.some(x=>x.id===e.id))ctx.more.add("h:"+id)}));
-        d.hier={heads:heads.sort(byName),mgrs:mgrs,spvs:spvs,headKids:headKids,mgrKids:mgrKids,staffOfSpv:staffOfSpv,staffOfBm:staffOfBm,unMgr:unMgr.sort(byName),unSpv:unSpv.sort(byName),orphans:orphans};
+          const m=pick(x.bm,ms)||pick(x.mentor,ms);if(m){add(staffOfBm,m.id,x);return}const h=pick(x.rm,hs)||pick(x.bm,hs)||pick(x.mentor,hs);if(h){add(staffOfHead,h.id,x);return}orphans.push(x)});
+        [staffOfSpv,staffOfBm,staffOfHead].forEach(mp=>mp.forEach((list,id)=>{if(list.some(x=>x.id===e.id))ctx.more.add("h:"+id)}));
+        d.hier={heads:heads.sort(byName),mgrs:mgrs,spvs:spvs,headKids:headKids,mgrKids:mgrKids,staffOfSpv:staffOfSpv,staffOfBm:staffOfBm,headSpv:headSpv,staffOfHead:staffOfHead,unMgr:unMgr.sort(byName),unSpv:unSpv.sort(byName),orphans:orphans};
         return d.hier};
+      const act=k=>`window.__ogAct('${uid}','m','${k}')`;
+      const grpPill=(key,label,n)=>`<button type="button" class="og-lvpill og-lvpill-t" onclick="${act(key)}">${label} <em>${n}</em><i class="fas fa-chevron-${ctx.more.has(key)?"up":"down"}"></i></button>`;
       const hierHtml=d=>{
         const H=hier(d);
+        const isOpen=k=>ctx.more.has(k);
         const toggle=(id,list,label)=>{if(!list||!list.length)return "";const key="h:"+id,open=ctx.more.has(key);
           return `<button type="button" class="og-more og-mini" onclick="window.__ogAct('${uid}','m','${key}')">${open?"Ringkas":label+" ("+list.length+")"}</button>`
             +(open?`<div class="og-pl og-plm">${list.slice().sort(byName).map(pill).join("")}</div>`:"")};
+        const exp=(key,label,n)=>n?`<button type="button" class="og-more og-mini" onclick="${act(key)}">${isOpen(key)?"Ringkas":label+" ("+n+")"}</button>`+(isOpen(key)?`<i class="og-ln og-ln-s"></i>`:""):"";
         const spvItem=s=>`<div class="og-si">${card(s)}${toggle(s.id,H.staffOfSpv.get(s.id),"Anggota")}</div>`;
-        const mgrCol=m=>{const sp=(H.mgrKids.get(m.id)||[]).slice().sort(byName),st=H.staffOfBm.get(m.id)||[];
+        const mgrCol=m=>{const sp=(H.mgrKids.get(m.id)||[]).slice().sort(byName),st=H.staffOfBm.get(m.id)||[],n=sp.length+st.length,key="x:"+m.id;
           let s=card(m);
-          if(sp.length||st.length)s+=`<i class="og-ln og-ln-s"></i>`+(sp.length?`<span class="og-lvpill">Supervisor <em>${sp.length}</em></span>`:"")+`<div class="og-sl">`+sp.map(spvItem).join("")+`</div>`+toggle(m.id,st,"Langsung di bawah BM");
+          if(!n)return s;
+          s+=exp(key,st.length?"Bawahan":"Supervisor",n);
+          if(!isOpen(key))return s;
+          s+=(sp.length?`<span class="og-lvpill">Supervisor <em>${sp.length}</em></span>`:"")+`<div class="og-sl">`+sp.map(spvItem).join("")+`</div>`+toggle(m.id,st,"Langsung di bawah BM");
           return s};
-        const kidsRow=list=>`<div class="og-hk">`+list.map(m=>`<div class="og-hc">${mgrCol(m)}</div>`).join("")+`</div>`;
+        const nonBmCol=hid=>{const sp=(H.headSpv.get(hid)||[]).slice().sort(byName),st=H.staffOfHead.get(hid)||[];if(!sp.length&&!st.length)return "";
+          return `<span class="og-lvpill">Non BM <em>${sp.length+st.length}</em></span>`+(sp.length?`<div class="og-hk">`+sp.map(x=>`<div class="og-hc">${card(x)}${toggle(x.id,H.staffOfSpv.get(x.id),"Anggota")}</div>`).join("")+`</div>`:"")+toggle(hid,st,"Staff langsung di bawah RM")};
+        const kidsRow=(list,extra)=>`<div class="og-hk">`+list.map(m=>`<div class="og-hc">${mgrCol(m)}</div>`).join("")+(extra?`<div class="og-hc">${extra}</div>`:"")+`</div>`;
         let roots="";
         if(H.heads.length){
-          roots+=H.heads.map(hd=>{const k=(H.headKids.get(hd.id)||[]).slice().sort(byName);return `<div class="og-hb">${card(hd)}${k.length?kidsRow(k):""}</div>`}).join("");
-          if(H.unMgr.length)roots+=`<div class="og-hb"><span class="og-lvpill">Belum terhubung ke RM <em>${H.unMgr.length}</em></span>${kidsRow(H.unMgr)}</div>`;
-        }else if(H.unMgr.length){roots+=`<div class="og-hb">${kidsRow(H.unMgr)}</div>`}
+          roots+=H.heads.map(hd=>{const k=(H.headKids.get(hd.id)||[]).slice().sort(byName),nb=nonBmCol(hd.id),n=k.length+(H.headSpv.get(hd.id)||[]).length+(H.staffOfHead.get(hd.id)||[]).length,key="x:"+hd.id;
+            return `<div class="og-hb">${card(hd)}${exp(key,"Bawahan",n)}${(isOpen(key)&&(k.length||nb))?kidsRow(k,nb):""}</div>`}).join("");
+          if(H.unMgr.length){const key="x:unMgr";roots+=`<div class="og-hb">${grpPill(key,"Belum terhubung ke RM",H.unMgr.length)}${isOpen(key)?kidsRow(H.unMgr):""}</div>`}
+        }else if(H.unMgr.length){const key="x:unMgr";roots+=`<div class="og-hb">${grpPill(key,"Manager",H.unMgr.length)}${isOpen(key)?kidsRow(H.unMgr):""}</div>`}
         let h=`<div class="og-hroot">${roots}</div>`;
-        if(H.unSpv.length)h+=`<i class="og-ln og-ln-s"></i><span class="og-lvpill">Supervisor belum terhubung ke BM <em>${H.unSpv.length}</em></span><div class="og-hroot og-hs">${H.unSpv.map(spvItem).join("")}</div>`;
+        if(H.unSpv.length){const key="x:unSpv";h+=`<i class="og-ln og-ln-s"></i>${grpPill(key,"Supervisor belum terhubung ke BM",H.unSpv.length)}`+(isOpen(key)?`<div class="og-hroot og-hs">${H.unSpv.map(spvItem).join("")}</div>`:"")}
         if(H.orphans.length){
           const gm=new Map();H.orphans.forEach(x=>{const k=low(lvName(x));if(!gm.has(k))gm.set(k,{name:lvName(x),emps:[]});gm.get(k).emps.push(x)});
           const gs=[...gm.values()].sort((a,b)=>lvRank(a.name)-lvRank(b.name)||a.name.localeCompare(b.name,"id"));
-          h+=`<i class="og-ln og-ln-s"></i><div class="og-grow">`+gs.map((g,gi)=>{const k=ctx.di+":o:"+gi,all=ctx.more.has(k);const list=all?g.emps:sortMe(g.emps).slice(0,CAP_PILL);
-            return `<div class="og-grp"><span class="og-lvpill">${E_(g.name)} (belum terhubung) <em>${g.emps.length}</em></span><div class="og-pl" style="--c:${g.emps.length>24?4:Math.min(g.emps.length,3)}">${list.map(pill).join("")}</div>`
-              +(g.emps.length>CAP_PILL?`<button type="button" class="og-more" onclick="window.__ogAct('${uid}','m','${k}')">${all?"Ringkas":"Tampilkan "+(g.emps.length-CAP_PILL)+" lainnya"}</button>`:"")+`</div>`}).join("")+`</div>`;
+          h+=`<i class="og-ln og-ln-s"></i><div class="og-grow">`+gs.map((g,gi)=>{const ok="x:o:"+ctx.di+":"+gi,k=ctx.di+":o:"+gi,all=ctx.more.has(k);const list=all?g.emps:sortMe(g.emps).slice(0,CAP_PILL);
+            return `<div class="og-grp">${grpPill(ok,E_(g.name)+" (belum terhubung)",g.emps.length)}`+(isOpen(ok)?`<div class="og-pl" style="--c:${g.emps.length>24?4:Math.min(g.emps.length,3)}">${list.map(pill).join("")}</div>`
+              +(g.emps.length>CAP_PILL?`<button type="button" class="og-more" onclick="window.__ogAct('${uid}','m','${k}')">${all?"Ringkas":"Tampilkan "+(g.emps.length-CAP_PILL)+" lainnya"}</button>`:""):"")+`</div>`}).join("")+`</div>`;
         }
         return h};
+      ctx.openTo=function(p){
+        const d=depts[ctx.di];ctx.more.add("o:d:"+ctx.di);
+        if(hierDept(d)){const H=hier(d),seen=new Set();
+          const up=id=>{if(seen.has(id))return;seen.add(id);
+            [H.headKids,H.mgrKids,H.headSpv].forEach(mp=>mp.forEach((list,pid)=>{if(list.some(z=>z.id===id)){ctx.more.add("x:"+pid);up(pid)}}));
+            [H.staffOfSpv,H.staffOfBm,H.staffOfHead].forEach(mp=>mp.forEach((list,pid)=>{if(list.some(z=>z.id===id)){ctx.more.add("x:"+pid);ctx.more.add("h:"+pid);up(pid)}}));
+            if(H.unMgr.some(z=>z.id===id))ctx.more.add("x:unMgr");
+            if(H.unSpv.some(z=>z.id===id))ctx.more.add("x:unSpv")};
+          up(p.id);
+          if(H.orphans.some(z=>z.id===p.id)){const gm=new Map();H.orphans.forEach(z=>{const k=low(lvName(z));if(!gm.has(k))gm.set(k,{name:lvName(z),emps:[]});gm.get(k).emps.push(z)});
+            const gs=[...gm.values()].sort((a,b)=>lvRank(a.name)-lvRank(b.name)||a.name.localeCompare(b.name,"id"));
+            const gi=gs.findIndex(g=>g.emps.some(z=>z.id===p.id));if(gi>=0)ctx.more.add("x:o:"+ctx.di+":"+gi)}
+        }else{tree(d).forEach((tier,ti)=>tier.groups.forEach((g,gi)=>{if(g.emps.some(z=>z.id===p.id))ctx.more.add(tier.t<4?"x:t:"+ctx.di+":"+ti:"x:t:"+ctx.di+":"+ti+":"+gi)}))}};
       ctx.render=function(){
-        const d=depts[ctx.di],T=tree(d);
-        let h=`<div class="og-co"><span>${E_(d.name)} <em class="og-con">${d.emps.length} karyawan</em></span></div>`;
+        const d=depts[ctx.di],T=tree(d),dk="o:d:"+ctx.di,dOpen=ctx.more.has(dk);
+        let h=`<div class="og-co og-co-t" role="button" tabindex="0" onclick="${act(dk)}" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();${act(dk)}}"><span>${E_(d.name)} <em class="og-con">${d.emps.length} karyawan</em></span><i class="fas fa-chevron-${dOpen?"up":"down"} og-co-c"></i></div>`;
+        if(!dOpen)return h+`<p class="og-hint og-hint-c">Klik departemen untuk melihat struktur di bawahnya.</p>`;
         if(hierDept(d)){const H0=hier(d);if(H0.heads.length||H0.mgrs.length||H0.spvs.length){h+=`<i class="og-ln og-ln-s"></i>`+hierHtml(d);return h}}
         T.forEach((tier,ti)=>{
           h+=`<i class="og-ln og-ln-s"></i>`;
           if(tier.t<4){
-            const g=tier.groups[0],k=ctx.di+":"+ti+":0",all=ctx.more.has(k);
-            const list=all?g.emps:sortMe(g.emps.slice(0,CAP_CARD).concat(g.emps.slice(CAP_CARD).filter(x=>x.id===e.id)));
-            h+=`<span class="og-lvpill">${E_(g.name)} <em>${g.emps.length}</em></span><i class="og-ln og-ln-s"></i>`;
-            h+=`<div class="og-kids">`+list.map(x=>`<div class="og-kid">${card(x)}</div>`).join("")+`</div>`;
-            if(g.emps.length>CAP_CARD)h+=`<button type="button" class="og-more" onclick="window.__ogAct('${uid}','m','${k}')">${all?"Ringkas":"Tampilkan "+(g.emps.length-CAP_CARD)+" lainnya"}</button>`;
+            const g=tier.groups[0],k=ctx.di+":"+ti+":0",all=ctx.more.has(k),tk="x:t:"+ctx.di+":"+ti;
+            h+=grpPill(tk,E_(g.name),g.emps.length);
+            if(ctx.more.has(tk)){
+              const list=all?g.emps:sortMe(g.emps.slice(0,CAP_CARD).concat(g.emps.slice(CAP_CARD).filter(x=>x.id===e.id)));
+              h+=`<i class="og-ln og-ln-s"></i><div class="og-kids">`+list.map(x=>`<div class="og-kid">${card(x)}</div>`).join("")+`</div>`;
+              if(g.emps.length>CAP_CARD)h+=`<button type="button" class="og-more" onclick="window.__ogAct('${uid}','m','${k}')">${all?"Ringkas":"Tampilkan "+(g.emps.length-CAP_CARD)+" lainnya"}</button>`;
+            }
           }else{
             h+=`<div class="og-grow">`+tier.groups.map((g,gi)=>{
-              const k=ctx.di+":"+ti+":"+gi,all=ctx.more.has(k);
+              const k=ctx.di+":"+ti+":"+gi,all=ctx.more.has(k),tk="x:t:"+ctx.di+":"+ti+":"+gi;
               const list=all?g.emps:sortMe(g.emps).slice(0,CAP_PILL);
-              return `<div class="og-grp"><span class="og-lvpill">${E_(g.name)} <em>${g.emps.length}</em></span><div class="og-pl" style="--c:${g.emps.length>24?4:Math.min(g.emps.length,3)}">${list.map(pill).join("")}</div>`
-                +(g.emps.length>CAP_PILL?`<button type="button" class="og-more" onclick="window.__ogAct('${uid}','m','${k}')">${all?"Ringkas":"Tampilkan "+(g.emps.length-CAP_PILL)+" lainnya"}</button>`:"")+`</div>`}).join("")+`</div>`;
+              return `<div class="og-grp">${grpPill(tk,E_(g.name),g.emps.length)}`+(ctx.more.has(tk)?`<div class="og-pl" style="--c:${g.emps.length>24?4:Math.min(g.emps.length,3)}">${list.map(pill).join("")}</div>`
+                +(g.emps.length>CAP_PILL?`<button type="button" class="og-more" onclick="window.__ogAct('${uid}','m','${k}')">${all?"Ringkas":"Tampilkan "+(g.emps.length-CAP_PILL)+" lainnya"}</button>`:""):"")+`</div>`}).join("")+`</div>`;
           }
         });
         return h};
@@ -8456,7 +8482,7 @@ function pfBuildParts(e,u,o){
               const gs=[...gm.values()].sort((u,v)=>lvRank(u.name)-lvRank(v.name)||u.name.localeCompare(v.name,"id"));
               const gi=gs.findIndex(g=>g.emps.some(z=>z.id===p.id));if(gi>=0)x.more.add(x.di+":o:"+gi)}
           }else{tree(d).forEach((tier,ti)=>tier.groups.forEach((g,gi)=>{if(g.emps.some(z=>z.id===p.id))x.more.add(x.di+":"+ti+":"+(tier.t<4?0:gi))}))}
-          x.hl=p.id;x.res=[];
+          x.hl=p.id;x.res=[];if(x.openTo)x.openTo(p);
           if(rEl)rEl.innerHTML="";if(qEl)qEl.value=p.nama||p.username||"";
           const el1=document.getElementById(id);if(!el1)return;
           const sc1=el1.parentNode,sl1=sc1?sc1.scrollLeft:0;el1.innerHTML=x.render();if(sc1)sc1.scrollLeft=sl1;
@@ -8474,7 +8500,7 @@ function pfBuildParts(e,u,o){
       const isAdm=!!(canOpen||(typeof o!=="undefined"&&o&&o.admin));
       const searchBox=isAdm?`<div class="og-sr"><i class="fas fa-search"></i><input type="search" id="${uid}-q" autocomplete="off" placeholder="Cari karyawan di struktur (nama, username, designation)..." oninput="window.__ogAct('${uid}','q',this.value)" onkeydown="if(event.key==='Enter'){event.preventDefault();window.__ogAct('${uid}','e')}else if(event.key==='Escape'){this.value='';window.__ogAct('${uid}','q','')}"><div class="og-res" id="${uid}-r"></div></div>`:"";
       const crumb=[co,deptName(e),lvName(e),dsName(e)].filter(Boolean).map((t,i)=>`<span class="og-cr"><i class="fas ${["fa-building","fa-sitemap","fa-layer-group","fa-award"][i]}"></i>${E_(t)}</span>`).join('<i class="fas fa-chevron-right og-cs"></i>');
-      return `<section class="pf-card og-card"><h3 class="pf-h"><span class="pf-hi"><i class="fas fa-sitemap"></i></span>Struktur Organisasi</h3><div class="og-crumb">${crumb}</div><!--ORG_CHAIN-->${searchBox}<div class="og-scroll"><div class="og-tree" id="${uid}">${ctx.render()}</div></div><p class="og-hint">Disusun per departemen dari level tertinggi ke terendah (Head &rsaquo; Manager &rsaquo; Supervisor &rsaquo; Officer &amp; Staff). </p></section>`;
+      return `<section class="pf-card og-card"><h3 class="pf-h"><span class="pf-hi"><i class="fas fa-sitemap"></i></span>Struktur Organisasi</h3><div class="og-crumb">${crumb}</div><!--ORG_CHAIN-->${searchBox}<div class="og-scroll"><div class="og-tree" id="${uid}">${ctx.render()}</div></div><p class="og-hint">Disusun per departemen dari level tertinggi ke terendah (Head &rsaquo; Manager &rsaquo; Supervisor &rsaquo; Officer &amp; Staff). Klik departemen, lalu tombol di bawah tiap kartu untuk membuka level berikutnya.</p></section>`;
     }catch(err){console.error("org struct",err);return ""}
   })();
 
@@ -8628,10 +8654,16 @@ html.dark .pf-row{border-top-color:#26304a}html.dark .pf-empty{color:#475569}
 .og-hc::before{content:"";position:absolute;top:14px;left:0;right:0;border-top:2px solid #cbd5e1}
 .og-hc:first-child::before{left:50%}.og-hc:last-child::before{right:50%}.og-hc:only-child::before{display:none}
 .og-hc::after{content:"";position:absolute;top:14px;left:50%;height:14px;border-left:2px solid #cbd5e1}
-.og-sl{display:flex;flex-direction:column;align-items:center;gap:14px;margin-top:8px;padding:6px 0 0}
-.og-si{display:flex;flex-direction:column;align-items:center;position:relative;padding-top:14px}
-.og-si::before{content:"";position:absolute;top:-6px;left:50%;height:20px;border-left:2px solid #cbd5e1}
-.og-sl .og-si:first-child{padding-top:10px}.og-sl .og-si:first-child::before{top:-4px;height:14px}
+.og-sl{display:flex;flex-direction:row;align-items:flex-start;justify-content:center;margin-top:8px;padding:6px 0 0;position:relative}
+.og-sl::before{content:"";position:absolute;top:0;left:50%;height:14px;border-left:2px solid #cbd5e1}
+.og-si{display:flex;flex-direction:column;align-items:center;position:relative;padding:22px 8px 0}
+.og-si::before{content:"";position:absolute;top:8px;left:0;right:0;border-top:2px solid #cbd5e1}
+.og-si:first-child::before{left:50%}
+.og-si:last-child::before{right:50%}
+.og-si:only-child::before{display:none}
+.og-si::after{content:"";position:absolute;top:8px;left:50%;height:14px;border-left:2px solid #cbd5e1}
+.og-co-t{cursor:pointer;user-select:none}.og-co-t:hover{filter:brightness(1.08)}.og-co-c{margin-left:8px;font-size:10px;opacity:.85}
+button.og-lvpill{border:0;font-family:inherit;cursor:pointer}button.og-lvpill i{font-size:8px;margin-left:6px}.og-hint-c{margin-top:8px}
 .og-more.og-mini{margin-top:6px;font-size:10px;padding:3px 10px}
 .og-plm{margin-top:6px;max-width:210px}
 .og-gk{display:flex;flex-direction:column;align-items:center;margin-top:2px}
@@ -8649,7 +8681,7 @@ html.dark .pf-row{border-top-color:#26304a}html.dark .pf-empty{color:#475569}
 .og-hl{box-shadow:0 0 0 3px #f59e0b,0 8px 20px -8px rgba(245,158,11,.6)!important;border-color:#f59e0b!important}
 html.dark .og-sr input,html.dark .og-res{background:#0f1b33;color:#e2e8f0;border-color:#334166}
 html.dark .og-rs:hover{background:#1a2744}
-html.dark .og-hk::before,html.dark .og-hc::before,html.dark .og-hc::after,html.dark .og-si::before{border-color:#334166}
+html.dark .og-hk::before,html.dark .og-hc::before,html.dark .og-hc::after,html.dark .og-si::before,html.dark .og-si::after,html.dark .og-sl::before{border-color:#334166}
 
 .og-av img{width:100%;height:100%;object-fit:cover}
 .og-nm{font-size:11px;font-weight:800;color:#1e293b;line-height:1.25}
@@ -8768,10 +8800,14 @@ const OGA_CSS=`.og-card{margin-bottom:12px}
 .og-hc::before{content:"";position:absolute;top:14px;left:0;right:0;border-top:2px solid #cbd5e1}
 .og-hc:first-child::before{left:50%}.og-hc:last-child::before{right:50%}.og-hc:only-child::before{display:none}
 .og-hc::after{content:"";position:absolute;top:14px;left:50%;height:14px;border-left:2px solid #cbd5e1}
-.og-sl{display:flex;flex-direction:column;align-items:center;gap:14px;margin-top:8px;padding:6px 0 0}
-.og-si{display:flex;flex-direction:column;align-items:center;position:relative;padding-top:14px}
-.og-si::before{content:"";position:absolute;top:-6px;left:50%;height:20px;border-left:2px solid #cbd5e1}
-.og-sl .og-si:first-child{padding-top:10px}.og-sl .og-si:first-child::before{top:-4px;height:14px}
+.og-sl{display:flex;flex-direction:row;align-items:flex-start;justify-content:center;margin-top:8px;padding:6px 0 0;position:relative}
+.og-sl::before{content:"";position:absolute;top:0;left:50%;height:14px;border-left:2px solid #cbd5e1}
+.og-si{display:flex;flex-direction:column;align-items:center;position:relative;padding:22px 8px 0}
+.og-si::before{content:"";position:absolute;top:8px;left:0;right:0;border-top:2px solid #cbd5e1}
+.og-si:first-child::before{left:50%}
+.og-si:last-child::before{right:50%}
+.og-si:only-child::before{display:none}
+.og-si::after{content:"";position:absolute;top:8px;left:50%;height:14px;border-left:2px solid #cbd5e1}
 .og-more.og-mini{margin-top:6px;font-size:10px;padding:3px 10px}
 .og-plm{margin-top:6px;max-width:210px}
 .og-gk{display:flex;flex-direction:column;align-items:center;margin-top:2px}
@@ -8789,7 +8825,7 @@ const OGA_CSS=`.og-card{margin-bottom:12px}
 .og-hl{box-shadow:0 0 0 3px #f59e0b,0 8px 20px -8px rgba(245,158,11,.6)!important;border-color:#f59e0b!important}
 html.dark .og-sr input,html.dark .og-res{background:#0f1b33;color:#e2e8f0;border-color:#334166}
 html.dark .og-rs:hover{background:#1a2744}
-html.dark .og-hk::before,html.dark .og-hc::before,html.dark .og-hc::after,html.dark .og-si::before{border-color:#334166}
+html.dark .og-hk::before,html.dark .og-hc::before,html.dark .og-hc::after,html.dark .og-si::before,html.dark .og-si::after,html.dark .og-sl::before{border-color:#334166}
 
 .og-av img{width:100%;height:100%;object-fit:cover}
 .og-nm{font-size:11px;font-weight:800;color:#1e293b;line-height:1.25}
@@ -8893,13 +8929,14 @@ html.dark .og-adm-sel{background:#1b2440;border-color:#26304a;color:#e2e8f0}
     window.EMP_CODE_ALIASES=window.EMP_CODE_ALIASES||{
       /* "KODE":"Nama Karyawan atau username", contoh: */
       /* "MIND":"Muhamad Irfannudin", */
+      "IRFANNUDIN":"Muhamad Irfannudin"
     };
     window.resolveEmpCode=function(raw,emps){
       const low=s=>String(s==null?"":s).trim().toLowerCase();
       const r=String(raw==null?"":raw).trim(),code=low(r).replace(/[^a-z]/g,"");
-      if(!code||/\s/.test(r)||code.length<2||code.length>6)return null;
       const al=window.EMP_CODE_ALIASES||{};
       for(const k in al){if(low(k)===low(r)){const t=low(al[k]);const f=emps.find(x=>low(x.nama)===t||low(x.username)===t);if(f)return f}}
+      if(!code||/\s/.test(r)||code.length<2||code.length>6)return null;
       const ok=ws=>{
         const go=(wi,ci)=>{
           if(wi===ws.length)return ci===code.length;
