@@ -18776,6 +18776,27 @@ window.essaySaveGrading=async function(){
   toastMsg("Penilaian tersimpan. Skor akhir "+r.score+(passed?" (Lulus)":" (Belum lulus)"),"success");
   if(typeof renderAdminQuizAttempts==="function")renderAdminQuizAttempts()};
 })();
+/* ---------- Training dokumen OD otomatis: karyawan tanpa dokumen OD yang berlaku bukan target peserta ----------
+   Berlaku untuk training yang SEMUA materinya bertipe Dokumen OD mode otomatis. Training campuran (ada materi biasa) tidak terpengaruh. */
+(function(){
+  var orig=window.courseParticipantMatch;
+  if(typeof orig!=="function"||orig.__odWrapped)return;
+  function odOnly(c){
+    var ls=[];((c&&c.modules)||[]).forEach(function(m){((m&&m.lessons)||[]).forEach(function(l){ls.push(l)})});
+    return ls.length>0&&ls.every(function(l){return l&&l.type==="od"&&l.odMode!=="manual"})?ls:null}
+  window.courseParticipantMatch=function(c,employee,user){
+    var r=orig.apply(this,arguments);
+    if(!r)return r;
+    try{
+      var ls=odOnly(c);if(!ls||!window.odDocs||!window.odDocApplies)return r;
+      var emp=employee||(user&&window.sel&&window.sel.employeeOfUser?window.sel.employeeOfUser(user):null);
+      if(!emp)return r;
+      var all=window.odDocs(),T=["JP","SOP","IK"];
+      return ls.some(function(l){var ty=(l.odTypes&&l.odTypes.length)?l.odTypes:T;
+        return all.some(function(d){return ty.indexOf(d.type)>=0&&window.odDocApplies(d,emp)})})
+    }catch(e){return r}};
+  window.courseParticipantMatch.__odWrapped=true;
+})();
 </script>
 
 </body>
